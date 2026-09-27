@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
-import 'data/services/api_service.dart';
 import 'package:latlong2/latlong.dart';
 
 void main() {
@@ -27,8 +26,6 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final MarineApiService _apiService = MarineApiService();
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,9 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.only(left: 15, right: 15, top: 70),
         child: Column(
           children: [
-            Container(
+            SizedBox(
               height: 250,
-
               child: FlutterMap(
                 options: MapOptions(
                   initialCenter: LatLng(38.3, 26.3),
