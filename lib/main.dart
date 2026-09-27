@@ -17,7 +17,10 @@ class MarineApp extends StatelessWidget {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.tileProvider});
+
+  /// Overridable so widget tests can avoid hitting the real tile network.
+  final TileProvider? tileProvider;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -45,6 +48,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   TileLayer(
                     urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                     userAgentPackageName: "io.beachiq.app",
+                    tileProvider: widget.tileProvider ?? NetworkTileProvider(),
                   ),
                 ],
               ),
