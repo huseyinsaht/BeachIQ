@@ -9,6 +9,14 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Accidental duplicate project tree from an early `flutter create` run one
+    # directory too deep (see git history for c7229d8/e5bcdbf); superseded by
+    # the top-level app since 414e147. Excluded here rather than deleted —
+    # flagged for a maintainer decision on removal.
+    - "BeachIQ/**"
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
