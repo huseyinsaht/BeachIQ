@@ -14,15 +14,11 @@ class MarineApiService {
     };
 
     final uri = Uri.parse(_baseUrl).replace(queryParameters: queryParams);
-    print("======= URI $uri");
 
     try {
       final response = await http.get(uri);
-      print("=======  RESPONSE  $response");
       if (response.statusCode == 200) {
-        var result = json.decode(response.body);
-        print(" ======= RESULT $result");
-        return result;
+        return json.decode(response.body);
       } else {
         throw Exception("Server Error: ${response.statusCode}");
       }
