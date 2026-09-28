@@ -15,12 +15,15 @@
 #
 # Overridable via environment:
 #   OWNER (huseyinsaht)   PROJECT_NUMBER (1)   REPO (huseyinsaht/BeachIQ)
+#   SKIP_PATTERN  extended regex; drafts whose title matches are left alone
+#                 (default skips the other projects sharing the board)
 
 set -euo pipefail
 
 OWNER="${OWNER:-huseyinsaht}"
 PROJECT_NUMBER="${PROJECT_NUMBER:-1}"
 REPO="${REPO:-huseyinsaht/BeachIQ}"
+SKIP_PATTERN="${SKIP_PATTERN:-^\[(ROV|TentacleWars)\]}"
 DRY_RUN=0
 
 case "${1:-}" in
@@ -69,7 +72,8 @@ convert_to_issue() {
     --jq '.data.convertProjectV2DraftIssueItemToIssue.item.content | "#\(.number) \(.url)"'
 }
 
-drafts="$(list_drafts)"
+# ENVIRON (not awk -v) so backslashes in the regex are not pre-processed.
+drafts="$(list_drafts | SKIP="$SKIP_PATTERN" awk -F'\t' '$2 !~ ENVIRON["SKIP"]')"
 
 if [ -z "$drafts" ]; then
   echo "No draft items on project $PROJECT_NUMBER: every task is already an issue."
