@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
+
+import 'data/repositories/marine_repository.dart';
+import 'data/services/api_service.dart';
+import 'logic/providers/marine_provider.dart';
 
 void main() {
   runApp(const MarineApp());
@@ -11,7 +16,10 @@ class MarineApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(title: 'Marine Safety', home: const HomeScreen());
+    return ChangeNotifierProvider(
+      create: (_) => MarineProvider(MarineRepository(MarineApiService())),
+      child: MaterialApp(title: 'Marine Safety', home: const HomeScreen()),
+    );
   }
 }
 
