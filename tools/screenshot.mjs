@@ -13,7 +13,7 @@ const page = await browser.newPage({
   hasTouch: true,
 });
 await page.goto(url, { waitUntil: 'load' });
-await page.waitForSelector('flt-glass-pane', { timeout: 60000 });
+await page.waitForSelector('flt-glass-pane', { state: 'attached', timeout: 60000 });
 // Let map tiles and first frames settle; networkidle may never happen with tiles, so cap it.
 await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 await page.waitForTimeout(5000);
