@@ -12,13 +12,19 @@ void main() {
 }
 
 class MarineApp extends StatelessWidget {
-  const MarineApp({super.key});
+  const MarineApp({super.key, this.tileProvider});
+
+  /// Overridable so integration tests can avoid the real tile network.
+  final TileProvider? tileProvider;
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MarineProvider(MarineRepository(MarineApiService())),
-      child: MaterialApp(title: 'Marine Safety', home: const HomeScreen()),
+      child: MaterialApp(
+        title: 'Marine Safety',
+        home: HomeScreen(tileProvider: tileProvider),
+      ),
     );
   }
 }
