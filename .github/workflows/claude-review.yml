@@ -1,0 +1,86 @@
+name: Claude PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Record review start time
+        id: t
+        run: echo "start=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Use the workflow's own token so the action does not try to exchange
+          # an OIDC token for a Claude GitHub App token (needs id-token: write
+          # and the app installed) - that exchange is what failed.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          use_sticky_comment: true
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            You are an independent reviewer for this Flutter app (BeachIQ). You did not write
+            this PR - review it with fresh eyes. Never merge, approve/request-changes, or push
+            commits. Comment only.
+
+            Review focus:
+            - Correctness and bugs: null-safety, async/state handling, edge cases.
+            - Test coverage: does `flutter test` actually exercise the new/changed behavior, or
+              is it missing/superficial for what changed?
+            - If any file under lib/ui/ is touched: read docs/design.md. If it isn't present on
+              this branch yet, fetch it with
+              `gh api repos/${{ github.repository }}/contents/docs/design.md?ref=docs/ui-design-reference --jq .content | base64 -d`.
+              Compare the UI change against it (spacing, color tokens, component states,
+              typography) and call out concrete deviations with file:line.
+            - Anything inconsistent with the rest of the codebase's existing conventions.
+
+            Post findings with `gh pr comment` as a single top-level comment. If you find
+            nothing worth flagging, post a short comment saying so - don't stay silent.
+
+            The LAST line of that comment must be exactly one of:
+              VERDICT: PASS
+              VERDICT: BLOCK
+            Use BLOCK only for a real bug, regression, security problem, breaking change, or
+            new behavior without tests that must be fixed before merging. Style remarks,
+            nitpicks and suggestions are NOT blocking - use PASS and mention them normally.
+            This line is machine-read and gates the merge, so never omit it.
+
+          claude_args: |
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"
+
+      - name: Enforce reviewer verdict
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const start = new Date('${{ steps.t.outputs.start }}');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number, per_page: 100,
+            });
+            const mine = comments
+              .filter(c => c.user && c.user.type === 'Bot' && new Date(c.updated_at) >= start)
+              .sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+            let verdict = null;
+            for (const c of mine) {
+              const m = [...(c.body || '').matchAll(/VERDICT:\s*(PASS|BLOCK)/gi)].pop();
+              if (m) verdict = m[1].toUpperCase();
+            }
+            core.info(`reviewer verdict: ${verdict}`);
+            if (verdict === 'BLOCK') core.setFailed('Reviewer verdict is BLOCK - see the review comment on this PR.');
+            else if (verdict !== 'PASS') core.setFailed('Reviewer did not post a VERDICT line.');
