@@ -25,6 +25,8 @@ All notable changes to this project are documented here. Format loosely follows
 - A static list of 10 Turkish beaches (name, city, coordinates) in
   `lib/data/static_beaches.dart` (#59)
 - A daily automated screenshot workflow that captures the running app (#60)
+- The daily screenshot workflow now also sends the screenshot to Telegram via
+  `sendPhoto`, skipped gracefully if the `TELEGRAM_TOKEN` secret isn't set (#61)
 
 ### Changed
 
