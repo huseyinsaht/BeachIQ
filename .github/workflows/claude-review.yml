@@ -21,6 +21,10 @@ jobs:
       - uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Use the workflow's own token so the action does not try to exchange
+          # an OIDC token for a Claude GitHub App token (needs id-token: write
+          # and the app installed) - that exchange is what failed.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           use_sticky_comment: true
           prompt: |
             REPO: ${{ github.repository }}
