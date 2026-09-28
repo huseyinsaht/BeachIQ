@@ -1,30 +1,56 @@
 # BeachIQ UI design reference
 
-Source of truth: the team's Penpot mockup (two screens — home / location detail, and city search). This
-doc distills that mockup into a reference other PRs (human or automated) can build against without
-needing Penpot access. Colors below are read off the mockup screenshots and are **approximate** — if a
-PR needs exact values, pull them from the Penpot file's color styles instead of these hex codes.
+Source of truth: the team's Penpot mockup (two screens — home / location detail, and search). The
+exported images are in this repo and **take precedence over the prose below** whenever they disagree:
+
+- [`docs/assets/mockup-home.png`](assets/mockup-home.png) — Home / location detail
+- [`docs/assets/mockup-search.png`](assets/mockup-search.png) — Search
+- [`docs/assets/mockup-full.png`](assets/mockup-full.png) — both screens side by side
+
+This doc distills the mockup into a reference other PRs (human or automated) can build against without
+needing Penpot access. Colors below are read off the exported images and are **approximate**.
 
 This maps to the "PHASE 4 — UI: Beach List and Detail Screen" board items (issues #16–21) and should
 guide the earlier phases' screens too once they get a UI pass.
 
+## Reading the mockup: what is a design and what is placeholder
+
+The mockup was built from a weather-app template. Do **not** copy these literally:
+
+- **Serif text** (stat labels/values, "Hourly forecast", hourly items, the search-sheet info lines) is
+  a font-fallback artifact of the export. The real typeface is the geometric sans used in "My Location",
+  "Search", "Cesme, Izmir" and "Altinkum Beach" (Poppins-like). Use one sans family everywhere.
+- **Placeholder data:** "Seongnam-si" (a Korean city from the template; the real location is
+  "Cesme, Izmir"), the pill text "bassd scha" and its black-square icon, pressure "720 hpa" (not a
+  plausible sea-level value), and hourly temperatures that jump around (10°, 8°, 5°, 12°, 9°, 12°).
+- **Chip labels in the search sheet are German/Austrian notes-to-self, not copy.** They mean:
+  `eintritt preis` = entry price, `welle höhe` = wave height, `slope` = beach/seabed slope,
+  `google comment` = reviews, `autopark` = car park, `beach club`, `cafe`, and
+  `ob ma a schuhe brauchen` = "do I need shoes / slippers?". The set of facts is intentional, the
+  wording is not. See "Beach info chips" below for the real data behind each.
+
 ## Visual direction
 
-Dark-mode weather/beach app. Deep navy background throughout, white primary text, muted blue-gray
-secondary text, light "paper" cards floating on top for map and search-result content, a single teal
-accent for water/coastline. Generous corner radii (~20–24px) on every card. No hard borders — depth
-comes from flat color contrast, not shadows or outlines.
+Dark-mode weather/beach app. Deep navy vertical gradient background on both screens (darker at the
+top, slightly lighter and bluer toward the bottom) with a decorative photographic **cloud texture** in
+the top-right behind the status bar/header (a second, very faint cloud floats mid-screen on Search).
+White primary text, muted blue-gray secondary text, and light "paper" surfaces (map card, search field,
+result sheet) with navy-indigo text. Generous corner radii (~24px). No hard borders; the stat grid and
+hourly row have **no card background at all** — they sit directly on the gradient.
 
 ### Color tokens (approximate — verify against Penpot)
 
 | Token | Hex | Use |
 |---|---|---|
 | `bg.base` | `#0D1220` | Screen background |
-| `surface.card` | `#171D2E` | Stat cards, pill buttons |
-| `surface.paper` | `#F5F6F8` | Map card, search-result sheet (light card on dark bg) |
-| `accent.water` | `#2FB6C4` | Coastline highlight on the map, primary CTA accents |
+| `bg.gradientBottom` | `#2A3145` | Bottom of the background gradient |
+| `surface.pill` | `#D9DBDF` → `#F2F3F5` | Smart suggestion pill (light grey gradient, not a dark card) |
+| `surface.paper` | `#FFFFFF` | Map card, search field, search-result sheet |
+| `map.water` | `#A8D3E0` | Sea on the map |
+| `map.land` | `#EDEBE6` | Land on the map |
+| `map.beach` | `#C9A227` | Beach highlight on the map (see below) |
 | `text.primary` | `#FFFFFF` | Headlines, temperatures, values |
-| `text.onPaper` | `#12151C` | Text on light cards (location name, beach name) |
+| `text.onPaper` | `#2E3057` | Text on light surfaces (place name, beach name, temperature) |
 | `text.secondary` | `#8B93A6` | Subtitles, labels, unit text |
 | `icon.sun` | `#FFC94D` | Sun glyph in weather icons |
 
@@ -45,30 +71,54 @@ Top to bottom:
    `text.secondary`), current temperature large on the right, both on `bg.base`.
 2. **Condition row** — condition text ("Partly Cloudy") left, high/low ("H:29° L:15°") right, both
    `text.secondary`, small size.
-3. **Map card** (`surface.paper`, rounded ~24px) — a static/stylized light map with the coastline
-   traced in `accent.water`. A location bar is docked to the card's bottom edge, same card surface,
-   showing a pin icon + place name (bold, `text.onPaper`) and an overflow ("...") menu on the right.
-4. **Smart suggestion pill** — a single full-width rounded pill in `surface.card` with a leading icon
-   and short text (e.g. a "best time to swim" style suggestion). Secondary/muted, not a primary CTA.
-5. **Stat grid** — 2×2 grid of `surface.card` tiles: wind speed, rain chance, pressure, UV index. Each
-   tile: small icon top-left, `text.secondary` label, bold white value, and a small trend indicator
-   (up/down arrow + delta) in `text.secondary` or a muted accent color.
+3. **Map card** (`surface.paper`, rounded ~24px) — a **real OpenStreetMap-style map** (light land,
+   light-blue sea, roads and building footprints) — not a stylized or teal-coastline illustration. The
+   mockup centers on Çeşme and **highlights beaches as gold polygons/lines along the shore**
+   (`map.beach`); this is the same beach overlay as the Overpass Turbo `natural=beach` styling, so the
+   app must draw beach geometry on the map. A location bar is docked to the card's bottom edge
+   (same white surface): small grey "Location" label, place name bold in `text.onPaper`, and an
+   overflow ("...") menu on the right. There is no pin glyph in the home version of the bar.
+4. **Smart suggestion pill** — a single full-width rounded pill with the light grey gradient
+   (`surface.pill`), a leading icon and one short line in `text.onPaper`. The pill text and icon in the
+   mockup are placeholders; the intent is a one-line verdict/suggestion (e.g. whether it is a good time
+   to swim). Muted, not a primary CTA.
+5. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
+   tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
+   trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
+   (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
 6. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now".
 
 ## Screen: Search
 
 1. **Header row** — back chevron left, "Search" title centered, overflow ("...") menu right.
-2. **Search field** — full-width rounded pill, `surface.paper` (light on dark), leading search icon,
-   placeholder "Enter cities" in `text.secondary`.
-3. **Result sheet** — a `surface.paper` card anchored near the bottom of the screen (bottom-sheet
-   style), containing:
-   - a result row: pin icon + place name (bold) + area subtitle (`text.secondary`), with a weather
-     icon + temperature on the right:
-   - a "Beaches Near" section label, `text.secondary`;
-   - a small two-column grid of short info chips for the nearby beach (entry price, wave height,
-     slope, amenities, reviews, etc.) — treat the exact chip labels in the mockup as placeholder
-     content, not final copy; pick real fields from the beach/marine data model instead.
+2. **Search field** — full-width rounded pill, white (`surface.paper`), leading search icon,
+   placeholder "Enter cities" in `text.secondary`. It sits on a slightly lighter translucent header
+   band over the cloud texture.
+3. **Result sheet** — a white card anchored to the bottom (bottom-sheet style, ~32px top radius),
+   containing:
+   - a result row: filled pin icon + **beach name** in bold (the mockup shows "Altinkum Beach", with
+     "Cesme, Izmir" as the grey subtitle), and a colored weather icon + temperature (`text.onPaper`)
+     on the right, then a thin divider;
+   - a "Beaches Near" section label in `text.secondary`;
+   - two columns of plain info lines (no chip boxes) for the beach — see below.
+
+### Beach info chips (facts the mockup asks for, and where each would come from)
+
+| Mockup line | Meaning | Data source |
+|---|---|---|
+| eintritt preis | Entry price | OSM `fee=yes/no` only (no price in OSM) → show Paid / Free / Unknown |
+| welle höhe | Wave height | Open-Meteo Marine API (can be null very close to shore → "no data") |
+| slope | Beach / seabed slope | No free source identified — open question, do not invent a value |
+| google comment | Reviews | Google Places (API key + billing) → owner decision, out of scope for now |
+| autopark | Car park nearby | OSM `amenity=parking` near the beach |
+| beach club | Beach club nearby | OSM `leisure=beach_resort` near the beach |
+| cafe | Café nearby | OSM `amenity=cafe` near the beach |
+| ob ma a schuhe brauchen | Shoes / slippers advised? | Heuristic from OSM `surface` (pebbles/gravel/rock → advised, sand → not needed, missing → unknown); label it as advice, not fact |
+
+Left column in the mockup: price, wave height, slope, reviews. Right column: car park, beach club,
+café, shoes. Water temperature is not in the mockup but was requested for the beach info; add it to
+the marine group.
 
 ## Components implied by this design
 
@@ -76,11 +126,13 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
 
 - `StatTile` — icon + label + value + trend, used 4× in the stat grid.
 - `HourlyForecastItem` — time + icon + temperature, used in the scrollable hourly row.
-- `LocationMapCard` — the paper-colored map card with the docked location bar.
+- `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
+  beach overlay (gold polygons/lines).
 - `SearchField` — the rounded paper search input, reusable on any screen that needs city search.
 - `BeachResultCard` — the paper bottom-sheet result row + nearby-beach info chip grid.
 
 ## Out of scope for this doc
 
 Exact spacing/padding values, icon asset sourcing, and animation/transition behavior aren't captured
-here — pull those from the Penpot file directly when building a specific screen.
+here — measure them from the exported images in `docs/assets/`. The cloud texture is a photographic
+asset that is not in the repo; until it is supplied, use the gradient alone.
