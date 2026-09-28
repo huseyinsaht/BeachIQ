@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: read
 
 jobs:
   review:
@@ -17,6 +18,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Record review start time
+        id: t
+        run: echo "start=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
       - uses: anthropics/claude-code-action@v1
         with:
@@ -48,5 +53,34 @@ jobs:
             Post findings with `gh pr comment` as a single top-level comment. If you find
             nothing worth flagging, post a short comment saying so - don't stay silent.
 
+            The LAST line of that comment must be exactly one of:
+              VERDICT: PASS
+              VERDICT: BLOCK
+            Use BLOCK only for a real bug, regression, security problem, breaking change, or
+            new behavior without tests that must be fixed before merging. Style remarks,
+            nitpicks and suggestions are NOT blocking - use PASS and mention them normally.
+            This line is machine-read and gates the merge, so never omit it.
+
           claude_args: |
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*)"
+
+      - name: Enforce reviewer verdict
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const start = new Date('${{ steps.t.outputs.start }}');
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number, per_page: 100,
+            });
+            const mine = comments
+              .filter(c => c.user && c.user.type === 'Bot' && new Date(c.updated_at) >= start)
+              .sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+            let verdict = null;
+            for (const c of mine) {
+              const m = [...(c.body || '').matchAll(/VERDICT:\s*(PASS|BLOCK)/gi)].pop();
+              if (m) verdict = m[1].toUpperCase();
+            }
+            core.info(`reviewer verdict: ${verdict}`);
+            if (verdict === 'BLOCK') core.setFailed('Reviewer verdict is BLOCK - see the review comment on this PR.');
+            else if (verdict !== 'PASS') core.setFailed('Reviewer did not post a VERDICT line.');
