@@ -10,6 +10,9 @@ class MarineRepository{
   Future<SeaCondition> getMarineData(double lat, double lon) async {
     final data = await apiService.getSeaData(lat, lon);
     final currentData = data['current'];
+    if (currentData is! Map<String, dynamic>) {
+      throw Exception("Marine data response is missing the 'current' field");
+    }
     return SeaCondition.fromJson(currentData);
   }
 
