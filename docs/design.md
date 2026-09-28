@@ -23,11 +23,11 @@ The mockup was built from a weather-app template. Do **not** copy these literall
 - **Placeholder data:** "Seongnam-si" (a Korean city from the template; the real location is
   "Cesme, Izmir"), the pill text "bassd scha" and its black-square icon, pressure "720 hpa" (not a
   plausible sea-level value), and hourly temperatures that jump around (10°, 8°, 5°, 12°, 9°, 12°).
-- **Chip labels in the search sheet are German/Austrian notes-to-self, not copy.** They mean:
+- **The info lines in the search sheet are German/Austrian notes-to-self, not copy.** They mean:
   `eintritt preis` = entry price, `welle höhe` = wave height, `slope` = beach/seabed slope,
   `google comment` = reviews, `autopark` = car park, `beach club`, `cafe`, and
   `ob ma a schuhe brauchen` = "do I need shoes / slippers?". The set of facts is intentional, the
-  wording is not. See "Beach info chips" below for the real data behind each.
+  wording is not. See "Beach info lines" below for the real data behind each.
 
 ## Visual direction
 
@@ -101,9 +101,11 @@ Top to bottom:
      "Cesme, Izmir" as the grey subtitle), and a colored weather icon + temperature (`text.onPaper`)
      on the right, then a thin divider;
    - a "Beaches Near" section label in `text.secondary`;
-   - two columns of plain info lines (no chip boxes) for the beach — see below.
+   - two columns of plain text info lines for the beach. These are **not chips or pills**: no
+     background, border or box, just short text lines stacked in two columns (see "Beach info
+     lines" below).
 
-### Beach info chips (facts the mockup asks for, and where each would come from)
+### Beach info lines (facts the mockup asks for, and where each would come from)
 
 | Mockup line | Meaning | Data source |
 |---|---|---|
@@ -129,7 +131,8 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
 - `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
   beach overlay (gold polygons/lines).
 - `SearchField` — the rounded paper search input, reusable on any screen that needs city search.
-- `BeachResultCard` — the paper bottom-sheet result row + nearby-beach info chip grid.
+- `BeachResultCard` — the paper bottom-sheet result row + a two-column block of plain text info
+  lines (no chip boxes) for the nearby beach.
 
 ## Out of scope for this doc
 
