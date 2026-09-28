@@ -1,0 +1,108 @@
+name: Daily screenshot
+
+# Builds the app from develop and screenshots it in a phone-sized browser.
+# Scheduled runs (and manual runs) publish the image to the `daily-screenshots`
+# branch: screenshots/YYYY-MM-DD.png, latest.png and a README gallery.
+# Note: GitHub runs schedules/workflow_dispatch only from the default branch (main).
+# The pull_request trigger below only exercises the screenshot step (artifact, no publish; it still sends the
+# Telegram photo when the secret exists, marked as a PR test).
+on:
+  schedule:
+    - cron: '0 19 * * *'   # 19:00 UTC = 21:00 Berlin (summer), end of day
+  workflow_dispatch:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'tools/screenshot.mjs'
+      - '.github/workflows/daily-screenshot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'develop' }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.32.2'
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build web --release
+
+      - name: Install a browser for the screenshot
+        run: |
+          mkdir -p /tmp/shot && cd /tmp/shot
+          npm init -y >/dev/null
+          npm i playwright >/dev/null
+          npx playwright install --with-deps chromium >/dev/null
+
+      - name: Serve the web build and take the screenshot
+        run: |
+          python3 -m http.server 8080 --directory build/web >/tmp/serve.log 2>&1 &
+          sleep 3
+          cp tools/screenshot.mjs /tmp/shot/screenshot.mjs
+          cd /tmp/shot && node screenshot.mjs http://localhost:8080 /tmp/shot/shot.png
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshot
+          path: /tmp/shot/shot.png
+          retention-days: 30
+
+      - name: Publish to the daily-screenshots branch
+        if: github.event_name != 'pull_request'
+        run: |
+          DATE=$(date -u +%F)
+          SRC=$(git rev-parse --short HEAD)
+          rm -rf /tmp/pub && mkdir /tmp/pub && cd /tmp/pub
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          if git fetch -q origin daily-screenshots 2>/dev/null; then
+            git checkout -q -b daily-screenshots FETCH_HEAD
+          else
+            git checkout -q --orphan daily-screenshots
+          fi
+          mkdir -p screenshots
+          cp /tmp/shot/shot.png "screenshots/$DATE.png"
+          cp /tmp/shot/shot.png latest.png
+          {
+            echo "# BeachIQ daily screenshots"
+            echo
+            echo "Taken from \`develop\` at the end of each day. Latest:"
+            echo
+            echo "![latest](latest.png)"
+            for f in $(ls -r screenshots/*.png); do
+              echo
+              echo "## $(basename "$f" .png)"
+              echo "<img src=\"$f\" width=\"300\">"
+            done
+          } > README.md
+          git add -A
+          git commit -q -m "Screenshot $DATE (develop $SRC)"
+          git push -q origin daily-screenshots
+
+      - name: Send the screenshot to Telegram
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ -z "$TELEGRAM_TOKEN" ]; then
+            echo "TELEGRAM_TOKEN secret is not set - skipping Telegram."
+            exit 0
+          fi
+          DATE=$(date -u +%F)
+          SRC=$(git rev-parse --short HEAD)
+          if [ "$EVENT" = "pull_request" ]; then TAG=" (PR test)"; else TAG=""; fi
+          RESP=$(curl -s -F chat_id=8009720456 -F "photo=@/tmp/shot/shot.png"             -F "caption=BeachIQ - uygulamanin bugunku hali ($DATE, develop $SRC)$TAG"             "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendPhoto")
+          if echo "$RESP" | grep -q '"ok":true'; then echo "Telegram: sent"; else echo "Telegram: FAILED"; echo "$RESP" | grep -o '"description":"[^"]*"' || true; exit 1; fi
