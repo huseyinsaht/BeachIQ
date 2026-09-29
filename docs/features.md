@@ -14,9 +14,17 @@ These exist in code (with tests) but nothing in the UI shows them yet:
 - Sea condition data (wave height, wave direction, wave period, sea surface
   temperature) can be fetched from the Open-Meteo Marine API through
   `MarineRepository` / `MarineProvider`, but no screen calls it yet.
-- A `WeatherCondition` model can parse temperature, wind speed, and weather-code data,
-  but nothing fetches or displays it yet.
-- A static list of 10 Turkish beaches exists in code, but isn't shown on any screen.
+- Current weather (temperature, wind speed, weather code) can be fetched from the
+  Open-Meteo Forecast API through `WeatherRepository` / `WeatherProvider`, mirroring
+  the marine data path, but `WeatherProvider` isn't created anywhere in `main.dart` yet.
+- A static list of 10 Turkish beaches exists in code (`BeachRepository`), but isn't
+  shown on any screen.
+- A query builder (`buildNearbyBeachesQuery`) can build the Overpass QL query for
+  finding beaches and nearby amenities (showers, toilets, parking, cafés, lifeguards,
+  beach resorts) around a point, but nothing calls the Overpass API with it yet.
+- Four of the reusable screen components from `docs/design.md` exist as standalone
+  widgets with their own tests — `StatTile`, `HourlyForecastItem`, `SearchField`,
+  `LocationMapCard` — but none of them are placed on `HomeScreen` or any other screen.
 
 ## Planned
 
@@ -29,4 +37,6 @@ From the roadmap on `README.md` (`main` branch):
 
 `docs/design.md` describes the intended home/location-detail and search screens (map
 card, stat grid, hourly forecast, beach search results) that these planned features
-would live in — none of that UI exists yet.
+would live in. Four of the five reusable components it calls for now exist in code (see
+above) but aren't assembled into either screen yet; `BeachResultCard` (the search
+result sheet) doesn't exist yet either.
