@@ -7,6 +7,9 @@ enum StatTrendDirection { up, down }
 /// rain chance, pressure, UV index): a small icon, a label, a bold value,
 /// and a muted trend indicator.
 ///
+/// Per docs/design.md's "Stat grid", the grid has no tile background — it
+/// sits directly on the screen's gradient.
+///
 /// Pure presentational widget — no network, provider, or repository
 /// dependency.
 class StatTile extends StatelessWidget {
@@ -26,17 +29,15 @@ class StatTile extends StatelessWidget {
   final String trendDelta;
 
   static const _textSecondary = Color(0xFF8B93A6);
-  static const _cardBackground = Color(0x14FFFFFF);
 
   @override
   Widget build(BuildContext context) {
     final isUp = trendDirection == StatTrendDirection.up;
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: _cardBackground,
-        borderRadius: BorderRadius.circular(24),
-      ),
+    final trendWord = isUp ? 'up' : 'down';
+
+    return Semantics(
+      label: '$label, $value, trend $trendWord $trendDelta',
+      excludeSemantics: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -45,11 +46,15 @@ class StatTile extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(color: _textSecondary, fontSize: 12),
           ),
           const SizedBox(height: 4),
           Text(
             value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -57,26 +62,26 @@ class StatTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  size: 16,
-                  color: _textSecondary,
-                  semanticLabel: isUp ? 'up' : 'down',
-                ),
-                Text(
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                size: 16,
+                color: _textSecondary,
+              ),
+              Flexible(
+                child: Text(
                   trendDelta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: _textSecondary,
                     fontSize: 12,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),

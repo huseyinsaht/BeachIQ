@@ -59,4 +59,44 @@ void main() {
     expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
     expect(find.byIcon(Icons.arrow_drop_up), findsNothing);
   });
+
+  testWidgets('exposes a single combined semantic label', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        const StatTile(
+          icon: Icons.air,
+          label: 'Wind',
+          value: '12 km/h',
+          trendDirection: StatTrendDirection.up,
+          trendDelta: '2%',
+        ),
+      ),
+    );
+
+    expect(
+      find.bySemanticsLabel('Wind, 12 km/h, trend up 2%'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('truncates a long value instead of overflowing', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        SizedBox(
+          width: 90,
+          child: const StatTile(
+            icon: Icons.speed,
+            label: 'Pressure',
+            value: '1013.25 hPa and rising fast',
+            trendDirection: StatTrendDirection.down,
+            trendDelta: '3 hPa',
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }
