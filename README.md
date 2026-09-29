@@ -12,8 +12,8 @@ key or account is required for local development.
 
 - Base URL: `https://api.open-meteo.com/v1/forecast`
 - Used by: `lib/data/services/weather_api_service.dart` via `lib/data/repositories/weather_repository.dart`
-- Provides: current and hourly weather (temperature, condition, wind, pressure, UV index, etc.) for a
-  given latitude/longitude.
+- Provides: current weather (temperature, wind speed, weather code) for a given latitude/longitude —
+  see `lib/data/models/weather_condition.dart`.
 
 ### Open-Meteo Marine Weather API
 
@@ -25,13 +25,16 @@ key or account is required for local development.
 Both services take an injectable `http.Client`, so tests fake the client instead of hitting the
 network (see `test/data/services/`).
 
+BeachIQ also queries the [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) (OSM data)
+for nearby beaches; `lib/data/services/overpass_query_builder.dart` builds that query.
+
 ## Folder structure
 
 ```
 lib/
   data/
     models/         # Plain data classes (Beach, SeaCondition, WeatherCondition)
-    repositories/    # Fetch + adapt service responses for the UI/providers
+    repositories/   # Fetch + adapt service responses for the UI/providers
     services/        # Thin HTTP clients for the Open-Meteo APIs
     static_beaches.dart
   logic/
@@ -45,8 +48,8 @@ docs/                # Design reference (docs/design.md) and mockup assets
 
 ## Setup
 
-1. Install the Flutter SDK (this project targets the version pinned in `.metadata` /
-   `pubspec.yaml`'s `environment.sdk`).
+1. Install a Flutter SDK compatible with the Dart SDK constraint in `pubspec.yaml`'s
+   `environment.sdk` (currently `^3.8.1`).
 2. Fetch dependencies:
    ```
    flutter pub get
