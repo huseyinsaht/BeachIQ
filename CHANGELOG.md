@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.3] - 2026-09-29
+
 ### Added
 
 - GitHub Actions CI running `flutter analyze` and `flutter test` on every pull request
