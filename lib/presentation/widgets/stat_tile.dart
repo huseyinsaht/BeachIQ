@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 enum StatTrendDirection { up, down }
 
 /// A single stat card used in the home screen's 2x2 stat grid (wind speed,
-/// rain chance, pressure, UV index): a small icon, a label, a bold value,
-/// and a muted trend indicator.
+/// rain chance, pressure, UV index): a small icon at the left, a label
+/// above a bold value, and a muted trend indicator at the bottom-right.
 ///
 /// Per docs/design.md's "Stat grid", the grid has no tile background — it
 /// sits directly on the screen's gradient.
@@ -39,49 +39,68 @@ class StatTile extends StatelessWidget {
       label: '$label, $value, trend $trendWord $trendDelta',
       excludeSemantics: true,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 18, color: _textSecondary),
-          const SizedBox(height: 8),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(color: _textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 4),
           Row(
-            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                size: 16,
-                color: _textSecondary,
-              ),
+              Icon(icon, size: 18, color: _textSecondary),
+              const SizedBox(width: 8),
               Flexible(
-                child: Text(
-                  trendDelta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: _textSecondary,
-                    fontSize: 12,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                  size: 16,
+                  color: _textSecondary,
+                ),
+                Flexible(
+                  child: Text(
+                    trendDelta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: _textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

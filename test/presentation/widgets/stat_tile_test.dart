@@ -58,6 +58,7 @@ void main() {
 
     expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
     expect(find.byIcon(Icons.arrow_drop_up), findsNothing);
+    expect(find.text('3 hPa'), findsOneWidget);
   });
 
   testWidgets('exposes a single combined semantic label', (tester) async {
@@ -79,24 +80,31 @@ void main() {
     );
   });
 
-  testWidgets('truncates a long value instead of overflowing', (
+  testWidgets('constrains a long value to one line with ellipsis overflow', (
     tester,
   ) async {
+    const longValue = '1013.25 hPa and rising fast';
+
     await tester.pumpWidget(
       wrap(
-        SizedBox(
-          width: 90,
-          child: const StatTile(
-            icon: Icons.speed,
-            label: 'Pressure',
-            value: '1013.25 hPa and rising fast',
-            trendDirection: StatTrendDirection.down,
-            trendDelta: '3 hPa',
+        Center(
+          child: SizedBox(
+            width: 90,
+            child: const StatTile(
+              icon: Icons.speed,
+              label: 'Pressure',
+              value: longValue,
+              trendDirection: StatTrendDirection.down,
+              trendDelta: '3 hPa',
+            ),
           ),
         ),
       ),
     );
 
     expect(tester.takeException(), isNull);
+    final valueText = tester.widget<Text>(find.text(longValue));
+    expect(valueText.maxLines, 1);
+    expect(valueText.overflow, TextOverflow.ellipsis);
   });
 }
