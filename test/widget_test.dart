@@ -5,6 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
+import 'package:beachiq/presentation/widgets/location_map_card.dart';
+import 'package:beachiq/presentation/widgets/stat_tile.dart';
 
 // Minimal valid 1x1 transparent PNG, used so the fake tile provider can
 // resolve a real image without any network access.
@@ -21,7 +24,7 @@ class _FakeTileProvider extends TileProvider {
 }
 
 void main() {
-  testWidgets('HomeScreen renders without hitting the network', (
+  testWidgets('HomeScreen renders the composed location-detail layout', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -30,5 +33,10 @@ void main() {
     await tester.pump();
 
     expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('My Location'), findsOneWidget);
+    expect(find.byType(LocationMapCard), findsOneWidget);
+    expect(find.byType(StatTile), findsNWidgets(4));
+    expect(find.byType(HourlyForecastItem), findsWidgets);
+    expect(find.text('Now'), findsOneWidget);
   });
 }
