@@ -82,4 +82,42 @@ void main() {
     expect(find.byType(BeachResultCard), findsWidgets);
     expect(find.text(staticBeaches.first.name), findsOneWidget);
   });
+
+  testWidgets(
+    'a real pull-to-refresh drag over the result sheet calls onRefresh',
+    (tester) async {
+      var refreshCount = 0;
+      await tester.pumpWidget(
+        wrap(
+          SearchScreen(
+            onRefresh: () async {
+              refreshCount++;
+            },
+          ),
+        ),
+      );
+
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+
+      await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+      await tester.pumpAndSettle();
+
+      expect(refreshCount, 1);
+    },
+  );
+
+  testWidgets(
+    'no RefreshIndicator is shown when onRefresh is not set, so a drag is '
+    'a plain no-op scroll',
+    (tester) async {
+      await tester.pumpWidget(wrap(const SearchScreen()));
+
+      expect(find.byType(RefreshIndicator), findsNothing);
+
+      await tester.fling(find.byType(ListView), const Offset(0, 300), 1000);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(BeachResultCard), findsWidgets);
+    },
+  );
 }

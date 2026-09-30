@@ -21,6 +21,7 @@ class SearchScreen extends StatelessWidget {
     this.onSearchSubmitted,
     this.isLoading = false,
     this.error,
+    this.onRefresh,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`. No filtering is wired up yet
@@ -29,6 +30,12 @@ class SearchScreen extends StatelessWidget {
 
   /// Forwarded to [SearchField]'s `onSubmitted`.
   final ValueChanged<String>? onSearchSubmitted;
+
+  /// Called on a pull-to-refresh gesture over the result sheet, mirroring
+  /// a caller's `NearbyBeachesProvider` re-fetch. Null (the default) makes
+  /// the gesture a no-op, so today's [staticBeaches] placeholder callers
+  /// render exactly as before.
+  final Future<void> Function()? onRefresh;
 
   /// Whether a search/nearby-beaches request is in flight, mirroring
   /// `NearbyBeachesProvider.isLoading`. Defaults to false, so today's
@@ -145,7 +152,8 @@ class SearchScreen extends StatelessWidget {
         ),
       );
     }
-    return ListView.separated(
+    final list = ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 20),
       itemCount: staticBeaches.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
@@ -158,5 +166,12 @@ class SearchScreen extends StatelessWidget {
         );
       },
     );
+
+    // Only wrap in a RefreshIndicator when there is something for it to
+    // actually do — otherwise a pull gesture would show a spinner that
+    // resolves into a no-op.
+    final refresh = onRefresh;
+    if (refresh == null) return list;
+    return RefreshIndicator(onRefresh: refresh, child: list);
   }
 }
