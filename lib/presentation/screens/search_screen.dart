@@ -152,22 +152,26 @@ class SearchScreen extends StatelessWidget {
         ),
       );
     }
-    return RefreshIndicator(
-      onRefresh: onRefresh ?? () => Future.value(),
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 20),
-        itemCount: staticBeaches.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final beach = staticBeaches[index];
-          return BeachResultCard(
-            placeName: beach.name,
-            areaSubtitle: beach.city,
-            temperature: '--°',
-          );
-        },
-      ),
+    final list = ListView.separated(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.only(bottom: 20),
+      itemCount: staticBeaches.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final beach = staticBeaches[index];
+        return BeachResultCard(
+          placeName: beach.name,
+          areaSubtitle: beach.city,
+          temperature: '--°',
+        );
+      },
     );
+
+    // Only wrap in a RefreshIndicator when there is something for it to
+    // actually do — otherwise a pull gesture would show a spinner that
+    // resolves into a no-op.
+    final refresh = onRefresh;
+    if (refresh == null) return list;
+    return RefreshIndicator(onRefresh: refresh, child: list);
   }
 }

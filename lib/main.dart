@@ -139,7 +139,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
-    if (marineProvider != null && marineProvider.isLoading) {
+    // Once data has loaded once, a pull-to-refresh re-fetch must not tear
+    // down this screen (and the RefreshIndicator/scroll view driving that
+    // very refresh) back to a full-screen shell — only the *first* load
+    // (no data yet) uses the full-screen loading/error states below.
+    final hasData = marineProvider?.currentData != null;
+    if (marineProvider != null && marineProvider.isLoading && !hasData) {
       return _buildStatusShell(
         const Center(
           child: CircularProgressIndicator(
@@ -149,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     final error = marineProvider?.error;
-    if (error != null) {
+    if (error != null && !hasData) {
       return _buildStatusShell(
         Center(
           child: Padding(

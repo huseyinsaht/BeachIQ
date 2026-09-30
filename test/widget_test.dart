@@ -52,22 +52,28 @@ class _FailingMarineRepository extends MarineRepository {
   }
 }
 
-class _CountingMarineRepository extends MarineRepository {
-  _CountingMarineRepository() : super(MarineApiService());
+/// A [MarineRepository] whose calls each get their own [Completer], kept in
+/// [calls] in call order, so a test can resolve one fetch (e.g. the initial
+/// load) while leaving a later one (e.g. a pull-to-refresh) pending.
+class _SequentialMarineRepository extends MarineRepository {
+  _SequentialMarineRepository() : super(MarineApiService());
 
-  int callCount = 0;
+  final List<Completer<SeaCondition>> calls = [];
 
   @override
-  Future<SeaCondition> getMarineData(double lat, double lon) async {
-    callCount++;
-    return SeaCondition(
-      waveHeight: 0.5,
-      waveDirection: 90,
-      wavePeriod: 5,
-      seaSurfaceTemperature: 22,
-    );
+  Future<SeaCondition> getMarineData(double lat, double lon) {
+    final completer = Completer<SeaCondition>();
+    calls.add(completer);
+    return completer.future;
   }
 }
+
+SeaCondition _fakeSeaCondition() => SeaCondition(
+  waveHeight: 0.5,
+  waveDirection: 90,
+  wavePeriod: 5,
+  seaSurfaceTemperature: 22,
+);
 
 class _SucceedingMarineRepository extends MarineRepository {
   _SucceedingMarineRepository() : super(MarineApiService());
@@ -179,9 +185,10 @@ void main() {
   );
 
   testWidgets(
-    'a pull-to-refresh gesture on the Home screen re-triggers the marine fetch',
+    'a real pull-to-refresh drag on the Home screen re-triggers the marine '
+    'fetch without tearing down the scroll view while it is pending',
     (WidgetTester tester) async {
-      final repository = _CountingMarineRepository();
+      final repository = _SequentialMarineRepository();
       final provider = MarineProvider(repository);
 
       await tester.pumpWidget(
@@ -192,18 +199,41 @@ void main() {
           ),
         ),
       );
-      await provider.fetchData(38.3, 26.3);
+
+      // Initial load.
+      unawaited(provider.fetchData(38.3, 26.3));
       await tester.pump();
-
-      expect(repository.callCount, 1);
-
-      final refreshIndicator = tester.widget<RefreshIndicator>(
-        find.byType(RefreshIndicator),
-      );
-      await refreshIndicator.onRefresh();
+      expect(repository.calls, hasLength(1));
+      repository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
+      expect(find.text('My Location'), findsOneWidget);
 
-      expect(repository.callCount, 2);
+      // A real drag-down gesture over the scroll view, not calling
+      // RefreshIndicator.onRefresh directly, so this also catches the
+      // gesture itself being broken (e.g. by the content being replaced
+      // mid-drag). Anchored on the 'My Location' text rather than the
+      // scroll view itself: the scroll view's render box spans the whole
+      // screen including the map card, and FlutterMap's own gesture
+      // recognizer would otherwise swallow the drag.
+      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
+      await tester.pump();
+      // RefreshIndicator only invokes onRefresh once its own arm/snap
+      // animation finishes, which takes a few more frames after the drag
+      // itself settles.
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(repository.calls, hasLength(2));
+      // The refresh is in flight: the screen must keep showing the loaded
+      // content (and the RefreshIndicator driving the refresh) instead of
+      // swapping to the full-screen loading shell, which would tear down
+      // the very gesture that triggered it and reset the scroll position.
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+      expect(find.text('My Location'), findsOneWidget);
+
+      repository.calls[1].complete(_fakeSeaCondition());
+      await tester.pumpAndSettle();
+      expect(find.text('My Location'), findsOneWidget);
     },
   );
 
@@ -215,10 +245,7 @@ void main() {
       );
       await tester.pump();
 
-      final refreshIndicator = tester.widget<RefreshIndicator>(
-        find.byType(RefreshIndicator),
-      );
-      await refreshIndicator.onRefresh();
+      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
       await tester.pumpAndSettle();
 
       expect(find.text('My Location'), findsOneWidget);
@@ -226,27 +253,62 @@ void main() {
   );
 
   testWidgets(
-    'tapping the search entry point opens SearchScreen, and the back '
-    'chevron returns to HomeScreen',
+    'the Home screen shows an inline error shell only on the first load, '
+    'never mid-refresh',
     (WidgetTester tester) async {
+      final repository = _SequentialMarineRepository();
+      final provider = MarineProvider(repository);
+
       await tester.pumpWidget(
-        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: provider,
+          ),
+        ),
       );
+
+      unawaited(provider.fetchData(38.3, 26.3));
+      await tester.pump();
+      repository.calls[0].complete(_fakeSeaCondition());
+      await tester.pumpAndSettle();
+      expect(find.text('My Location'), findsOneWidget);
+
+      // A refresh that fails must not replace already-loaded content with
+      // the full-screen error shell (which has no RefreshIndicator to
+      // retry from).
+      final refreshIndicator = tester.widget<RefreshIndicator>(
+        find.byType(RefreshIndicator),
+      );
+      final refreshFuture = refreshIndicator.onRefresh();
+      repository.calls[1].completeError(Exception('boom'));
+      await refreshFuture;
       await tester.pump();
 
-      expect(find.byType(SearchScreen), findsNothing);
-
-      await tester.tap(find.byKey(const Key('home-search-entry')));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(SearchScreen), findsOneWidget);
-      expect(find.byType(HomeScreen), findsNothing);
-
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(SearchScreen), findsNothing);
+      expect(find.text('My Location'), findsOneWidget);
+      expect(find.byType(RefreshIndicator), findsOneWidget);
     },
   );
+
+  testWidgets('tapping the search entry point opens SearchScreen, and the back '
+      'chevron returns to HomeScreen', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+    );
+    await tester.pump();
+
+    expect(find.byType(SearchScreen), findsNothing);
+
+    await tester.tap(find.byKey(const Key('home-search-entry')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SearchScreen), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(find.byType(SearchScreen), findsNothing);
+  });
 }
