@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
@@ -267,6 +268,317 @@ void main() {
       expect(provider.status, NearbyBeachesStatus.loaded);
       expect(provider.error, isNull);
       expect(provider.beaches, isNotEmpty);
+    });
+  });
+
+  group('NearbyBeachesProvider - stale requests, failures, and disposal', () {
+    test('an earlier pick that resolves after a later one does not overwrite its result', () async {
+      final cache = await _emptyCache();
+
+      final completerA = Completer<http.Response>();
+      final completerB = Completer<http.Response>();
+      final overpassClient = _FakeClient((request) async {
+        final data = request.bodyFields['data'] ?? '';
+        // The query embeds the requested lat/lon (fixed to 6 decimals), so
+        // this tells the two picks' in-flight requests apart.
+        if (data.contains('50.100000')) {
+          return completerA.future;
+        }
+        return completerB.future;
+      });
+      final overpassService = OverpassService(overpassClient, endpoints: ['https://example.com/api']);
+
+      final marineBatchService = MarineBatchService(
+        _FakeClient(
+          (request) async => http.Response(
+            _marineFixture([
+              {'waveHeight': 2.0, 'seaSurfaceTemperature': 26.0},
+            ]),
+            200,
+          ),
+        ),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      // First pick: debounce settles and the fetch starts, but its Overpass
+      // call is left hanging on completerA.
+      provider.pickLocation(const LatLng(50.10, 10.10));
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+
+      // Second, later pick: its own fetch starts and hangs on completerB.
+      provider.pickLocation(const LatLng(60.20, 20.20));
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+
+      // The later pick resolves first.
+      completerB.complete(
+        http.Response(
+          _overpassFixture([
+            {'id': 2, 'lat': 60.20, 'lon': 20.20, 'name': 'Beach B'},
+          ]),
+          200,
+        ),
+      );
+      await Future.delayed(_settle);
+
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches, hasLength(1));
+      expect(provider.beaches.single.name, 'Beach B');
+
+      // The earlier, stale pick resolves afterwards and must be discarded.
+      completerA.complete(
+        http.Response(
+          _overpassFixture([
+            {'id': 1, 'lat': 50.10, 'lon': 10.10, 'name': 'Beach A'},
+          ]),
+          200,
+        ),
+      );
+      await Future.delayed(_settle);
+
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches, hasLength(1));
+      expect(provider.beaches.single.name, 'Beach B');
+    });
+
+    test('a stale cache entry triggers a background refresh, showing the stale data '
+        'immediately and swallowing a refresh failure', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      var clock = DateTime(2024, 1, 1);
+      final cache = BeachCache(prefs, now: () => clock);
+
+      final staleBeach = Beach(name: 'Stale Beach', city: 'City', latitude: 40.00, longitude: 27.00);
+      await cache.put(40.00, 27.00, [staleBeach]);
+
+      // Move the clock past the cache's TTL so the entry above is stale.
+      clock = clock.add(const Duration(days: 8));
+
+      final overpassClient = _FakeClient((request) async {
+        throw Exception('overpass refresh failed');
+      });
+      final overpassService = OverpassService(overpassClient, endpoints: ['https://example.com/api']);
+
+      final marineBatchService = MarineBatchService(
+        _FakeClient(
+          (request) async => http.Response(
+            _marineFixture([
+              {'waveHeight': 0.9, 'seaSurfaceTemperature': 25.0},
+            ]),
+            200,
+          ),
+        ),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      provider.pickLocation(const LatLng(40.00, 27.00));
+      await Future.delayed(_settle);
+
+      // The stale-but-present cached data is shown right away, without
+      // waiting on the background refresh.
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.error, isNull);
+      expect(provider.beaches, hasLength(1));
+      expect(provider.beaches.single.name, 'Stale Beach');
+      expect(provider.seaConditionFor(provider.beaches.single)?.waveHeight, 0.9);
+
+      // Give the unawaited background refresh (which throws) time to run.
+      await Future.delayed(_settle);
+
+      expect(overpassClient.callCount, 1);
+      // The refresh failure must not crash or flip the state to error.
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.error, isNull);
+      expect(provider.beaches.single.name, 'Stale Beach');
+    });
+
+    test('a MarineBatchService failure is swallowed: status is loaded and seaConditionFor is null', () async {
+      final cache = await _emptyCache();
+
+      final overpassService = OverpassService(
+        _FakeClient(
+          (request) async => http.Response(
+            _overpassFixture([
+              {'id': 1, 'lat': 10.00, 'lon': 15.00, 'name': 'Marine Fail Beach'},
+            ]),
+            200,
+          ),
+        ),
+        endpoints: ['https://example.com/api'],
+      );
+      final marineBatchService = MarineBatchService(
+        _FakeClient((request) async {
+          throw Exception('marine batch down');
+        }),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      provider.pickLocation(const LatLng(10.00, 15.00));
+      await Future.delayed(_settle);
+
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.error, isNull);
+      expect(provider.beaches, hasLength(1));
+      expect(provider.seaConditionFor(provider.beaches.single), isNull);
+    });
+
+    test('seaConditionFor distinguishes a present-but-null batch entry from missing data', () async {
+      final cache = await _emptyCache();
+
+      final overpassService = OverpassService(
+        _FakeClient(
+          (request) async => http.Response(
+            _overpassFixture([
+              {'id': 1, 'lat': 11.00, 'lon': 16.00, 'name': 'Has Data Beach'},
+              {'id': 2, 'lat': 11.50, 'lon': 16.50, 'name': 'Null Data Beach'},
+            ]),
+            200,
+          ),
+        ),
+        endpoints: ['https://example.com/api'],
+      );
+      final marineBatchService = MarineBatchService(
+        _FakeClient(
+          (request) async => http.Response(
+            _marineFixture([
+              {'waveHeight': 1.4, 'seaSurfaceTemperature': 24.5},
+              // Open-Meteo can return an entry whose 'current' object is
+              // present but whose actual readings are null.
+              {'waveHeight': null, 'seaSurfaceTemperature': null},
+            ]),
+            200,
+          ),
+        ),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      provider.pickLocation(const LatLng(11.00, 16.00));
+      await Future.delayed(_settle);
+
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches, hasLength(2));
+
+      final hasData = provider.beaches.firstWhere((b) => b.name == 'Has Data Beach');
+      final nullData = provider.beaches.firstWhere((b) => b.name == 'Null Data Beach');
+
+      expect(provider.seaConditionFor(hasData)?.waveHeight, 1.4);
+      expect(provider.seaConditionFor(nullData), isNull);
+    });
+
+    test('status transitions from loading to a terminal state as pickLocation resolves', () async {
+      final cache = await _emptyCache();
+
+      final overpassCompleter = Completer<http.Response>();
+      final overpassService = OverpassService(
+        _FakeClient((request) async => overpassCompleter.future),
+        endpoints: ['https://example.com/api'],
+      );
+      final marineBatchService = MarineBatchService(
+        _FakeClient(
+          (request) async => http.Response(
+            _marineFixture([
+              {'waveHeight': 1.0, 'seaSurfaceTemperature': 20.0},
+            ]),
+            200,
+          ),
+        ),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      final statuses = <NearbyBeachesStatus>[];
+      provider.addListener(() => statuses.add(provider.status));
+
+      provider.pickLocation(const LatLng(70.0, 30.0));
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+
+      // Synchronously (post-debounce, pre-resolve) the state is loading.
+      expect(provider.status, NearbyBeachesStatus.loading);
+      expect(provider.isLoading, isTrue);
+      expect(statuses, isNotEmpty);
+      expect(statuses.first, NearbyBeachesStatus.loading);
+
+      overpassCompleter.complete(
+        http.Response(
+          _overpassFixture([
+            {'id': 1, 'lat': 70.0, 'lon': 30.0, 'name': 'Transition Beach'},
+          ]),
+          200,
+        ),
+      );
+      await Future.delayed(_settle);
+
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.isLoading, isFalse);
+      expect(statuses, contains(NearbyBeachesStatus.loading));
+      expect(statuses.last, NearbyBeachesStatus.loaded);
+    });
+
+    test('disposing while a fetch is in flight does not throw once that fetch later completes', () async {
+      final cache = await _emptyCache();
+
+      final overpassCompleter = Completer<http.Response>();
+      final overpassService = OverpassService(
+        _FakeClient((request) async => overpassCompleter.future),
+        endpoints: ['https://example.com/api'],
+      );
+      final marineBatchService = MarineBatchService(
+        _FakeClient((request) async => http.Response(_marineFixture([]), 200)),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+
+      provider.pickLocation(const LatLng(20.0, 20.0));
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+      expect(provider.status, NearbyBeachesStatus.loading);
+
+      provider.dispose();
+
+      // The in-flight fetch resolves after disposal; this must not throw
+      // "A ChangeNotifier was used after being disposed".
+      overpassCompleter.complete(
+        http.Response(
+          _overpassFixture([
+            {'id': 1, 'lat': 20.0, 'lon': 20.0, 'name': 'Late Beach'},
+          ]),
+          200,
+        ),
+      );
+      await Future.delayed(_settle);
     });
   });
 }

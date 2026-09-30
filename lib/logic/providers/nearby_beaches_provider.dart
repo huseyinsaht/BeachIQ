@@ -35,6 +35,7 @@ class NearbyBeachesProvider extends ChangeNotifier {
 
   Timer? _debounceTimer;
   int _requestId = 0;
+  bool _disposed = false;
 
   List<Beach> _beaches = const [];
   Map<Beach, SeaCondition?> _seaConditions = const {};
@@ -64,7 +65,7 @@ class NearbyBeachesProvider extends ChangeNotifier {
     _isLoading = true;
     _error = null;
     _status = NearbyBeachesStatus.loading;
-    notifyListeners();
+    _notify();
 
     final result = await _beachCache.get(
       latitude: point.latitude,
@@ -128,6 +129,14 @@ class NearbyBeachesProvider extends ChangeNotifier {
     _isLoading = false;
     _error = error;
     _status = status;
+    _notify();
+  }
+
+  /// Notifies listeners, unless the provider has already been disposed (a
+  /// still-in-flight fetch from before disposal resolving afterwards must
+  /// not touch a disposed [ChangeNotifier]).
+  void _notify() {
+    if (_disposed) return;
     notifyListeners();
   }
 
@@ -153,6 +162,12 @@ class NearbyBeachesProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    // Bumping the request id makes every in-flight `_fetchFor`'s staleness
+    // check (`requestId != _requestId`) fail, so it discards its result
+    // instead of calling `_resolve` (and `_notify`, which is also guarded
+    // by `_disposed` as a second line of defense) after disposal.
+    _requestId++;
     _debounceTimer?.cancel();
     super.dispose();
   }
