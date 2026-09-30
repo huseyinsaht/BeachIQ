@@ -24,9 +24,14 @@ class MarineApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => MarineProvider(MarineRepository(MarineApiService())),
-      child: MaterialApp(
-        title: 'Marine Safety',
-        home: HomeScreen(tileProvider: tileProvider),
+      child: Consumer<MarineProvider>(
+        builder: (context, marineProvider, _) => MaterialApp(
+          title: 'Marine Safety',
+          home: HomeScreen(
+            tileProvider: tileProvider,
+            marineProvider: marineProvider,
+          ),
+        ),
       ),
     );
   }
@@ -41,10 +46,15 @@ class MarineApp extends StatelessWidget {
 /// up to [MarineProvider]/`WeatherProvider`. Centers on Çeşme, İzmir, the
 /// same placeholder location used elsewhere in the app.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.tileProvider});
+  const HomeScreen({super.key, this.tileProvider, this.marineProvider});
 
   /// Overridable so widget tests can avoid hitting the real tile network.
   final TileProvider? tileProvider;
+
+  /// Drives the loading/error states below. Null (the default for any
+  /// existing call site that doesn't pass one) renders the normal loaded
+  /// layout, unchanged from before.
+  final MarineProvider? marineProvider;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -71,7 +81,59 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    widget.marineProvider?.addListener(_onMarineProviderChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.marineProvider != widget.marineProvider) {
+      oldWidget.marineProvider?.removeListener(_onMarineProviderChanged);
+      widget.marineProvider?.addListener(_onMarineProviderChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.marineProvider?.removeListener(_onMarineProviderChanged);
+    super.dispose();
+  }
+
+  /// Rebuilds whenever the (optional) [MarineProvider] notifies, so the
+  /// loading/error states below stay in sync with it.
+  void _onMarineProviderChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final marineProvider = widget.marineProvider;
+    if (marineProvider != null && marineProvider.isLoading) {
+      return _buildStatusShell(
+        const Center(
+          child: CircularProgressIndicator(
+            valueColor: AlwaysStoppedAnimation<Color>(_textPrimary),
+          ),
+        ),
+      );
+    }
+    final error = marineProvider?.error;
+    if (error != null) {
+      return _buildStatusShell(
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Unable to load marine data.\n$error',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: _textPrimary, fontSize: 15),
+            ),
+          ),
+        ),
+      );
+    }
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -239,6 +301,23 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Wraps [child] in the same background/[SafeArea] shell as the loaded
+  /// layout, for the loading and error states.
+  Widget _buildStatusShell(Widget child) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_bgBase, _bgGradientBottom],
+          ),
+        ),
+        child: SafeArea(child: child),
       ),
     );
   }
