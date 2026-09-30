@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import 'data/models/weather_code.dart';
+import 'data/models/weather_condition.dart';
 import 'data/repositories/marine_repository.dart';
 import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
@@ -72,6 +73,23 @@ String _hourLabel(DateTime time, {required bool isFirst}) {
   return '$displayHour$period';
 }
 
+/// Open-Meteo's `hourly` section returns a full day of entries starting at
+/// local midnight, not from the current time — so `hourly.first` is
+/// usually hours in the past by the time this renders. Slices down to the
+/// entry matching (or immediately preceding) [now] onward, capped to the
+/// next 24 entries so the row doesn't scroll through an entire remaining
+/// day. Assumes [hourly] is sorted ascending by time, as the API returns it.
+List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
+  if (hourly.isEmpty) return hourly;
+  var startIndex = 0;
+  for (var i = 0; i < hourly.length; i++) {
+    if (hourly[i].time.isAfter(now)) break;
+    startIndex = i;
+  }
+  final upcoming = hourly.sublist(startIndex);
+  return upcoming.length > 24 ? upcoming.sublist(0, 24) : upcoming;
+}
+
 class MarineApp extends StatelessWidget {
   const MarineApp({super.key, this.tileProvider});
 
@@ -119,6 +137,7 @@ class HomeScreen extends StatefulWidget {
     this.tileProvider,
     this.marineProvider,
     this.weatherProvider,
+    this.now,
   });
 
   /// Overridable so widget tests can avoid hitting the real tile network.
@@ -132,6 +151,11 @@ class HomeScreen extends StatefulWidget {
   /// Drives the header, stat grid and hourly row's real values. Null (the
   /// default) renders every value as "No data"/"--°" instead of fetching.
   final WeatherProvider? weatherProvider;
+
+  /// Overridable "current time" source for the hourly row's start-of-list
+  /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
+  /// of depending on the real clock. Defaults to [DateTime.now].
+  final DateTime Function()? now;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -246,7 +270,10 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     final weatherData = widget.weatherProvider?.currentData;
-    final hourly = weatherData?.hourly ?? const [];
+    final hourly = _upcomingHourly(
+      weatherData?.hourly ?? const [],
+      (widget.now ?? DateTime.now)(),
+    );
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(

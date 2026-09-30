@@ -142,6 +142,17 @@ class _FailingWeatherRepository extends WeatherRepository {
   }
 }
 
+class _FixedWeatherRepository extends WeatherRepository {
+  _FixedWeatherRepository(this.data) : super(WeatherApiService());
+
+  final WeatherCondition data;
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    return data;
+  }
+}
+
 void main() {
   testWidgets('HomeScreen renders the composed location-detail layout', (
     WidgetTester tester,
@@ -177,6 +188,10 @@ void main() {
           home: HomeScreen(
             tileProvider: _FakeTileProvider(),
             weatherProvider: weatherProvider,
+            // Pins "now" inside the fixture's hourly window (12:00-13:00)
+            // so both entries are on/after "now" and survive the
+            // current-hour-onward trim.
+            now: () => DateTime(2026, 1, 1, 12, 30),
           ),
         ),
       );
@@ -202,6 +217,67 @@ void main() {
       expect(find.byType(HourlyForecastItem), findsNWidgets(2));
       expect(find.text('Now'), findsOneWidget);
       expect(find.text('28°'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the hourly row starts at the current hour (not local midnight) and '
+    'caps at 24 entries',
+    (WidgetTester tester) async {
+      // Open-Meteo returns a full day starting at local midnight; this
+      // fixture spans 40 hours from midnight to catch both the trim and
+      // the 24-entry cap.
+      final hourly = [
+        for (var i = 0; i < 40; i++)
+          WeatherHourly(
+            time: DateTime(2026, 1, 1).add(Duration(hours: i)),
+            temperature: i.toDouble(),
+            weatherCode: 1,
+          ),
+      ];
+      final weatherProvider = WeatherProvider(
+        _FixedWeatherRepository(
+          WeatherCondition(
+            temperature: 20,
+            windSpeed: 5,
+            weatherCode: 1,
+            hourly: hourly,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            // 02:30 falls in the 02:00 entry (temperature 2°).
+            now: () => DateTime(2026, 1, 1, 2, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Starts at the 02:00 entry ("Now"/2°), not midnight (0°) or 01:00.
+      expect(find.text('Now'), findsOneWidget);
+      final firstItem = tester.widget<HourlyForecastItem>(
+        find.byType(HourlyForecastItem).first,
+      );
+      expect(firstItem.temperature, '2°');
+      expect(find.text('0°'), findsNothing);
+      expect(find.text('1°'), findsNothing);
+
+      // Capped at 24 entries: 02:00 through 25:00 (01:00 the next day),
+      // i.e. temperatures 2 through 25; 26° and beyond are excluded. The
+      // horizontal ListView only builds on-screen items, so the total
+      // count is read off its own delegate rather than counting rendered
+      // widgets. ListView.separated's delegate interleaves an item and a
+      // separator per entry (minus the trailing separator), so its
+      // childCount is itemCount * 2 - 1.
+      final listView = tester.widget<ListView>(find.byType(ListView));
+      final delegate = listView.childrenDelegate as SliverChildBuilderDelegate;
+      expect((delegate.childCount! + 1) ~/ 2, 24);
+      expect(find.text('26°'), findsNothing);
     },
   );
 
