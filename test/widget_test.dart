@@ -4,11 +4,16 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:beachiq/data/models/sea_condition.dart';
+import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
+import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
+import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
@@ -89,14 +94,80 @@ class _SucceedingMarineRepository extends MarineRepository {
   }
 }
 
+WeatherCondition _fakeWeatherCondition({double? uvIndex = 6.5}) {
+  return WeatherCondition(
+    temperature: 27,
+    windSpeed: 12,
+    weatherCode: 1,
+    pressureHpa: 1013,
+    uvIndex: uvIndex,
+    rainChancePercent: 10,
+    highTemperature: 29,
+    lowTemperature: 15,
+    hourly: [
+      // Deliberately distinct from the header's 27° so tests can tell the
+      // header and hourly-row temperatures apart.
+      WeatherHourly(
+        time: DateTime(2026, 1, 1, 12),
+        temperature: 26,
+        weatherCode: 1,
+      ),
+      WeatherHourly(
+        time: DateTime(2026, 1, 1, 13),
+        temperature: 28,
+        weatherCode: 1,
+      ),
+    ],
+  );
+}
+
+class _SucceedingWeatherRepository extends WeatherRepository {
+  _SucceedingWeatherRepository({this.uvIndex = 6.5})
+    : super(WeatherApiService());
+
+  final double? uvIndex;
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    return _fakeWeatherCondition(uvIndex: uvIndex);
+  }
+}
+
+class _FailingWeatherRepository extends WeatherRepository {
+  _FailingWeatherRepository() : super(WeatherApiService());
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    throw Exception('boom');
+  }
+}
+
+class _FixedWeatherRepository extends WeatherRepository {
+  _FixedWeatherRepository(this.data) : super(WeatherApiService());
+
+  final WeatherCondition data;
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    return data;
+  }
+}
+
 void main() {
   testWidgets('HomeScreen renders the composed location-detail layout', (
     WidgetTester tester,
   ) async {
+    final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
     await tester.pumpWidget(
-      MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+        ),
+      ),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('My Location'), findsOneWidget);
@@ -104,6 +175,201 @@ void main() {
     expect(find.byType(StatTile), findsNWidgets(4));
     expect(find.byType(HourlyForecastItem), findsWidgets);
     expect(find.text('Now'), findsOneWidget);
+  });
+
+  testWidgets(
+    'HomeScreen fetches weather data on init and binds the header, stat '
+    'grid and hourly row to real WeatherProvider values',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            // Pins "now" inside the fixture's hourly window (12:00-13:00)
+            // so both entries are on/after "now" and survive the
+            // current-hour-onward trim.
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      // initState fires WeatherProvider.fetchData itself; no manual call.
+      await tester.pumpAndSettle();
+
+      expect(weatherProvider.currentData, isNotNull);
+
+      // Header: real temperature/condition, replacing the old hardcoded
+      // '27°'/'Partly Cloudy'/'H:29° L:15°'.
+      expect(find.text('27°'), findsOneWidget);
+      expect(find.text('Mainly Clear'), findsOneWidget);
+      expect(find.text('H:29° L:15°'), findsOneWidget);
+
+      // Stat grid: real wind speed/rain chance/pressure/UV index.
+      expect(find.text('12 km/h'), findsOneWidget);
+      expect(find.text('10%'), findsOneWidget);
+      expect(find.text('1013 hPa'), findsOneWidget);
+      expect(find.text('6.5'), findsOneWidget);
+
+      // Hourly row: real fixture entries instead of the old hardcoded
+      // six-item list.
+      expect(find.byType(HourlyForecastItem), findsNWidgets(2));
+      expect(find.text('Now'), findsOneWidget);
+      expect(find.text('28°'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'the hourly row starts at the current hour (not local midnight) and '
+    'caps at 24 entries',
+    (WidgetTester tester) async {
+      // Open-Meteo returns a full day starting at local midnight; this
+      // fixture spans 40 hours from midnight to catch both the trim and
+      // the 24-entry cap.
+      final hourly = [
+        for (var i = 0; i < 40; i++)
+          WeatherHourly(
+            time: DateTime(2026, 1, 1).add(Duration(hours: i)),
+            temperature: i.toDouble(),
+            weatherCode: 1,
+          ),
+      ];
+      final weatherProvider = WeatherProvider(
+        _FixedWeatherRepository(
+          WeatherCondition(
+            temperature: 20,
+            windSpeed: 5,
+            weatherCode: 1,
+            hourly: hourly,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            // 02:30 falls in the 02:00 entry (temperature 2°).
+            now: () => DateTime(2026, 1, 1, 2, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Starts at the 02:00 entry ("Now"/2°), not midnight (0°) or 01:00.
+      expect(find.text('Now'), findsOneWidget);
+      final firstItem = tester.widget<HourlyForecastItem>(
+        find.byType(HourlyForecastItem).first,
+      );
+      expect(firstItem.temperature, '2°');
+      expect(find.text('0°'), findsNothing);
+      expect(find.text('1°'), findsNothing);
+
+      // Capped at 24 entries: 02:00 through 25:00 (01:00 the next day),
+      // i.e. temperatures 2 through 25; 26° and beyond are excluded. The
+      // horizontal ListView only builds on-screen items, so the total
+      // count is read off its own delegate rather than counting rendered
+      // widgets. ListView.separated's delegate interleaves an item and a
+      // separator per entry (minus the trailing separator), so its
+      // childCount is itemCount * 2 - 1.
+      final listView = tester.widget<ListView>(find.byType(ListView));
+      final delegate = listView.childrenDelegate as SliverChildBuilderDelegate;
+      expect((delegate.childCount! + 1) ~/ 2, 24);
+      expect(find.text('26°'), findsNothing);
+    },
+  );
+
+  testWidgets('a stat tile whose WeatherProvider field is null shows "No data" '
+      'instead of a fabricated value', (WidgetTester tester) async {
+    final weatherProvider = WeatherProvider(
+      _SucceedingWeatherRepository(uvIndex: null),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No data'), findsOneWidget);
+    expect(find.text('6.5'), findsNothing);
+  });
+
+  testWidgets(
+    'HomeScreen shows "No data"/"--°" placeholders rather than crashing '
+    'when no WeatherProvider is supplied',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+      );
+      await tester.pump();
+
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.text('--°'), findsWidgets);
+      expect(find.byType(StatTile), findsNWidgets(4));
+      expect(find.byType(HourlyForecastItem), findsNothing);
+    },
+  );
+
+  testWidgets('HomeScreen shows "No data" rather than crashing when the '
+      'WeatherProvider fetch fails', (WidgetTester tester) async {
+    final weatherProvider = WeatherProvider(_FailingWeatherRepository());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(weatherProvider.error, isNotNull);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('--°'), findsWidgets);
+    expect(find.byType(StatTile), findsNWidgets(4));
+  });
+
+  testWidgets('HomeScreen built the same way MarineApp composes it (inside the '
+      'Consumer2 that also listens to WeatherProvider) does not throw on '
+      'its first frame', (WidgetTester tester) async {
+    final marineProvider = MarineProvider(_SucceedingMarineRepository());
+    final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+    // Mirrors MarineApp's own widget tree (MultiProvider + Consumer2)
+    // rather than pumping a bare HomeScreen, so this catches
+    // WeatherProvider.fetchData notifying an ancestor Consumer2 while it
+    // is still building HomeScreen itself.
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<MarineProvider>.value(value: marineProvider),
+          ChangeNotifierProvider<WeatherProvider>.value(value: weatherProvider),
+        ],
+        child: Consumer2<MarineProvider, WeatherProvider>(
+          builder: (context, mp, wp, _) => MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: mp,
+              weatherProvider: wp,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(weatherProvider.currentData, isNotNull);
   });
 
   testWidgets('HomeScreen shows a loading indicator while marine data loads', (
