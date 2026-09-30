@@ -10,6 +10,7 @@ import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
@@ -157,6 +158,31 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('My Location'), findsOneWidget);
       expect(find.byType(StatTile), findsNWidgets(4));
+    },
+  );
+
+  testWidgets(
+    'tapping the search entry point opens SearchScreen, and the back '
+    'chevron returns to HomeScreen',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+      );
+      await tester.pump();
+
+      expect(find.byType(SearchScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SearchScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(SearchScreen), findsNothing);
     },
   );
 }
