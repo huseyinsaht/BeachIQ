@@ -1,0 +1,43 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API (test fixture)",
+  "osm3s": {
+    "timestamp_osm_base": "2024-06-01T00:00:00Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org."
+  },
+  "elements": [
+    {
+      "type": "way",
+      "id": 100001,
+      "center": { "lat": 38.3000000, "lon": 26.3000000 },
+      "tags": { "natural": "beach", "name": "Test Beach" }
+    },
+    {
+      "type": "node",
+      "id": 100002,
+      "lat": 38.3005000,
+      "lon": 26.3005000,
+      "tags": { "amenity": "shower" }
+    },
+    {
+      "type": "node",
+      "id": 100003,
+      "lat": 38.2995000,
+      "lon": 26.2995000,
+      "tags": { "amenity": "toilets" }
+    },
+    {
+      "type": "node",
+      "id": 100004,
+      "lat": 38.3002000,
+      "lon": 26.3002000,
+      "tags": { "emergency": "lifeguard" }
+    },
+    {
+      "type": "way",
+      "id": 100005,
+      "center": { "lat": 38.3050000, "lon": 26.3050000 },
+      "tags": { "natural": "beach", "name": "Second Beach" }
+    }
+  ]
+}
