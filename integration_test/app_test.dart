@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,4 +42,28 @@ void main() {
     expect(provider.isLoading, isFalse);
     expect(provider.error, isNull);
   });
+
+  testWidgets(
+    'Home to Search navigation: tapping the search entry opens Search, '
+    'the back chevron returns to Home',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(SearchScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SearchScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(SearchScreen), findsNothing);
+    },
+  );
 }

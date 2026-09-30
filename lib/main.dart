@@ -6,8 +6,10 @@ import 'package:provider/provider.dart';
 import 'data/repositories/marine_repository.dart';
 import 'data/services/api_service.dart';
 import 'logic/providers/marine_provider.dart';
+import 'presentation/screens/search_screen.dart';
 import 'presentation/widgets/hourly_forecast_item.dart';
 import 'presentation/widgets/location_map_card.dart';
+import 'presentation/widgets/search_field.dart';
 import 'presentation/widgets/stat_tile.dart';
 
 void main() {
@@ -204,6 +206,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   center: _placeCenter,
                   placeName: 'Çeşme, İzmir',
                   tileProvider: widget.tileProvider,
+                ),
+                const SizedBox(height: 16),
+                // A tappable, non-editable search entry point (per
+                // docs/assets/mockup-home.png): it looks like the same
+                // `SearchField` used on the Search screen, but tapping it
+                // pushes `SearchScreen` instead of opening the keyboard in
+                // place.
+                GestureDetector(
+                  key: const Key('home-search-entry'),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (context) => const SearchScreen()),
+                  ),
+                  child: const AbsorbPointer(child: SearchField()),
                 ),
                 const SizedBox(height: 16),
                 Container(
