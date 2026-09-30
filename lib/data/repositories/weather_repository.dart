@@ -13,7 +13,15 @@ class WeatherRepository{
     if (currentData is! Map<String, dynamic>) {
       throw Exception("Weather data response is missing the 'current' field");
     }
-    return WeatherCondition.fromJson(currentData);
+    // Merge the sibling 'hourly'/'daily' sections alongside the current
+    // fields (unchanged in shape) so WeatherCondition.fromJson can derive
+    // the extended forecast fields.
+    final merged = <String, dynamic>{
+      ...currentData,
+      'hourly': data['hourly'],
+      'daily': data['daily'],
+    };
+    return WeatherCondition.fromJson(merged);
   }
 
 }
