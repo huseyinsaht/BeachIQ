@@ -47,4 +47,39 @@ void main() {
 
     expect(submitted, 'Cesme');
   });
+
+  testWidgets('shows a loading indicator while a search is in flight', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const SearchScreen(isLoading: true)));
+
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(BeachResultCard), findsNothing);
+    expect(find.text('Beaches Near'), findsOneWidget);
+  });
+
+  testWidgets('shows a clear error message when the search fails', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(const SearchScreen(error: 'Could not load nearby beaches.')),
+    );
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(BeachResultCard), findsNothing);
+    expect(
+      find.textContaining('Could not load nearby beaches.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('renders the normal results list when not loading and no error', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(BeachResultCard), findsWidgets);
+    expect(find.text(staticBeaches.first.name), findsOneWidget);
+  });
 }

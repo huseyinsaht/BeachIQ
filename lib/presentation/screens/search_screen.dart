@@ -11,9 +11,17 @@ import '../widgets/search_field.dart';
 ///
 /// Backed by [staticBeaches] as placeholder data until the OSM nearby-beaches
 /// feature supplies real results. Pure UI composition — no network or
-/// provider dependency.
+/// provider dependency of its own; [isLoading]/[error] let a caller (e.g. a
+/// future `NearbyBeachesProvider` integration) drive the loading/error
+/// states instead of the results list.
 class SearchScreen extends StatelessWidget {
-  const SearchScreen({super.key, this.onSearchChanged, this.onSearchSubmitted});
+  const SearchScreen({
+    super.key,
+    this.onSearchChanged,
+    this.onSearchSubmitted,
+    this.isLoading = false,
+    this.error,
+  });
 
   /// Forwarded to [SearchField]'s `onChanged`. No filtering is wired up yet
   /// — a later issue uses this to query nearby beaches.
@@ -21,6 +29,16 @@ class SearchScreen extends StatelessWidget {
 
   /// Forwarded to [SearchField]'s `onSubmitted`.
   final ValueChanged<String>? onSearchSubmitted;
+
+  /// Whether a search/nearby-beaches request is in flight, mirroring
+  /// `NearbyBeachesProvider.isLoading`. Defaults to false, so today's
+  /// [staticBeaches] placeholder callers render exactly as before.
+  final bool isLoading;
+
+  /// A user-readable error message to show instead of the results list,
+  /// mirroring `NearbyBeachesProvider.error`. Null (the default) renders
+  /// normally.
+  final String? error;
 
   static const _bgBase = Color(0xFF0D1220);
   static const _bgGradientBottom = Color(0xFF2A3145);
@@ -96,22 +114,7 @@ class SearchScreen extends StatelessWidget {
                         style: TextStyle(color: _textSecondary, fontSize: 13),
                       ),
                       const SizedBox(height: 12),
-                      Expanded(
-                        child: ListView.separated(
-                          padding: const EdgeInsets.only(bottom: 20),
-                          itemCount: staticBeaches.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final beach = staticBeaches[index];
-                            return BeachResultCard(
-                              placeName: beach.name,
-                              areaSubtitle: beach.city,
-                              temperature: '--°',
-                            );
-                          },
-                        ),
-                      ),
+                      Expanded(child: _buildResults()),
                     ],
                   ),
                 ),
@@ -120,6 +123,40 @@ class SearchScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  /// The bottom-sheet body: a loading spinner, an error message, or the
+  /// (placeholder) results list, matching [isLoading]/[error].
+  Widget _buildResults() {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    final error = this.error;
+    if (error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Unable to load beaches.\n$error',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _textSecondary, fontSize: 14),
+          ),
+        ),
+      );
+    }
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 20),
+      itemCount: staticBeaches.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final beach = staticBeaches[index];
+        return BeachResultCard(
+          placeName: beach.name,
+          areaSubtitle: beach.city,
+          temperature: '--°',
+        );
+      },
     );
   }
 }
