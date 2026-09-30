@@ -52,6 +52,23 @@ class _FailingMarineRepository extends MarineRepository {
   }
 }
 
+class _CountingMarineRepository extends MarineRepository {
+  _CountingMarineRepository() : super(MarineApiService());
+
+  int callCount = 0;
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async {
+    callCount++;
+    return SeaCondition(
+      waveHeight: 0.5,
+      waveDirection: 90,
+      wavePeriod: 5,
+      seaSurfaceTemperature: 22,
+    );
+  }
+}
+
 class _SucceedingMarineRepository extends MarineRepository {
   _SucceedingMarineRepository() : super(MarineApiService());
 
@@ -158,6 +175,53 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('My Location'), findsOneWidget);
       expect(find.byType(StatTile), findsNWidgets(4));
+    },
+  );
+
+  testWidgets(
+    'a pull-to-refresh gesture on the Home screen re-triggers the marine fetch',
+    (WidgetTester tester) async {
+      final repository = _CountingMarineRepository();
+      final provider = MarineProvider(repository);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: provider,
+          ),
+        ),
+      );
+      await provider.fetchData(38.3, 26.3);
+      await tester.pump();
+
+      expect(repository.callCount, 1);
+
+      final refreshIndicator = tester.widget<RefreshIndicator>(
+        find.byType(RefreshIndicator),
+      );
+      await refreshIndicator.onRefresh();
+      await tester.pumpAndSettle();
+
+      expect(repository.callCount, 2);
+    },
+  );
+
+  testWidgets(
+    'a pull-to-refresh gesture on the Home screen is a no-op with no MarineProvider',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+      );
+      await tester.pump();
+
+      final refreshIndicator = tester.widget<RefreshIndicator>(
+        find.byType(RefreshIndicator),
+      );
+      await refreshIndicator.onRefresh();
+      await tester.pumpAndSettle();
+
+      expect(find.text('My Location'), findsOneWidget);
     },
   );
 

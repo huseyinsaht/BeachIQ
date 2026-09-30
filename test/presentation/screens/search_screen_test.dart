@@ -82,4 +82,41 @@ void main() {
     expect(find.byType(BeachResultCard), findsWidgets);
     expect(find.text(staticBeaches.first.name), findsOneWidget);
   });
+
+  testWidgets('a pull-to-refresh gesture over the result sheet calls onRefresh', (
+    tester,
+  ) async {
+    var refreshCount = 0;
+    await tester.pumpWidget(
+      wrap(
+        SearchScreen(
+          onRefresh: () async {
+            refreshCount++;
+          },
+        ),
+      ),
+    );
+
+    final refreshIndicator = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    await refreshIndicator.onRefresh();
+    await tester.pumpAndSettle();
+
+    expect(refreshCount, 1);
+  });
+
+  testWidgets('a pull-to-refresh gesture is a no-op when onRefresh is not set', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    final refreshIndicator = tester.widget<RefreshIndicator>(
+      find.byType(RefreshIndicator),
+    );
+    await refreshIndicator.onRefresh();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(BeachResultCard), findsWidgets);
+  });
 }

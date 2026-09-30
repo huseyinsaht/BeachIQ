@@ -74,10 +74,26 @@ class _HomeScreenState extends State<HomeScreen> {
   static final _placeCenter = LatLng(38.3220, 26.3260);
 
   static const _hourly = [
-    HourlyForecastItem(timeLabel: 'Now', icon: Icons.wb_sunny, temperature: '27°'),
-    HourlyForecastItem(timeLabel: '1PM', icon: Icons.wb_sunny, temperature: '28°'),
-    HourlyForecastItem(timeLabel: '2PM', icon: Icons.wb_cloudy, temperature: '27°'),
-    HourlyForecastItem(timeLabel: '3PM', icon: Icons.wb_cloudy, temperature: '26°'),
+    HourlyForecastItem(
+      timeLabel: 'Now',
+      icon: Icons.wb_sunny,
+      temperature: '27°',
+    ),
+    HourlyForecastItem(
+      timeLabel: '1PM',
+      icon: Icons.wb_sunny,
+      temperature: '28°',
+    ),
+    HourlyForecastItem(
+      timeLabel: '2PM',
+      icon: Icons.wb_cloudy,
+      temperature: '27°',
+    ),
+    HourlyForecastItem(
+      timeLabel: '3PM',
+      icon: Icons.wb_cloudy,
+      temperature: '26°',
+    ),
     HourlyForecastItem(timeLabel: '4PM', icon: Icons.cloud, temperature: '25°'),
     HourlyForecastItem(timeLabel: '5PM', icon: Icons.cloud, temperature: '24°'),
   ];
@@ -107,6 +123,17 @@ class _HomeScreenState extends State<HomeScreen> {
   /// loading/error states below stay in sync with it.
   void _onMarineProviderChanged() {
     if (mounted) setState(() {});
+  }
+
+  /// Re-triggers the marine data fetch for a pull-to-refresh gesture. A
+  /// no-op when no [MarineProvider] was supplied (matches the existing
+  /// optional-provider pattern from the loading/error states above).
+  Future<void> _handleRefresh() {
+    return widget.marineProvider?.fetchData(
+          _placeCenter.latitude,
+          _placeCenter.longitude,
+        ) ??
+        Future.value();
   }
 
   @override
@@ -146,173 +173,183 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'My Location',
-                            style: TextStyle(
-                              color: _textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 20,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Çeşme, İzmir',
-                            style: TextStyle(
-                              color: _textSecondary,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const Text(
-                      '27°',
-                      style: TextStyle(
-                        color: _textPrimary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 44,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Partly Cloudy',
-                      style: TextStyle(color: _textSecondary, fontSize: 13),
-                    ),
-                    Text(
-                      'H:29° L:15°',
-                      style: TextStyle(color: _textSecondary, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                LocationMapCard(
-                  center: _placeCenter,
-                  placeName: 'Çeşme, İzmir',
-                  tileProvider: widget.tileProvider,
-                ),
-                const SizedBox(height: 16),
-                // A tappable, non-editable search entry point (per
-                // docs/assets/mockup-home.png): it looks like the same
-                // `SearchField` used on the Search screen, but tapping it
-                // pushes `SearchScreen` instead of opening the keyboard in
-                // place.
-                GestureDetector(
-                  key: const Key('home-search-entry'),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (context) => const SearchScreen()),
-                  ),
-                  child: const AbsorbPointer(child: SearchField()),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [_pillGradientStart, _pillGradientEnd],
-                    ),
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Row(
+          child: RefreshIndicator(
+            onRefresh: _handleRefresh,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.wb_sunny_outlined, size: 18, color: _textOnPaper),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Good conditions for a swim right now',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: _textOnPaper,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'My Location',
+                              style: TextStyle(
+                                color: _textPrimary,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 20,
+                              ),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Çeşme, İzmir',
+                              style: TextStyle(
+                                color: _textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Text(
+                        '27°',
+                        style: TextStyle(
+                          color: _textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 44,
                         ),
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: 16,
-                  crossAxisSpacing: 16,
-                  childAspectRatio: 2.6,
-                  children: const [
-                    StatTile(
-                      icon: Icons.air,
-                      label: 'Wind speed',
-                      value: '12 km/h',
-                      trendDirection: StatTrendDirection.up,
-                      trendDelta: '2 km/h',
-                    ),
-                    StatTile(
-                      icon: Icons.water_drop_outlined,
-                      label: 'Rain chance',
-                      value: '10%',
-                      trendDirection: StatTrendDirection.down,
-                      trendDelta: '3%',
-                    ),
-                    StatTile(
-                      icon: Icons.speed,
-                      label: 'Pressure',
-                      value: '1013 hPa',
-                      trendDirection: StatTrendDirection.up,
-                      trendDelta: '1 hPa',
-                    ),
-                    StatTile(
-                      icon: Icons.wb_sunny_outlined,
-                      label: 'UV index',
-                      value: '6.5',
-                      trendDirection: StatTrendDirection.up,
-                      trendDelta: '0.5',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                const Row(
-                  children: [
-                    Icon(Icons.access_time, size: 14, color: _textSecondary),
-                    SizedBox(width: 6),
-                    Text(
-                      'Hourly forecast',
-                      style: TextStyle(color: _textSecondary, fontSize: 13),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 90,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _hourly.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 20),
-                    itemBuilder: (context, index) => _hourly[index],
+                  const SizedBox(height: 12),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Partly Cloudy',
+                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                      ),
+                      Text(
+                        'H:29° L:15°',
+                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  LocationMapCard(
+                    center: _placeCenter,
+                    placeName: 'Çeşme, İzmir',
+                    tileProvider: widget.tileProvider,
+                  ),
+                  const SizedBox(height: 16),
+                  // A tappable, non-editable search entry point (per
+                  // docs/assets/mockup-home.png): it looks like the same
+                  // `SearchField` used on the Search screen, but tapping it
+                  // pushes `SearchScreen` instead of opening the keyboard in
+                  // place.
+                  GestureDetector(
+                    key: const Key('home-search-entry'),
+                    onTap: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const SearchScreen(),
+                      ),
+                    ),
+                    child: const AbsorbPointer(child: SearchField()),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_pillGradientStart, _pillGradientEnd],
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.wb_sunny_outlined,
+                          size: 18,
+                          color: _textOnPaper,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Good conditions for a swim right now',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: _textOnPaper,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  GridView.count(
+                    crossAxisCount: 2,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    mainAxisSpacing: 16,
+                    crossAxisSpacing: 16,
+                    childAspectRatio: 2.6,
+                    children: const [
+                      StatTile(
+                        icon: Icons.air,
+                        label: 'Wind speed',
+                        value: '12 km/h',
+                        trendDirection: StatTrendDirection.up,
+                        trendDelta: '2 km/h',
+                      ),
+                      StatTile(
+                        icon: Icons.water_drop_outlined,
+                        label: 'Rain chance',
+                        value: '10%',
+                        trendDirection: StatTrendDirection.down,
+                        trendDelta: '3%',
+                      ),
+                      StatTile(
+                        icon: Icons.speed,
+                        label: 'Pressure',
+                        value: '1013 hPa',
+                        trendDirection: StatTrendDirection.up,
+                        trendDelta: '1 hPa',
+                      ),
+                      StatTile(
+                        icon: Icons.wb_sunny_outlined,
+                        label: 'UV index',
+                        value: '6.5',
+                        trendDirection: StatTrendDirection.up,
+                        trendDelta: '0.5',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Row(
+                    children: [
+                      Icon(Icons.access_time, size: 14, color: _textSecondary),
+                      SizedBox(width: 6),
+                      Text(
+                        'Hourly forecast',
+                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    height: 90,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _hourly.length,
+                      separatorBuilder: (_, _) => const SizedBox(width: 20),
+                      itemBuilder: (context, index) => _hourly[index],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
