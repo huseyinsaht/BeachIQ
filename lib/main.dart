@@ -3,9 +3,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import 'data/models/weather_code.dart';
 import 'data/repositories/marine_repository.dart';
+import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
+import 'data/services/weather_api_service.dart';
 import 'logic/providers/marine_provider.dart';
+import 'logic/providers/weather_provider.dart';
 import 'presentation/screens/search_screen.dart';
 import 'presentation/widgets/hourly_forecast_item.dart';
 import 'presentation/widgets/location_map_card.dart';
@@ -16,6 +20,58 @@ void main() {
   runApp(const MarineApp());
 }
 
+const String _noData = 'No data';
+
+String _formatTemperature(double? celsius) {
+  if (celsius == null) return '--°';
+  return '${celsius.round()}°';
+}
+
+String _formatWindSpeed(double? kmh) {
+  if (kmh == null) return _noData;
+  return '${kmh.round()} km/h';
+}
+
+String _formatPercent(double? percent) {
+  if (percent == null) return _noData;
+  return '${percent.round()}%';
+}
+
+String _formatPressure(double? hpa) {
+  if (hpa == null) return _noData;
+  return '${hpa.round()} hPa';
+}
+
+String _formatUvIndex(double? uv) {
+  if (uv == null) return _noData;
+  return uv.toStringAsFixed(1);
+}
+
+/// Maps an Open-Meteo WMO weather code to an hourly-row icon, grouping
+/// codes into the same rough categories as [weatherCodeDescription].
+IconData _iconForWeatherCode(int code) {
+  if (code == 0 || code == 1) return Icons.wb_sunny;
+  if (code == 2) return Icons.wb_cloudy;
+  if (code == 3) return Icons.cloud;
+  if (code == 45 || code == 48) return Icons.foggy;
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+    return Icons.grain;
+  }
+  if (code >= 71 && code <= 86) return Icons.ac_unit;
+  if (code == 95 || code == 96 || code == 99) return Icons.thunderstorm;
+  return Icons.wb_cloudy;
+}
+
+/// The first hourly entry is labelled "Now" (it's the closest forecast
+/// point to the current time); later entries show their clock hour.
+String _hourLabel(DateTime time, {required bool isFirst}) {
+  if (isFirst) return 'Now';
+  final hour = time.hour;
+  final period = hour >= 12 ? 'PM' : 'AM';
+  final displayHour = hour % 12 == 0 ? 12 : hour % 12;
+  return '$displayHour$period';
+}
+
 class MarineApp extends StatelessWidget {
   const MarineApp({super.key, this.tileProvider});
 
@@ -24,14 +80,23 @@ class MarineApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => MarineProvider(MarineRepository(MarineApiService())),
-      child: Consumer<MarineProvider>(
-        builder: (context, marineProvider, _) => MaterialApp(
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(
+          create: (_) => MarineProvider(MarineRepository(MarineApiService())),
+        ),
+        ChangeNotifierProvider(
+          create: (_) =>
+              WeatherProvider(WeatherRepository(WeatherApiService())),
+        ),
+      ],
+      child: Consumer2<MarineProvider, WeatherProvider>(
+        builder: (context, marineProvider, weatherProvider, _) => MaterialApp(
           title: 'Marine Safety',
           home: HomeScreen(
             tileProvider: tileProvider,
             marineProvider: marineProvider,
+            weatherProvider: weatherProvider,
           ),
         ),
       ),
@@ -44,11 +109,17 @@ class MarineApp extends StatelessWidget {
 /// suggestion pill, a 2x2 [StatTile] grid, and a scrollable hourly row of
 /// [HourlyForecastItem]s.
 ///
-/// All shown values are static placeholders until a later issue wires this
-/// up to [MarineProvider]/`WeatherProvider`. Centers on Çeşme, İzmir, the
-/// same placeholder location used elsewhere in the app.
+/// The header, stat grid and hourly row are bound to [WeatherProvider]'s
+/// data, fetched for the fixed Çeşme coordinates. [MarineProvider] is only
+/// consumed for the loading/error states (#69) — it is not yet a source for
+/// any stat tile.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.tileProvider, this.marineProvider});
+  const HomeScreen({
+    super.key,
+    this.tileProvider,
+    this.marineProvider,
+    this.weatherProvider,
+  });
 
   /// Overridable so widget tests can avoid hitting the real tile network.
   final TileProvider? tileProvider;
@@ -57,6 +128,10 @@ class HomeScreen extends StatefulWidget {
   /// existing call site that doesn't pass one) renders the normal loaded
   /// layout, unchanged from before.
   final MarineProvider? marineProvider;
+
+  /// Drives the header, stat grid and hourly row's real values. Null (the
+  /// default) renders every value as "No data"/"--°" instead of fetching.
+  final WeatherProvider? weatherProvider;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -73,40 +148,24 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static final _placeCenter = LatLng(38.3220, 26.3260);
 
-  static const _hourly = [
-    HourlyForecastItem(
-      timeLabel: 'Now',
-      icon: Icons.wb_sunny,
-      temperature: '27°',
-    ),
-    HourlyForecastItem(
-      timeLabel: '1PM',
-      icon: Icons.wb_sunny,
-      temperature: '28°',
-    ),
-    HourlyForecastItem(
-      timeLabel: '2PM',
-      icon: Icons.wb_cloudy,
-      temperature: '27°',
-    ),
-    HourlyForecastItem(
-      timeLabel: '3PM',
-      icon: Icons.wb_cloudy,
-      temperature: '26°',
-    ),
-    HourlyForecastItem(timeLabel: '4PM', icon: Icons.cloud, temperature: '25°'),
-    HourlyForecastItem(timeLabel: '5PM', icon: Icons.cloud, temperature: '24°'),
-  ];
-
   @override
   void initState() {
     super.initState();
     widget.marineProvider?.addListener(_onMarineProviderChanged);
+    widget.weatherProvider?.addListener(_onMarineProviderChanged);
+    widget.weatherProvider?.fetchData(
+      _placeCenter.latitude,
+      _placeCenter.longitude,
+    );
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.weatherProvider != widget.weatherProvider) {
+      oldWidget.weatherProvider?.removeListener(_onMarineProviderChanged);
+      widget.weatherProvider?.addListener(_onMarineProviderChanged);
+    }
     if (oldWidget.marineProvider != widget.marineProvider) {
       oldWidget.marineProvider?.removeListener(_onMarineProviderChanged);
       widget.marineProvider?.addListener(_onMarineProviderChanged);
@@ -116,11 +175,13 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     widget.marineProvider?.removeListener(_onMarineProviderChanged);
+    widget.weatherProvider?.removeListener(_onMarineProviderChanged);
     super.dispose();
   }
 
-  /// Rebuilds whenever the (optional) [MarineProvider] notifies, so the
-  /// loading/error states below stay in sync with it.
+  /// Rebuilds whenever the (optional) [MarineProvider] or [WeatherProvider]
+  /// notifies, so the loading/error states and the real weather values stay
+  /// in sync with them.
   void _onMarineProviderChanged() {
     if (mounted) setState(() {});
   }
@@ -168,6 +229,8 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
+    final weatherData = widget.weatherProvider?.currentData;
+    final hourly = weatherData?.hourly ?? const [];
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -212,9 +275,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ],
                         ),
                       ),
-                      const Text(
-                        '27°',
-                        style: TextStyle(
+                      Text(
+                        _formatTemperature(weatherData?.temperature),
+                        style: const TextStyle(
                           color: _textPrimary,
                           fontWeight: FontWeight.bold,
                           fontSize: 44,
@@ -223,16 +286,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  const Row(
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        'Partly Cloudy',
-                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                        weatherData != null
+                            ? weatherCodeDescription(weatherData.weatherCode)
+                            : _noData,
+                        style: const TextStyle(
+                          color: _textSecondary,
+                          fontSize: 13,
+                        ),
                       ),
                       Text(
-                        'H:29° L:15°',
-                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                        'H:${_formatTemperature(weatherData?.highTemperature)} '
+                        'L:${_formatTemperature(weatherData?.lowTemperature)}',
+                        style: const TextStyle(
+                          color: _textSecondary,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -301,32 +373,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     mainAxisSpacing: 16,
                     crossAxisSpacing: 16,
                     childAspectRatio: 2.6,
-                    children: const [
+                    children: [
                       StatTile(
                         icon: Icons.air,
                         label: 'Wind speed',
-                        value: '12 km/h',
+                        value: _formatWindSpeed(weatherData?.windSpeed),
                         trendDirection: StatTrendDirection.up,
                         trendDelta: '2 km/h',
                       ),
                       StatTile(
                         icon: Icons.water_drop_outlined,
                         label: 'Rain chance',
-                        value: '10%',
+                        value: _formatPercent(weatherData?.rainChancePercent),
                         trendDirection: StatTrendDirection.down,
                         trendDelta: '3%',
                       ),
                       StatTile(
                         icon: Icons.speed,
                         label: 'Pressure',
-                        value: '1013 hPa',
+                        value: _formatPressure(weatherData?.pressureHpa),
                         trendDirection: StatTrendDirection.up,
                         trendDelta: '1 hPa',
                       ),
                       StatTile(
                         icon: Icons.wb_sunny_outlined,
                         label: 'UV index',
-                        value: '6.5',
+                        value: _formatUvIndex(weatherData?.uvIndex),
                         trendDirection: StatTrendDirection.up,
                         trendDelta: '0.5',
                       ),
@@ -348,9 +420,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     height: 90,
                     child: ListView.separated(
                       scrollDirection: Axis.horizontal,
-                      itemCount: _hourly.length,
+                      itemCount: hourly.length,
                       separatorBuilder: (_, _) => const SizedBox(width: 20),
-                      itemBuilder: (context, index) => _hourly[index],
+                      itemBuilder: (context, index) {
+                        final entry = hourly[index];
+                        return HourlyForecastItem(
+                          timeLabel: _hourLabel(
+                            entry.time,
+                            isFirst: index == 0,
+                          ),
+                          icon: _iconForWeatherCode(entry.weatherCode),
+                          temperature: _formatTemperature(entry.temperature),
+                        );
+                      },
                     ),
                   ),
                 ],
