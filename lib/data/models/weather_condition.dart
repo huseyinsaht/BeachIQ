@@ -57,48 +57,54 @@ class WeatherCondition {
       final pressures = hourlyJson['pressure_msl'];
 
       if (times is List) {
+        final parsedTimes = <DateTime?>[];
         for (var i = 0; i < times.length; i++) {
           final time = DateTime.tryParse(times[i].toString());
+          parsedTimes.add(time);
           if (time == null) continue;
-          final temperature = (temps is List && i < temps.length)
-              ? (temps[i] as num?)?.toDouble()
-              : null;
-          final code = (codes is List && i < codes.length)
-              ? (codes[i] as num?)?.toInt()
-              : null;
+          final temperature =
+              (temps is List && i < temps.length) ? _asDouble(temps[i]) : null;
+          final code =
+              (codes is List && i < codes.length) ? _asInt(codes[i]) : null;
+          // Skip entries missing temperature or weather code rather than
+          // fabricating a 0/"Clear" value, since both are valid real values.
+          if (temperature == null || code == null) continue;
           hourlyList.add(
-            WeatherHourly(
-              time: time,
-              temperature: temperature ?? 0,
-              weatherCode: code ?? 0,
-            ),
+            WeatherHourly(time: time, temperature: temperature, weatherCode: code),
           );
         }
 
         // UV index and precipitation probability are only exposed by
         // Open-Meteo as hourly fields, so the "current" values for them
         // (and pressure, which we also request hourly to keep the request
-        // shape simple) are read from the hourly entry whose timestamp
-        // matches the current time, falling back to the first entry.
-        final currentTime = json['time']?.toString();
+        // shape simple) are read from the hourly entry whose timestamp is
+        // the latest one at or before the current time. Open-Meteo's
+        // `current.time` has minute resolution while `hourly.time` is on
+        // the hour, so an exact string match would almost always miss;
+        // comparing parsed DateTimes handles that.
+        final currentTime = DateTime.tryParse(json['time']?.toString() ?? '');
         var currentIndex = 0;
         if (currentTime != null) {
-          final matchedIndex = times.indexWhere(
-            (t) => t.toString() == currentTime,
-          );
-          if (matchedIndex != -1) currentIndex = matchedIndex;
+          var bestIndex = -1;
+          for (var i = 0; i < parsedTimes.length; i++) {
+            final t = parsedTimes[i];
+            if (t == null || t.isAfter(currentTime)) continue;
+            if (bestIndex == -1 || t.isAfter(parsedTimes[bestIndex]!)) {
+              bestIndex = i;
+            }
+          }
+          if (bestIndex != -1) currentIndex = bestIndex;
         }
 
         if (uvIndices is List && currentIndex < uvIndices.length) {
-          uvIndex = (uvIndices[currentIndex] as num?)?.toDouble();
+          uvIndex = _asDouble(uvIndices[currentIndex]);
         }
         if (precipitationProbabilities is List &&
             currentIndex < precipitationProbabilities.length) {
-          rainChancePercent =
-              (precipitationProbabilities[currentIndex] as num?)?.toDouble();
+          rainChancePercent = _asDouble(precipitationProbabilities[currentIndex]);
         }
         if (pressures is List && currentIndex < pressures.length) {
-          pressureHpa = (pressures[currentIndex] as num?)?.toDouble();
+          pressureHpa = _asDouble(pressures[currentIndex]);
         }
       }
     }
@@ -109,10 +115,10 @@ class WeatherCondition {
       final highs = dailyJson['temperature_2m_max'];
       final lows = dailyJson['temperature_2m_min'];
       if (highs is List && highs.isNotEmpty) {
-        highTemperature = (highs.first as num?)?.toDouble();
+        highTemperature = _asDouble(highs.first);
       }
       if (lows is List && lows.isNotEmpty) {
-        lowTemperature = (lows.first as num?)?.toDouble();
+        lowTemperature = _asDouble(lows.first);
       }
     }
 
@@ -129,3 +135,12 @@ class WeatherCondition {
     );
   }
 }
+
+/// Safely reads a numeric JSON value as a [double], returning null for a
+/// missing/null entry or a value of an unexpected type (e.g. a String)
+/// instead of throwing.
+double? _asDouble(dynamic value) => value is num ? value.toDouble() : null;
+
+/// Safely reads a numeric JSON value as an [int], returning null for a
+/// missing/null entry or a value of an unexpected type instead of throwing.
+int? _asInt(dynamic value) => value is num ? value.toInt() : null;

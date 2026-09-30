@@ -68,5 +68,75 @@ void main() {
       expect(condition.lowTemperature, isNull);
       expect(condition.hourly, isEmpty);
     });
+
+    test('picks the current hourly entry when current.time has minute '
+        'resolution and hourly.time is on the hour', () {
+      // Open-Meteo's `current.time` (e.g. 12:15) does not exactly match any
+      // `hourly.time` entry (on the hour) — the latest hourly entry at or
+      // before current.time should be used, not the first entry.
+      final condition = WeatherCondition.fromJson({
+        'temperature_2m': 24.5,
+        'wind_speed_10m': 12.3,
+        'weather_code': 3,
+        'time': '2024-01-01T12:15',
+        'hourly': {
+          'time': [
+            '2024-01-01T11:00',
+            '2024-01-01T12:00',
+            '2024-01-01T13:00',
+          ],
+          'temperature_2m': [20.0, 24.5, 25.0],
+          'weather_code': [1, 3, 2],
+          'uv_index': [2.0, 4.5, 5.0],
+          'precipitation_probability': [10, 20, 30],
+          'pressure_msl': [1010.0, 1012.0, 1013.0],
+        },
+      });
+
+      expect(condition.uvIndex, 4.5);
+      expect(condition.rainChancePercent, 20);
+      expect(condition.pressureHpa, 1012.0);
+    });
+
+    test('falls back to the first hourly entry when current.time is '
+        'missing or unparseable', () {
+      final condition = WeatherCondition.fromJson({
+        'hourly': {
+          'time': ['2024-01-01T11:00', '2024-01-01T12:00'],
+          'uv_index': [2.0, 4.5],
+        },
+      });
+
+      expect(condition.uvIndex, 2.0);
+    });
+
+    test('skips hourly entries with a null temperature or weather code '
+        'instead of fabricating 0', () {
+      final condition = WeatherCondition.fromJson({
+        'hourly': {
+          'time': ['2024-01-01T11:00', '2024-01-01T12:00'],
+          'temperature_2m': [null, 24.5],
+          'weather_code': [1, null],
+        },
+      });
+
+      expect(condition.hourly, isEmpty);
+    });
+
+    test('ignores non-numeric values in hourly/daily arrays instead of '
+        'throwing', () {
+      final condition = WeatherCondition.fromJson({
+        'hourly': {
+          'time': ['2024-01-01T12:00'],
+          'uv_index': ['not a number'],
+        },
+        'daily': {
+          'temperature_2m_max': ['not a number'],
+        },
+      });
+
+      expect(condition.uvIndex, isNull);
+      expect(condition.highTemperature, isNull);
+    });
   });
 }
