@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../data/models/beach.dart';
+import '../../logic/beach_gear_advisor.dart';
+
 /// A single label/value line shown in [BeachResultCard]'s two-column
 /// "Beaches Near" info block.
 class _BeachInfoLine {
@@ -7,6 +10,62 @@ class _BeachInfoLine {
 
   final String label;
   final String value;
+}
+
+const _noData = 'No data';
+const _unknown = 'Unknown';
+
+/// Renders a [BeachFee] as Paid / Free / Unknown — OSM has no price data,
+/// so this is never rendered as a number. `null` (no [BeachFee] supplied at
+/// all) renders the same as [BeachFee.unknown].
+String _feeText(BeachFee? fee) {
+  switch (fee) {
+    case BeachFee.free:
+      return 'Free';
+    case BeachFee.paid:
+      return 'Paid';
+    case BeachFee.unknown:
+    case null:
+      return _unknown;
+  }
+}
+
+/// Renders a marine-forecast wave height (meters), or "No data" when no
+/// marine data is available for this beach.
+String _waveHeightText(double? meters) {
+  if (meters == null) return _noData;
+  return '${meters.toStringAsFixed(1)} m';
+}
+
+/// Renders a sea surface temperature (Celsius), or "No data" when no marine
+/// data is available for this beach.
+String _waterTemperatureText(double? celsius) {
+  if (celsius == null) return _noData;
+  return '${celsius.toStringAsFixed(0)}°';
+}
+
+/// Renders a [ShoeAdvice] as advice text — never as a bare fact, since the
+/// underlying OSM `surface` tag does not tell us how sharp or hot the
+/// ground actually is. `null` (no [ShoeAdvice] supplied at all) renders the
+/// same as [ShoeAdvice.unknown].
+String _shoeAdviceText(ShoeAdvice? advice) {
+  switch (advice) {
+    case ShoeAdvice.advised:
+      return 'Shoes advised';
+    case ShoeAdvice.notNeeded:
+      return 'Not needed';
+    case ShoeAdvice.unknown:
+    case null:
+      return _unknown;
+  }
+}
+
+/// Renders a nullable OSM amenity-nearby flag as Yes / No / Unknown. `null`
+/// stands for "unknown" (no data to say either way), as distinct from a
+/// confirmed absence.
+String _presenceText(bool? present) {
+  if (present == null) return _unknown;
+  return present ? 'Yes' : 'No';
 }
 
 /// The white "paper" bottom-sheet-style search result card, per
@@ -18,14 +77,26 @@ class _BeachInfoLine {
 ///
 /// Per docs/design.md's "Beach info lines" table, the info lines are **not
 /// chips or pills**: no background, border or box around each line, just
-/// short text stacked in two columns. A later issue wires these values to
-/// real data (from the Beach/SeaCondition models and OSM lookups); this
-/// widget only builds the layout, so every info line is an optional
-/// parameter and a missing/omitted one is simply left out — an empty or
-/// partial set never crashes the layout.
+/// short text stacked in two columns.
+///
+/// The left column shows the marine/entry facts — entry price ([Beach.fee]),
+/// wave height and water temperature (from a [SeaCondition]-style marine
+/// lookup) — and the right column shows nearby amenities — shoes/slippers
+/// advice (from [adviseOnShoes]), car park ([Beach.hasParking]), beach club
+/// ([Beach.hasBeachResort]) and cafe ([Beach.hasCafe]). A field the source
+/// has no data for is rendered as "No data"/"Unknown" text — this widget
+/// never invents a value, a zero, or a blank gap.
+///
+/// The "Beaches Near" info block itself only appears once a caller supplies
+/// at least one of these values — i.e. once there is an actual nearby beach
+/// to describe. Until then (e.g. a plain placeholder result, as
+/// `SearchScreen` renders before the nearby-beaches feature is wired in),
+/// every group parameter is left null and the card is just the result row.
 ///
 /// Pure presentational widget — no network, provider, or repository
-/// dependency.
+/// dependency. The caller supplies the already-resolved values (typically
+/// read straight off a [Beach] and a marine lookup); this widget only
+/// formats and lays them out.
 class BeachResultCard extends StatelessWidget {
   const BeachResultCard({
     super.key,
@@ -33,13 +104,13 @@ class BeachResultCard extends StatelessWidget {
     required this.areaSubtitle,
     required this.temperature,
     this.weatherIcon = Icons.wb_sunny,
-    this.entryPrice,
-    this.waveHeight,
-    this.waterTemperature,
-    this.shoesAdvice,
-    this.carPark,
-    this.beachClub,
-    this.cafe,
+    this.fee,
+    this.waveHeightMeters,
+    this.waterTemperatureCelsius,
+    this.shoeAdvice,
+    this.hasParking,
+    this.hasBeachResort,
+    this.hasCafe,
   });
 
   /// The beach/location name shown bold in the result row (e.g. "Altinkum
@@ -55,18 +126,30 @@ class BeachResultCard extends StatelessWidget {
   /// The colored weather icon shown next to [temperature].
   final IconData weatherIcon;
 
-  // "Beaches Near" info lines. Per docs/design.md's "Beach info lines"
-  // table: entry price, wave height and water temperature (the marine
-  // group) sit in the left column; shoes advice, car park, beach club and
-  // cafe (nearby amenities) sit in the right column. Each is optional —
-  // a null value simply omits that line.
-  final String? entryPrice;
-  final String? waveHeight;
-  final String? waterTemperature;
-  final String? shoesAdvice;
-  final String? carPark;
-  final String? beachClub;
-  final String? cafe;
+  /// Whether entry to the beach is paid, free, or unknown — see
+  /// [Beach.fee]. OSM has no price data, so this is never a number. Null
+  /// when no beach info is being shown at all (see the class docs).
+  final BeachFee? fee;
+
+  /// Marine-forecast wave height in meters, or null when no marine data is
+  /// available for this beach.
+  final double? waveHeightMeters;
+
+  /// Sea surface temperature in Celsius, or null when no marine data is
+  /// available for this beach.
+  final double? waterTemperatureCelsius;
+
+  /// Advice — never a fact — on whether to bring shoes/slippers. See
+  /// [adviseOnShoes]. Null when no beach info is being shown at all (see
+  /// the class docs).
+  final ShoeAdvice? shoeAdvice;
+
+  /// Whether a car park ([Beach.hasParking]), beach club
+  /// ([Beach.hasBeachResort]) or cafe ([Beach.hasCafe]) was found near the
+  /// beach. Null means it is unknown, as distinct from a confirmed absence.
+  final bool? hasParking;
+  final bool? hasBeachResort;
+  final bool? hasCafe;
 
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
@@ -74,21 +157,34 @@ class BeachResultCard extends StatelessWidget {
   static const _iconSun = Color(0xFFFFC94D);
   static const _dividerColor = Color(0xFFE7E8EC);
 
+  /// Whether the caller supplied any beach info at all — i.e. there is an
+  /// actual nearby beach to describe, as distinct from a plain placeholder
+  /// result row with no beach data behind it yet.
+  bool get _hasBeachInfo =>
+      fee != null ||
+      waveHeightMeters != null ||
+      waterTemperatureCelsius != null ||
+      shoeAdvice != null ||
+      hasParking != null ||
+      hasBeachResort != null ||
+      hasCafe != null;
+
   @override
   Widget build(BuildContext context) {
     final leftLines = <_BeachInfoLine>[
-      if (entryPrice != null) _BeachInfoLine('Entry', entryPrice!),
-      if (waveHeight != null) _BeachInfoLine('Wave height', waveHeight!),
-      if (waterTemperature != null)
-        _BeachInfoLine('Water temp', waterTemperature!),
+      _BeachInfoLine('Entry', _feeText(fee)),
+      _BeachInfoLine('Wave height', _waveHeightText(waveHeightMeters)),
+      _BeachInfoLine(
+        'Water temp',
+        _waterTemperatureText(waterTemperatureCelsius),
+      ),
     ];
     final rightLines = <_BeachInfoLine>[
-      if (shoesAdvice != null) _BeachInfoLine('Shoes', shoesAdvice!),
-      if (carPark != null) _BeachInfoLine('Car park', carPark!),
-      if (beachClub != null) _BeachInfoLine('Beach club', beachClub!),
-      if (cafe != null) _BeachInfoLine('Cafe', cafe!),
+      _BeachInfoLine('Shoes', _shoeAdviceText(shoeAdvice)),
+      _BeachInfoLine('Car park', _presenceText(hasParking)),
+      _BeachInfoLine('Beach club', _presenceText(hasBeachResort)),
+      _BeachInfoLine('Cafe', _presenceText(hasCafe)),
     ];
-    final hasInfoLines = leftLines.isNotEmpty || rightLines.isNotEmpty;
 
     return Container(
       decoration: const BoxDecoration(
@@ -146,7 +242,7 @@ class BeachResultCard extends StatelessWidget {
               ),
             ],
           ),
-          if (hasInfoLines) ...[
+          if (_hasBeachInfo) ...[
             const SizedBox(height: 16),
             const Divider(height: 1, thickness: 1, color: _dividerColor),
             const SizedBox(height: 16),
@@ -196,10 +292,7 @@ class _InfoColumn extends StatelessWidget {
               children: [
                 Text(
                   '${line.label}: ',
-                  style: const TextStyle(
-                    color: _textSecondary,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: _textSecondary, fontSize: 13),
                 ),
                 Flexible(
                   child: Text(
