@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
@@ -132,6 +133,15 @@ class _SucceedingWeatherRepository extends WeatherRepository {
   }
 }
 
+class _FailingWeatherRepository extends WeatherRepository {
+  _FailingWeatherRepository() : super(WeatherApiService());
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    throw Exception('boom');
+  }
+}
+
 void main() {
   testWidgets('HomeScreen renders the composed location-detail layout', (
     WidgetTester tester,
@@ -230,6 +240,61 @@ void main() {
       expect(find.byType(HourlyForecastItem), findsNothing);
     },
   );
+
+  testWidgets('HomeScreen shows "No data" rather than crashing when the '
+      'WeatherProvider fetch fails', (WidgetTester tester) async {
+    final weatherProvider = WeatherProvider(_FailingWeatherRepository());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(weatherProvider.error, isNotNull);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('--°'), findsWidgets);
+    expect(find.byType(StatTile), findsNWidgets(4));
+  });
+
+  testWidgets('HomeScreen built the same way MarineApp composes it (inside the '
+      'Consumer2 that also listens to WeatherProvider) does not throw on '
+      'its first frame', (WidgetTester tester) async {
+    final marineProvider = MarineProvider(_SucceedingMarineRepository());
+    final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+    // Mirrors MarineApp's own widget tree (MultiProvider + Consumer2)
+    // rather than pumping a bare HomeScreen, so this catches
+    // WeatherProvider.fetchData notifying an ancestor Consumer2 while it
+    // is still building HomeScreen itself.
+    await tester.pumpWidget(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider<MarineProvider>.value(value: marineProvider),
+          ChangeNotifierProvider<WeatherProvider>.value(value: weatherProvider),
+        ],
+        child: Consumer2<MarineProvider, WeatherProvider>(
+          builder: (context, mp, wp, _) => MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: mp,
+              weatherProvider: wp,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(weatherProvider.currentData, isNotNull);
+  });
 
   testWidgets('HomeScreen shows a loading indicator while marine data loads', (
     WidgetTester tester,

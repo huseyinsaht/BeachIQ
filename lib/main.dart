@@ -151,50 +151,66 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    widget.marineProvider?.addListener(_onMarineProviderChanged);
-    widget.weatherProvider?.addListener(_onMarineProviderChanged);
-    widget.weatherProvider?.fetchData(
-      _placeCenter.latitude,
-      _placeCenter.longitude,
-    );
+    widget.marineProvider?.addListener(_onProviderChanged);
+    widget.weatherProvider?.addListener(_onProviderChanged);
+    // Deferred to after the first frame: HomeScreen is built inside the
+    // Consumer2<MarineProvider, WeatherProvider> that also listens to
+    // WeatherProvider (see MarineApp), so calling fetchData synchronously
+    // here would notify that ancestor while it is still building this very
+    // subtree ("setState()/markNeedsBuild() called during build").
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.weatherProvider?.fetchData(
+        _placeCenter.latitude,
+        _placeCenter.longitude,
+      );
+    });
   }
 
   @override
   void didUpdateWidget(covariant HomeScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.weatherProvider != widget.weatherProvider) {
-      oldWidget.weatherProvider?.removeListener(_onMarineProviderChanged);
-      widget.weatherProvider?.addListener(_onMarineProviderChanged);
+      oldWidget.weatherProvider?.removeListener(_onProviderChanged);
+      widget.weatherProvider?.addListener(_onProviderChanged);
     }
     if (oldWidget.marineProvider != widget.marineProvider) {
-      oldWidget.marineProvider?.removeListener(_onMarineProviderChanged);
-      widget.marineProvider?.addListener(_onMarineProviderChanged);
+      oldWidget.marineProvider?.removeListener(_onProviderChanged);
+      widget.marineProvider?.addListener(_onProviderChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.marineProvider?.removeListener(_onMarineProviderChanged);
-    widget.weatherProvider?.removeListener(_onMarineProviderChanged);
+    widget.marineProvider?.removeListener(_onProviderChanged);
+    widget.weatherProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 
   /// Rebuilds whenever the (optional) [MarineProvider] or [WeatherProvider]
   /// notifies, so the loading/error states and the real weather values stay
   /// in sync with them.
-  void _onMarineProviderChanged() {
+  void _onProviderChanged() {
     if (mounted) setState(() {});
   }
 
-  /// Re-triggers the marine data fetch for a pull-to-refresh gesture. A
-  /// no-op when no [MarineProvider] was supplied (matches the existing
-  /// optional-provider pattern from the loading/error states above).
-  Future<void> _handleRefresh() {
-    return widget.marineProvider?.fetchData(
-          _placeCenter.latitude,
-          _placeCenter.longitude,
-        ) ??
-        Future.value();
+  /// Re-triggers the marine and weather data fetches for a pull-to-refresh
+  /// gesture. A no-op for whichever provider wasn't supplied (matches the
+  /// existing optional-provider pattern from the loading/error states
+  /// above).
+  Future<void> _handleRefresh() async {
+    await Future.wait([
+      widget.marineProvider?.fetchData(
+            _placeCenter.latitude,
+            _placeCenter.longitude,
+          ) ??
+          Future.value(),
+      widget.weatherProvider?.fetchData(
+            _placeCenter.latitude,
+            _placeCenter.longitude,
+          ) ??
+          Future.value(),
+    ]);
   }
 
   @override
