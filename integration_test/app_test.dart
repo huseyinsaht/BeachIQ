@@ -74,10 +74,13 @@ class _FixtureNetworkClient extends http.BaseClient {
           ],
         },
         {
+          // Within the mapper's 150m amenity-attach radius of the beach
+          // geometry's (38.30, 26.30) corner (~42m away); the original
+          // (38.303, 26.303) here was ~425m away, so it never attached.
           'type': 'node',
           'id': 2,
-          'lat': 38.303,
-          'lon': 26.303,
+          'lat': 38.3003,
+          'lon': 26.3003,
           'tags': {'amenity': 'parking'},
         },
       ],
@@ -113,8 +116,9 @@ class _NearbyBeachesResultsSheet extends StatelessWidget {
               temperature: '--°',
               fee: beach.fee,
               waveHeightMeters: provider.seaConditionFor(beach)?.waveHeight,
-              waterTemperatureCelsius:
-                  provider.seaConditionFor(beach)?.seaSurfaceTemperature,
+              waterTemperatureCelsius: provider
+                  .seaConditionFor(beach)
+                  ?.seaSurfaceTemperature,
               hasParking: beach.hasParking,
               hasBeachResort: beach.hasBeachResort,
               hasCafe: beach.hasCafe,
