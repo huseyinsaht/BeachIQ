@@ -5,6 +5,60 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- `OsmAttribution`, a small "© OpenStreetMap contributors" credit required by OSM's
+  ODbL license wherever OSM data or tiles are shown (#109)
+- `MarineBatchService`, fetching wave height and sea surface temperature for many beach
+  coordinates in a single batched Open-Meteo Marine API request, with a 1-hour
+  in-memory cache (#110)
+- `OverpassService`, querying the Overpass API for nearby beaches and amenities, with a
+  fallback mirror endpoint, retry/backoff on rate limiting, and de-duplication of
+  concurrent identical queries (#111)
+- `BeachResultCard`, the Search screen's result card showing a beach's entry fee, wave
+  height, water temperature, shoe advice, and nearby amenities (#112)
+- `mapOverpassToBeaches`, turning a raw Overpass response into `Beach` objects —
+  merging adjoining OSM ways into a single beach and attaching nearby amenities within
+  150m — and new OSM-derived fields (surface, fee, amenities, geometry) on the `Beach`
+  model (#113)
+- `BeachCache`, a persistent, stale-while-revalidate cache of OSM beach results keyed
+  by grid cell, falling back to the static beach list when offline (#114)
+- `BeachGearAdvisor` (`adviseOnShoes`), advising whether shoes/slippers are worth
+  bringing based on a beach's ground surface (#116)
+- `NearbyBeachesProvider`, combining cached OSM beaches with batched marine data for a
+  picked map location, debounced against rapid repeated picks (#118)
+- Swim suitability scoring (`scoreSwimSuitability`) and the `SwimSuggestionPill`
+  widget, turning wave height/wind speed/rain chance into a good/caution/poor verdict
+  (#121)
+- `ConditionAlertService`, deciding when a "conditions turned favorable" swim alert
+  should fire, given a before/after suitability verdict (#124)
+- Tap-to-pick location on `LocationMapCard`, drawing a 20km search radius circle and
+  gold beach-geometry overlays for the picked point's nearby beaches (#127)
+- Loading and error states for the Home and Search screens (#128)
+- Home → Search navigation: tapping the Home search field opens the Search screen
+  (#129)
+- An integration test covering the full nearby-beaches flow: pick a location on the
+  map, list real OSM beaches, and show their real marine/amenity fields on a result
+  card (#130)
+- Pull-to-refresh on the Home and Search screens (#131)
+- Unit tests for `MarineProvider` and `WeatherProvider` (#133)
+
+### Changed
+
+- Composed the Search screen from `SearchField` and `BeachResultCard`, rendering the
+  static placeholder beach list (#117)
+- Upgraded `flutter_map` to 8.3.2 and `latlong2` to 0.10.x (#119)
+- Composed the Home screen from `StatTile`, `HourlyForecastItem`, and `LocationMapCard`
+  (#120)
+- Extended `WeatherCondition` with rain chance, pressure, UV index, and hourly/daily
+  forecast fields (#125)
+- Bound `BeachResultCard` to real OSM/marine/gear-advisor fields in the nearby-beaches
+  pipeline (exercised by the integration test; not yet wired into a shipped screen)
+  (#126)
+- Bound the Home screen to real `WeatherProvider` data (temperature, wind speed, rain
+  chance, pressure, UV index, hourly forecast) and to `MarineProvider`'s loading/error
+  state (#132)
+
 ## [2026.10.3] - 2026-09-29
 
 ### Added
