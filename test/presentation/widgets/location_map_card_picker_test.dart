@@ -189,6 +189,127 @@ void main() {
     expect(polylineLayer.polylines.single.color, const Color(0xFFC9A227));
   });
 
+  testWidgets(
+    'falls back to the last non-empty beach list when a later fetch errors out empty',
+    (tester) async {
+      final provider = await _fakeProvider();
+      final beach = Beach(
+        name: 'Line Beach',
+        city: 'Cesme',
+        latitude: 38.32,
+        longitude: 26.32,
+        geometry: const [LatLng(38.32, 26.32), LatLng(38.33, 26.33)],
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LocationMapCard(
+              center: center,
+              placeName: 'Cesme, Izmir',
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: provider,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // A successful pick with data.
+      provider.setBeaches([beach]);
+      await tester.pump();
+      expect(tester.widget<PolylineLayer>(find.byType(PolylineLayer)).polylines, hasLength(1));
+
+      // A later fetch errors out with nothing: the previous data stays on
+      // screen instead of leaving the map blank.
+      provider.setBeaches(const [], status: NearbyBeachesStatus.error);
+      await tester.pump();
+      expect(tester.widget<PolylineLayer>(find.byType(PolylineLayer)).polylines, hasLength(1));
+
+      // A later fetch that is merely empty (not an error) clears the
+      // overlay rather than keeping stale data forever.
+      provider.setBeaches(const [], status: NearbyBeachesStatus.loaded);
+      await tester.pump();
+      expect(tester.widget<PolylineLayer>(find.byType(PolylineLayer)).polylines, isEmpty);
+    },
+  );
+
+  testWidgets('individual beach overlays are capped at kMaxRenderedBeachOverlays', (tester) async {
+    final provider = await _fakeProvider();
+    provider.setBeaches([
+      for (var i = 0; i < kMaxRenderedBeachOverlays + 10; i++)
+        Beach(
+          name: 'Beach $i',
+          city: 'Cesme',
+          latitude: 38.3 + i * 0.001,
+          longitude: 26.3,
+          geometry: [LatLng(38.3 + i * 0.001, 26.3), LatLng(38.3 + i * 0.001, 26.301)],
+        ),
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationMapCard(
+            center: center,
+            placeName: 'Cesme, Izmir',
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: provider,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final polylineLayer = tester.widget<PolylineLayer>(find.byType(PolylineLayer));
+    expect(polylineLayer.polylines, hasLength(kMaxRenderedBeachOverlays));
+  });
+
+  testWidgets('a center change resets the picked point back to the new center', (tester) async {
+    final provider = await _fakeProvider();
+    const otherCenter = LatLng(40.0, 29.0);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationMapCard(
+            center: center,
+            placeName: 'Cesme, Izmir',
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: provider,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Pick a point away from the initial center.
+    await tester.tap(find.byType(FlutterMap));
+    await tester.pump(const Duration(milliseconds: 300));
+    var circleLayer = tester.widget<CircleLayer>(find.byType(CircleLayer));
+    final pickedLat = circleLayer.circles.single.point.latitude;
+    expect(pickedLat, closeTo(center.latitude, 0.05));
+
+    // Changing `center` (e.g. the user searched a new place) resets the
+    // circle back to the new center rather than keeping the old pick.
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationMapCard(
+            center: otherCenter,
+            placeName: 'Istanbul',
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: provider,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    circleLayer = tester.widget<CircleLayer>(find.byType(CircleLayer));
+    expect(circleLayer.circles.single.point, otherCenter);
+  });
+
   testWidgets('OsmAttribution is visible on the map card', (tester) async {
     final provider = await _fakeProvider();
 
