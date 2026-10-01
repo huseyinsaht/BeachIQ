@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
@@ -5,13 +7,19 @@ import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeMarineRepository extends MarineRepository {
-  _FakeMarineRepository({this.data, this.error}) : super(MarineApiService());
+  _FakeMarineRepository({this.data, this.error, this.whenReady})
+    : super(MarineApiService());
 
   final SeaCondition? data;
   final Object? error;
 
+  /// When set, [getMarineData] waits on this future before resolving —
+  /// lets a test control exactly when an in-flight fetch completes.
+  final Future<void>? whenReady;
+
   @override
   Future<SeaCondition> getMarineData(double lat, double lon) async {
+    if (whenReady != null) await whenReady;
     if (error != null) {
       throw error!;
     }
@@ -79,5 +87,28 @@ void main() {
       // Once for entering the loading state, once for the resolved state.
       expect(notifyCount, 2);
     });
+
+    test(
+      'disposing while a fetch is in flight does not throw once that '
+      'fetch later completes',
+      () async {
+        final completer = Completer<void>();
+        final condition = SeaCondition(
+          waveHeight: 0.8,
+          waveDirection: 180,
+          wavePeriod: 6,
+          seaSurfaceTemperature: 23.5,
+        );
+        final provider = MarineProvider(
+          _FakeMarineRepository(data: condition, whenReady: completer.future),
+        );
+
+        final future = provider.fetchData(38.3, 26.3);
+        provider.dispose();
+
+        completer.complete();
+        await expectLater(future, completes);
+      },
+    );
   });
 }
