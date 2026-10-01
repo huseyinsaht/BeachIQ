@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../data/models/beach.dart';
 import '../../data/static_beaches.dart';
 import '../../logic/providers/favorites_provider.dart';
+import '../../logic/providers/unit_preferences_provider.dart';
+import '../../logic/unit_preferences.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/search_field.dart';
 
@@ -32,6 +34,7 @@ class SearchScreen extends StatefulWidget {
     this.error,
     this.onRefresh,
     this.favoritesProvider,
+    this.unitPreferencesProvider,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`, alongside the local
@@ -61,6 +64,11 @@ class SearchScreen extends StatefulWidget {
   /// favorites-only toggle. Null (the default) hides both.
   final FavoritesProvider? favoritesProvider;
 
+  /// Drives each result's wave-height/water-temperature unit formatting
+  /// and the header overflow menu's unit toggle. Null (the default)
+  /// renders every value in metric, unchanged from before.
+  final UnitPreferencesProvider? unitPreferencesProvider;
+
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
@@ -79,27 +87,35 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
-    widget.favoritesProvider?.addListener(_onFavoritesChanged);
+    widget.favoritesProvider?.addListener(_onProviderChanged);
+    widget.unitPreferencesProvider?.addListener(_onProviderChanged);
   }
 
   @override
   void didUpdateWidget(covariant SearchScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.favoritesProvider != widget.favoritesProvider) {
-      oldWidget.favoritesProvider?.removeListener(_onFavoritesChanged);
-      widget.favoritesProvider?.addListener(_onFavoritesChanged);
+      oldWidget.favoritesProvider?.removeListener(_onProviderChanged);
+      widget.favoritesProvider?.addListener(_onProviderChanged);
+    }
+    if (oldWidget.unitPreferencesProvider != widget.unitPreferencesProvider) {
+      oldWidget.unitPreferencesProvider?.removeListener(_onProviderChanged);
+      widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     }
   }
 
   @override
   void dispose() {
-    widget.favoritesProvider?.removeListener(_onFavoritesChanged);
+    widget.favoritesProvider?.removeListener(_onProviderChanged);
+    widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 
   /// Rebuilds so each result's heart icon (and, while filtering to
-  /// favorites only, the list itself) reflects the latest favorites.
-  void _onFavoritesChanged() {
+  /// favorites only, the list itself) reflects the latest favorites, and
+  /// so a unit-system change re-formats the wave-height/water-temperature
+  /// lines.
+  void _onProviderChanged() {
     if (mounted) setState(() {});
   }
 
@@ -186,7 +202,12 @@ class _SearchScreenState extends State<SearchScreen> {
                       ),
                     IconButton(
                       icon: const Icon(Icons.more_horiz, color: _textPrimary),
-                      onPressed: () {},
+                      onPressed: () {
+                        final provider = widget.unitPreferencesProvider;
+                        if (provider != null) {
+                          _showUnitSystemSheet(context, provider);
+                        }
+                      },
                       tooltip: 'More',
                     ),
                   ],
@@ -271,6 +292,8 @@ class _SearchScreenState extends State<SearchScreen> {
       );
     }
     final favoritesProvider = widget.favoritesProvider;
+    final unitSystem =
+        widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
     final list = ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 20),
@@ -286,6 +309,7 @@ class _SearchScreenState extends State<SearchScreen> {
           onFavoriteToggle: favoritesProvider == null
               ? null
               : () => favoritesProvider.toggleFavorite(beach),
+          unitSystem: unitSystem,
         );
       },
     );
@@ -297,4 +321,42 @@ class _SearchScreenState extends State<SearchScreen> {
     if (refresh == null) return list;
     return RefreshIndicator(onRefresh: refresh, child: list);
   }
+}
+
+/// Opens a small bottom sheet to switch between metric and imperial units,
+/// the "small toggle entry point" added to this screen's existing overflow
+/// ("...") header menu (an identical copy of this lives in `main.dart` for
+/// the Home screen's map card overflow menu, matching this codebase's
+/// existing convention of small per-file duplication over a
+/// presentation/main.dart cross-dependency).
+Future<void> _showUnitSystemSheet(
+  BuildContext context,
+  UnitPreferencesProvider provider,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final option in UnitSystem.values)
+              RadioListTile<UnitSystem>(
+                title: Text(
+                  option == UnitSystem.metric
+                      ? 'Metric (m, °C, km/h)'
+                      : 'Imperial (ft, °F, mph)',
+                ),
+                value: option,
+                groupValue: provider.unitSystem,
+                onChanged: (value) {
+                  if (value != null) provider.setUnitSystem(value);
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }

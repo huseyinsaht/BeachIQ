@@ -13,7 +13,9 @@ import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
+import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
+import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
@@ -226,6 +228,44 @@ void main() {
       expect(find.byType(HourlyForecastItem), findsNWidgets(2));
       expect(find.text('Now'), findsOneWidget);
       expect(find.text('28°'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'an imperial UnitPreferencesProvider converts the header, stat grid '
+    'and hourly row temperature/wind speed values',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+      final unitPreferencesProvider = UnitPreferencesProvider(
+        await SharedPreferences.getInstance(),
+      );
+      await unitPreferencesProvider.setUnitSystem(UnitSystem.imperial);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            unitPreferencesProvider: unitPreferencesProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Header: 27°C -> 81°F; H:29°C/L:15°C -> H:84°F/L:59°F.
+      expect(find.text('81°F'), findsOneWidget);
+      expect(find.text('H:84°F L:59°F'), findsOneWidget);
+
+      // Stat grid: 12 km/h -> 7 mph.
+      expect(find.text('7 mph'), findsOneWidget);
+
+      // Hourly row: 28°C -> 82°F.
+      expect(find.text('82°F'), findsOneWidget);
+
+      // None of the metric strings should remain.
+      expect(find.text('27°'), findsNothing);
+      expect(find.text('12 km/h'), findsNothing);
     },
   );
 
