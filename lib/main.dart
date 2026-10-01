@@ -22,6 +22,10 @@ import 'presentation/widgets/search_field.dart';
 import 'presentation/widgets/stat_tile.dart';
 
 void main() async {
+  // Required before any plugin platform-channel call (here,
+  // SharedPreferences.getInstance()) made ahead of runApp(), which would
+  // otherwise initialize the binding itself.
+  WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   runApp(MarineApp(unitPreferencesProvider: UnitPreferencesProvider(prefs)));
 }
@@ -529,7 +533,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           unitSystem,
                         ),
                         trendDirection: StatTrendDirection.up,
-                        trendDelta: '2 km/h',
+                        trendDelta: unitSystem == UnitSystem.imperial
+                            ? '1 mph'
+                            : '2 km/h',
                       ),
                       StatTile(
                         icon: Icons.water_drop_outlined,

@@ -270,6 +270,43 @@ void main() {
   );
 
   testWidgets(
+    'the map card overflow opens the unit sheet, and picking Imperial '
+    'converts the header without a restart',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+      final unitPreferencesProvider = UnitPreferencesProvider(
+        await SharedPreferences.getInstance(),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            unitPreferencesProvider: unitPreferencesProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('27°'), findsOneWidget);
+      expect(find.text('Imperial (ft, °F, mph)'), findsNothing);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Imperial (ft, °F, mph)'), findsOneWidget);
+
+      await tester.tap(find.text('Imperial (ft, °F, mph)'));
+      await tester.pumpAndSettle();
+
+      expect(unitPreferencesProvider.unitSystem, UnitSystem.imperial);
+      expect(find.text('81°F'), findsOneWidget);
+      expect(find.text('27°'), findsNothing);
+    },
+  );
+
+  testWidgets(
     'the hourly row starts at the current hour (not local midnight) and '
     'caps at 24 entries',
     (WidgetTester tester) async {
