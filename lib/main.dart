@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data/models/weather_code.dart';
 import 'data/models/weather_condition.dart';
@@ -9,6 +10,7 @@ import 'data/repositories/marine_repository.dart';
 import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
 import 'data/services/weather_api_service.dart';
+import 'logic/providers/favorites_provider.dart';
 import 'logic/providers/marine_provider.dart';
 import 'logic/providers/weather_provider.dart';
 import 'presentation/screens/search_screen.dart';
@@ -172,6 +174,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static final _placeCenter = LatLng(38.3220, 26.3260);
 
+  /// Guards [_openSearch] against a fast double-tap pushing two
+  /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
+  /// await is still pending.
+  bool _openingSearch = false;
+
   @override
   void initState() {
     super.initState();
@@ -235,6 +242,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ) ??
           Future.value(),
     ]);
+  }
+
+  /// Obtains a [FavoritesProvider] (async: it needs `SharedPreferences`)
+  /// and pushes [SearchScreen] with it, so the favorite hearts and the
+  /// favorites-only star toggle are live on the real navigation path.
+  Future<void> _openSearch(BuildContext context) async {
+    if (_openingSearch) return;
+    _openingSearch = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!context.mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) =>
+              SearchScreen(favoritesProvider: FavoritesProvider(prefs)),
+        ),
+      );
+    } finally {
+      _openingSearch = false;
+    }
   }
 
   @override
@@ -365,11 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // place.
                   GestureDetector(
                     key: const Key('home-search-entry'),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const SearchScreen(),
-                      ),
-                    ),
+                    onTap: () => _openSearch(context),
                     child: const AbsorbPointer(child: SearchField()),
                   ),
                   const SizedBox(height: 16),
