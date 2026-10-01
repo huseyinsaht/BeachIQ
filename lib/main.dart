@@ -19,12 +19,14 @@ import 'logic/providers/marine_provider.dart';
 import 'logic/providers/nearby_beaches_provider.dart';
 import 'logic/providers/unit_preferences_provider.dart';
 import 'logic/providers/weather_provider.dart';
+import 'logic/swim_suitability.dart';
 import 'logic/unit_preferences.dart';
 import 'presentation/screens/search_screen.dart';
 import 'presentation/widgets/hourly_forecast_item.dart';
 import 'presentation/widgets/location_map_card.dart';
 import 'presentation/widgets/search_field.dart';
 import 'presentation/widgets/stat_tile.dart';
+import 'presentation/widgets/swim_suggestion_pill.dart';
 
 void main() async {
   // Required before any plugin platform-channel call (here,
@@ -270,9 +272,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _bgGradientBottom = Color(0xFF2A3145);
   static const _textPrimary = Color(0xFFFFFFFF);
   static const _textSecondary = Color(0xFF8B93A6);
-  static const _textOnPaper = Color(0xFF2E3057);
-  static const _pillGradientStart = Color(0xFFD9DBDF);
-  static const _pillGradientEnd = Color(0xFFF2F3F5);
 
   static final _placeCenter = LatLng(38.3220, 26.3260);
 
@@ -415,6 +414,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final weatherData = widget.weatherProvider?.currentData;
     final unitSystem =
         widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
+    final swimVerdict = scoreSwimSuitability(
+      waveHeightM: marineProvider?.currentData?.waveHeight,
+      windSpeedKmh: weatherData?.windSpeed,
+      rainChancePercent: weatherData?.rainChancePercent?.round(),
+    );
     final hourly = _upcomingHourly(
       weatherData?.hourly ?? const [],
       (widget.now ?? DateTime.now)(),
@@ -524,41 +528,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const AbsorbPointer(child: SearchField()),
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [_pillGradientStart, _pillGradientEnd],
-                      ),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.wb_sunny_outlined,
-                          size: 18,
-                          color: _textOnPaper,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Good conditions for a swim right now',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: _textOnPaper,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  SwimSuggestionPill(verdict: swimVerdict),
                   const SizedBox(height: 20),
                   GridView.count(
                     crossAxisCount: 2,
