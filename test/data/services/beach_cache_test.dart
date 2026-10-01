@@ -2,6 +2,7 @@ import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/static_beaches.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final _testBeach = Beach(
@@ -11,13 +12,45 @@ final _testBeach = Beach(
   longitude: 30.65,
 );
 
+/// A beach with every [Beach] field set to a non-default value, so a
+/// round-trip through [BeachCache] that silently dropped a field would be
+/// caught by [_expectSameBeaches].
+final _fullyPopulatedBeach = Beach(
+  name: 'Full Plajı',
+  city: 'Full City',
+  latitude: 36.90,
+  longitude: 30.65,
+  surface: 'sand',
+  hasLifeguard: true,
+  fee: BeachFee.paid,
+  hasShower: true,
+  hasToilets: true,
+  hasChangingRoom: true,
+  hasParking: true,
+  hasCafe: true,
+  hasBeachResort: true,
+  geometry: [LatLng(36.90, 30.65), LatLng(36.91, 30.66)],
+);
+
 void _expectSameBeaches(List<Beach> actual, List<Beach> expected) {
   expect(actual.length, expected.length);
   for (var i = 0; i < actual.length; i++) {
-    expect(actual[i].name, expected[i].name);
-    expect(actual[i].city, expected[i].city);
-    expect(actual[i].latitude, expected[i].latitude);
-    expect(actual[i].longitude, expected[i].longitude);
+    final a = actual[i];
+    final e = expected[i];
+    expect(a.name, e.name);
+    expect(a.city, e.city);
+    expect(a.latitude, e.latitude);
+    expect(a.longitude, e.longitude);
+    expect(a.surface, e.surface);
+    expect(a.hasLifeguard, e.hasLifeguard);
+    expect(a.fee, e.fee);
+    expect(a.hasShower, e.hasShower);
+    expect(a.hasToilets, e.hasToilets);
+    expect(a.hasChangingRoom, e.hasChangingRoom);
+    expect(a.hasParking, e.hasParking);
+    expect(a.hasCafe, e.hasCafe);
+    expect(a.hasBeachResort, e.hasBeachResort);
+    expect(a.geometry, e.geometry);
   }
 }
 
@@ -183,6 +216,45 @@ void main() {
       );
       _expectSameBeaches(result.beaches, [refreshedBeach]);
       expect(result.isStale, isFalse);
+    });
+  });
+
+  group('BeachCache JSON round-trip', () {
+    test('every Beach field survives a cache write then read, not just '
+        'name/city/lat/lon', () async {
+      final cache = BeachCache(await prefs());
+
+      await cache.put(36.90, 30.65, [_fullyPopulatedBeach]);
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called'),
+      );
+
+      _expectSameBeaches(result.beaches, [_fullyPopulatedBeach]);
+    });
+
+    test('a beach with null surface/hasLifeguard/geometry round-trips as '
+        'null, not a default', () async {
+      final cache = BeachCache(await prefs());
+      final beach = Beach(
+        name: 'No Extra Data Plajı',
+        city: 'Test City',
+        latitude: 36.90,
+        longitude: 30.65,
+      );
+
+      await cache.put(36.90, 30.65, [beach]);
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called'),
+      );
+
+      expect(result.beaches.single.surface, isNull);
+      expect(result.beaches.single.hasLifeguard, isNull);
+      expect(result.beaches.single.geometry, isNull);
+      expect(result.beaches.single.fee, BeachFee.unknown);
     });
   });
 }
