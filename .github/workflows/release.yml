@@ -1,7 +1,7 @@
 name: Release
 
-# Runs after a release PR ("Version YYYY.MM.N", develop -> main) is merged.
-# Creates the git tag vYYYY.MM.N and a GitHub Release whose notes are the PR
+# Runs after a release PR ("Version YYYY.M.N", develop -> main) is merged.
+# Creates the git tag vYYYY.M.N and a GitHub Release whose notes are the PR
 # body, with a debug APK attached so the build can be installed on a phone.
 
 on:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to (re)release, e.g. 2026.10.3 (must match a merged "Version <x>" PR)'
+        description: 'Version to (re)release, e.g. 2026.10.3 or 2026.3.1 (must match a merged "Version <x>" PR)'
         required: true
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
               --jq "[.[] | select(.merged_at != null and .title == \"Version $INPUT_VERSION\")][0] // empty")
           else
             PR_JSON=$(gh api "repos/$REPO/commits/$SHA/pulls" \
-              --jq '[.[] | select(.merged_at != null and .base.ref == "main" and (.title | test("^Version [0-9]{4}\\.[0-9]{2}\\.[0-9]+$")))][0] // empty')
+              --jq '[.[] | select(.merged_at != null and .base.ref == "main" and (.title | test("^Version [0-9]{4}\\.[0-9]{1,2}\\.[0-9]+$")))][0] // empty')
           fi
           if [ -z "$PR_JSON" ]; then
             echo "No merged release PR for this commit; nothing to release."

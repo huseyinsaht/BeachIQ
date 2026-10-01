@@ -85,6 +85,14 @@ void main() {
           uri.queryParameters['current'],
           'temperature_2m,wind_speed_10m,weather_code',
         );
+        expect(
+          uri.queryParameters['hourly'],
+          'temperature_2m,weather_code,uv_index,precipitation_probability,pressure_msl',
+        );
+        expect(
+          uri.queryParameters['daily'],
+          'temperature_2m_max,temperature_2m_min',
+        );
       }, () => mockClient);
     });
   });

@@ -1,10 +1,9 @@
 # Architecture
 
-BeachIQ is a Flutter app (SDK `^3.8.1`) currently in early development: the code lays
-out data models, a repository/service layer for marine and weather conditions, and a
-growing set of presentational widgets matching `docs/design.md`, but only one screen is
-wired up so far, and it does not yet consume any of that data or render any of those
-widgets.
+BeachIQ is a Flutter app (SDK `^3.8.1`). Both screens from `docs/design.md` are now
+implemented and wired to real data: the Home screen is a live weather/swim-suitability
+dashboard with an interactive map, and the Search screen shows real nearby beaches
+(from OpenStreetMap) enriched with marine data, favorites and unit preferences.
 
 ## Layers
 
@@ -12,116 +11,233 @@ widgets.
 
 Plain Dart data classes:
 
-- `Beach` (`lib/data/models/beach.dart`) — `name`, `city`, `latitude`, `longitude`.
+- `Beach` (`lib/data/models/beach.dart`) — `name`, `city`, `latitude`, `longitude`,
+  plus OSM-derived fields: `surface`, `hasLifeguard`, `fee` (`BeachFee`: `free`/`paid`/
+  `unknown`), the amenity flags `hasShower`/`hasToilets`/`hasChangingRoom`/
+  `hasParking`/`hasCafe`/`hasBeachResort`, and an optional `geometry` (polygon/line
+  points).
 - `SeaCondition` (`lib/data/models/sea_condition.dart`) — `waveHeight`, `waveDirection`,
-  `wavePeriod`, `seaSurfaceTemperature`. `SeaCondition.fromJson` parses the Open-Meteo
-  Marine API's `current` object.
+  `wavePeriod`, `seaSurfaceTemperature`, parsed from the Open-Meteo Marine API's
+  `current` object.
 - `WeatherCondition` (`lib/data/models/weather_condition.dart`) — `temperature`,
-  `windSpeed`, `weatherCode`, parsed from Open-Meteo forecast fields (`temperature_2m`,
-  `wind_speed_10m`, `weather_code`). Fetched by `WeatherApiService`/`WeatherRepository`,
-  but not yet consumed by any provider-driven screen.
+  `windSpeed`, `weatherCode`, plus `pressureHpa`, `uvIndex`, `rainChancePercent`,
+  `highTemperature`/`lowTemperature` and a list of `WeatherHourly` entries (`time`,
+  `temperature`, `weatherCode`), parsed from Open-Meteo's `current`/`hourly`/`daily`
+  fields. Missing values stay `null` rather than being fabricated as zero.
+- `WeatherCode` (`lib/data/models/weather_code.dart`) — maps Open-Meteo's numeric WMO
+  weather code to a human-readable description (`weatherCodeDescription`).
+
+### `lib/data/mappers`
+
+- `mapOverpassToBeaches` (`lib/data/mappers/osm_beach_mapper.dart`) — turns a raw
+  Overpass JSON response into `Beach` objects: groups `natural=beach` ways/nodes,
+  merges adjoining ways that represent the same physical beach (union-find over a 30m
+  distance threshold), and attaches nearby amenity elements (showers, toilets,
+  changing rooms, parking, cafés, lifeguards, beach resorts) to the nearest beach
+  within 150m.
 
 ### `lib/data/static_beaches.dart`
 
-A hardcoded `List<Beach>` of 10 Turkish beaches, used as placeholder data until a real
-beach data source exists. Returned by `BeachRepository`; not yet rendered by any screen.
+A hardcoded `List<Beach>` of 10 Turkish beaches. Used as the Search screen's
+placeholder data when no `NearbyBeachesProvider` is supplied, and as `BeachCache`'s
+offline fallback (filtered to a radius) when a live Overpass fetch fails and nothing
+is cached yet.
 
 ### `lib/data/services`
 
-- `MarineApiService` (`lib/data/services/api_service.dart`) — calls the Open-Meteo
-  Marine API (`https://marine-api.open-meteo.com/v1/marine`) for
-  `wave_height,sea_surface_temperature,wave_period,wave_direction` at a given
-  latitude/longitude. Throws on a non-200 response or a network error.
+- `MarineApiService` (`lib/data/services/api_service.dart`) — single-location
+  Open-Meteo Marine API call (`wave_height,sea_surface_temperature,wave_period,
+  wave_direction`), used by `MarineRepository`/`MarineProvider` for the Home screen.
 - `WeatherApiService` (`lib/data/services/weather_api_service.dart`) — calls the
-  Open-Meteo Forecast API (`https://api.open-meteo.com/v1/forecast`) for
-  `temperature_2m,wind_speed_10m,weather_code` at a given latitude/longitude. Same
-  200/error handling shape as `MarineApiService`.
+  Open-Meteo Forecast API for `current` (`temperature_2m,wind_speed_10m,weather_code`),
+  `hourly` (`temperature_2m,weather_code,uv_index,precipitation_probability,
+  pressure_msl`) and `daily` (`temperature_2m_max,temperature_2m_min`) fields.
+- `MarineBatchService` (`lib/data/services/marine_batch_service.dart`) — fetches wave
+  height and sea surface temperature for many beach coordinates in a single
+  multi-location Open-Meteo Marine request (comma-separated `latitude`/`longitude`),
+  with a 1-hour in-memory cache keyed by the sorted coordinate list. Used by
+  `NearbyBeachesProvider` instead of `MarineApiService`.
 - `buildNearbyBeachesQuery` (`lib/data/services/overpass_query_builder.dart`) — a pure
-  function (no network, no I/O) that builds the Overpass QL query for finding beaches
-  (`natural=beach`, with full geometry) and nearby amenities — showers, toilets,
-  changing rooms, parking, cafés, lifeguards, beach resorts — within `radiusMeters`
-  (default 20000) of a point. Nothing calls the Overpass API with this query yet; there
-  is no `OverpassService`.
+  function building the Overpass QL query for beaches (`natural=beach`, full geometry)
+  and nearby amenities within `radiusMeters` (default 20000) of a point.
+- `OverpassService` (`lib/data/services/overpass_service.dart`) — executes an Overpass
+  QL query against the public Overpass API. Tries a primary endpoint then a fallback
+  mirror; retries HTTP 429/504 with bounded exponential backoff; de-duplicates
+  concurrent calls for the same query string so only one HTTP request is made.
 
 ### `lib/data/repositories`
 
 - `MarineRepository` (`lib/data/repositories/marine_repository.dart`) — wraps
-  `MarineApiService`, pulls the response's `current` object, and turns it into a
-  `SeaCondition`. Throws a descriptive exception if `current` is missing or not a map.
+  `MarineApiService`, turns the response's `current` object into a `SeaCondition`.
+  Throws a descriptive exception if `current` is missing or malformed.
 - `WeatherRepository` (`lib/data/repositories/weather_repository.dart`) — wraps
-  `WeatherApiService`, pulls the response's `current` object, and turns it into a
-  `WeatherCondition`. Same shape and error handling as `MarineRepository`.
+  `WeatherApiService`, turns the response into a `WeatherCondition`. Same error
+  handling shape as `MarineRepository`.
 - `BeachRepository` (`lib/data/repositories/beach_repository.dart`) — returns
-  `staticBeaches` from `getBeaches()`. A placeholder so callers don't need to change
-  once a real beach data API exists.
+  `staticBeaches` from `getBeaches()`. Not used by either screen directly any more
+  (Search gets its real list from `NearbyBeachesProvider`, falling back to
+  `staticBeaches` itself when no provider is supplied); kept as a stable interface.
+
+### `lib/data/services/beach_cache.dart`
+
+`BeachCache` — a persistent (`SharedPreferences`-backed) cache of OSM beach query
+results, keyed by a coarse grid cell (`gridSize` degrees, default 0.25°) so nearby
+picks share a cache entry. Each entry has a 7-day TTL; an expired entry is still
+returned immediately (stale-while-revalidate) with `isStale: true`, letting the caller
+trigger a background `refresh()`. When nothing is cached and the live fetch fails,
+falls back to `staticBeaches` filtered to `fallbackRadiusKm` (default 100km) and marks
+the result `isFallback: true`.
+
+### `lib/logic`
+
+Pure, platform-agnostic logic with no I/O:
+
+- `scoreSwimSuitability` (`lib/logic/swim_suitability.dart`) — scores wave height, wind
+  speed and rain chance (each optional) into a `SwimVerdict` (`good`/`caution`/`poor`/
+  `unknown`) with a one-line message, used by the Home screen's suggestion pill.
+  `unknown` only when every input is missing.
+- `ConditionAlertService` (`lib/logic/condition_alert_service.dart`) — decides whether
+  a "conditions turned favorable" alert should fire on a verdict transition (only on
+  not-good → good). Pure trigger logic only: nothing in the app yet schedules a
+  background check or shows a real notification, so this isn't wired to any delivery
+  mechanism.
+- `adviseOnShoes` (`lib/logic/beach_gear_advisor.dart`) — advises `advised`/
+  `notNeeded`/`unknown` on bringing shoes/slippers, from a beach's OSM `surface` tag.
+  Framed as advice, never as a fact.
+- `lib/logic/unit_preferences.dart` — the `UnitSystem` enum (`metric`/`imperial`) and
+  conversion/formatting helpers (`formatWaveHeight`, `formatTemperature`,
+  `formatWindSpeed`, plus the raw `metersToFeet`/`celsiusToFahrenheit`/`kmhToMph`
+  converters).
 
 ### `lib/logic/providers`
 
 - `MarineProvider` (`lib/logic/providers/marine_provider.dart`) — a `ChangeNotifier`
-  exposing `currentData` (`SeaCondition?`), `isLoading`, and `error`. `fetchData(lat,
-  lon)` calls `MarineRepository.getMarineData` and notifies listeners before and after.
-  Nothing in the UI calls `fetchData` yet.
-- `WeatherProvider` (`lib/logic/providers/weather_provider.dart`) — the same
-  loading/data/error `ChangeNotifier` shape as `MarineProvider`, wrapping
-  `WeatherRepository.getWeatherData`. Not created or provided anywhere in `main.dart`.
+  exposing `currentData` (`SeaCondition?`), `isLoading`, `error`. `fetchData(lat, lon)`
+  calls `MarineRepository.getMarineData`. On the Home screen this is only triggered by
+  pull-to-refresh (see below), not on initial load.
+- `WeatherProvider` (`lib/logic/providers/weather_provider.dart`) — same shape as
+  `MarineProvider`, wrapping `WeatherRepository.getWeatherData`. Fetched for the fixed
+  Çeşme coordinates as soon as the Home screen mounts.
+- `FavoritesProvider` (`lib/logic/providers/favorites_provider.dart`) — persists the
+  set of favorited beaches via `SharedPreferences`, keyed by `"name|city"` (beaches
+  have no stable id). `toggleFavorite`/`isFavorite`/`favoritesAmong`.
+- `UnitPreferencesProvider` (`lib/logic/providers/unit_preferences_provider.dart`) —
+  holds and persists the user's `UnitSystem` choice via `SharedPreferences`, defaulting
+  to metric.
+- `NearbyBeachesProvider` (`lib/logic/providers/nearby_beaches_provider.dart`) — the
+  glue for a single picked map location: `pickLocation(point)` debounces (400ms
+  default) then resolves beaches via `BeachCache` (which only calls `OverpassService`
+  on a cache miss/stale entry), and enriches them with marine data in one
+  `MarineBatchService.fetchBatch` call. Exposes `beaches`, `seaConditionFor(beach)`,
+  `isLoading`, `error`, and a `status` (`idle`/`loading`/`loaded`/`empty`/`error`).
+  Guards against races from rapid picks and against calling `notifyListeners()` after
+  disposal.
 
 ### `lib/presentation/widgets`
 
-Pure presentational widgets built against `docs/design.md`'s home/search screens. None
-of them are referenced from `lib/main.dart` yet — each is exercised only by its own
-widget tests:
+Reusable widgets built against `docs/design.md`:
 
-- `StatTile` (`stat_tile.dart`) — icon + label + bold value + up/down trend indicator,
-  for the home screen's 2×2 stat grid (wind speed, rain chance, pressure, UV index).
+- `StatTile` (`stat_tile.dart`) — icon + label + bold value + trend indicator, used in
+  the Home screen's 2×2 stat grid.
 - `HourlyForecastItem` (`hourly_forecast_item.dart`) — time label + weather icon + bold
-  temperature, for the horizontally scrollable hourly forecast row.
-- `SearchField` (`search_field.dart`) — a rounded "paper" search input with a leading
-  search icon and `onChanged`/`onSubmitted` callbacks, for city search.
-- `LocationMapCard` (`location_map_card.dart`) — the rounded "paper" map card (a real
-  `FlutterMap`, optionally overridable `TileProvider`) with a docked bottom bar (pin
-  icon, bold place name, overflow menu).
+  temperature, used in the Home screen's scrollable hourly row.
+- `SearchField` (`search_field.dart`) — the rounded "paper" search input.
+- `LocationMapCard` (`location_map_card.dart`) — the rounded "paper" map card: a real
+  `FlutterMap` (OpenStreetMap tiles), a docked bottom location bar. When given a
+  `NearbyBeachesProvider`, the map becomes interactive: tapping it calls
+  `pickLocation`, draws a 20km search-radius circle around the pick, and renders the
+  resulting beaches as gold polygons/lines (capped at 40 overlays, nearest-first) via
+  `PolygonLayer`/`PolylineLayer`. Includes an `OsmAttribution` credit in the
+  bottom-left corner.
+- `OsmAttribution` (`osm_attribution.dart`) — a small "© OpenStreetMap contributors"
+  credit required by OSM's ODbL license, tapping it opens the OSM copyright page.
+- `SwimSuggestionPill` (`swim_suggestion_pill.dart`) — renders a `SwimVerdict` (from
+  `scoreSwimSuitability`) as the Home screen's "smart suggestion pill".
+- `BeachResultCard` (`beach_result_card.dart`) — the Search screen's result-sheet row:
+  beach name/subtitle, a weather icon/temperature, a favorite-toggle heart (when a
+  callback is supplied), and — once any beach info is supplied — a two-column block of
+  plain-text info lines (entry fee, wave height, water temperature, shoe advice, car
+  park, beach club, café). Unit-aware via `UnitSystem`. Every field renders "No data"/
+  "Unknown" rather than inventing a value when the source has none.
 
-### UI (`lib/main.dart`)
+### `lib/presentation/screens`
 
-- `MarineApp` — the root widget. Creates one `MarineProvider` (backed by a real
-  `MarineRepository`/`MarineApiService`) via `ChangeNotifierProvider` and hosts
-  `HomeScreen` inside a `MaterialApp`.
-- `HomeScreen` — currently renders a single `FlutterMap` (OpenStreetMap tiles, initial
-  center near the Turkish Aegean coast). It does not yet read from `MarineProvider` or
-  `WeatherProvider`, show beach data, or use any of the `lib/presentation/widgets`
-  components described in `docs/design.md`.
+- `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
+  `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
+  when supplied, else `staticBeaches`. Filters the list by name/city substring as the
+  user types, and (when a `FavoritesProvider` is supplied) to favorites-only via a
+  header star toggle. Shows `NearbyBeachesProvider`'s loading/error states. Supports
+  pull-to-refresh via an injected `onRefresh` callback.
+
+### `lib/main.dart`
+
+- `main()` — initializes Flutter bindings, loads `SharedPreferences`, creates one
+  shared `http.Client`, builds a `NearbyBeachesProvider` (`OverpassService` +
+  `BeachCache` + `MarineBatchService`) and a `UnitPreferencesProvider`, and runs
+  `MarineApp` with both.
+- `MarineApp` — the root widget. Creates `MarineProvider`/`WeatherProvider` via
+  `MultiProvider`/`ChangeNotifierProvider` and hosts `HomeScreen` inside a
+  `MaterialApp`, forwarding the `UnitPreferencesProvider`/`NearbyBeachesProvider`
+  passed into `main()`. Every optional provider defaults to `null`, so existing widget
+  tests that construct `MarineApp` without them still render the pre-wiring layout.
+- `HomeScreen` — the real dashboard: a header (place name, live temperature), a
+  condition row (description, high/low), `LocationMapCard`, a tappable (non-editable)
+  `SearchField` that pushes `SearchScreen`, `SwimSuggestionPill`, the 2×2 `StatTile`
+  grid (wind speed, rain chance, pressure, UV index — all from `WeatherProvider`), and
+  the hourly forecast row (trimmed to the next 24 entries from "now"). Shows a
+  full-screen loading spinner or error message (driven by `MarineProvider`) before the
+  first successful load; pull-to-refresh re-fetches both `MarineProvider` and
+  `WeatherProvider` without tearing down the screen.
 
 ## State flow
 
-`MarineProvider` is provided once at the app root via `provider`. Once a screen calls
-`fetchData(lat, lon)`, the provider requests data through `MarineRepository` →
-`MarineApiService` → the Open-Meteo Marine API, updates `currentData` / `isLoading` /
-`error`, and notifies listeners via `ChangeNotifier`. No screen currently triggers this
-flow — the provider is wired into the widget tree but idle. `WeatherProvider` follows
-the identical pattern through `WeatherRepository`/`WeatherApiService`, but isn't created
-or provided anywhere yet, so it has no state flow in the running app at all.
+On mount, `HomeScreen` calls `WeatherProvider.fetchData` and
+`NearbyBeachesProvider.pickLocation` for the fixed Çeşme coordinates (post-frame, to
+avoid notifying an ancestor mid-build). `WeatherProvider`/`MarineProvider` are
+`ChangeNotifier`s updated through their repository → service → Open-Meteo API chain;
+`HomeScreen` listens to both (plus `UnitPreferencesProvider`) and rebuilds on change.
+`MarineProvider.fetchData` is **not** called on initial load — only on pull-to-refresh
+— so `SwimSuggestionPill`'s wave-height input is typically absent until the user
+refreshes once; `MarineProvider` is otherwise used for the initial loading/error shell.
+
+`NearbyBeachesProvider.pickLocation` (debounced) resolves beaches via `BeachCache` →
+`OverpassService` → the Overpass API, maps them with `mapOverpassToBeaches`, then
+enriches them with a single `MarineBatchService` call; it notifies `LocationMapCard`
+(which redraws the beach overlay) and, once the user opens `SearchScreen`, that screen
+too. Tapping the map calls `pickLocation` again with the tapped point.
+`FavoritesProvider` and `UnitPreferencesProvider` are each created once SharedPreferences
+is available and persist across restarts.
 
 ## External APIs
 
-- **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — sea condition
-  data, used by `MarineApiService`.
-- **Open-Meteo Forecast API** (`api.open-meteo.com/v1/forecast`) — current
-  temperature/wind speed/weather code, used by `WeatherApiService`.
-- **Overpass API** (OpenStreetMap data) — `buildNearbyBeachesQuery` builds the query
-  string for it, but no service calls the API yet.
-- **OpenStreetMap tiles** (`tile.openstreetmap.org`) — used directly by `flutter_map`
-  in `HomeScreen` and in `LocationMapCard`.
+- **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — single-location
+  sea condition data (`MarineApiService`, Home screen) and a batched multi-location
+  variant (`MarineBatchService`, nearby-beaches results).
+- **Open-Meteo Forecast API** (`api.open-meteo.com/v1/forecast`) — current/hourly/daily
+  temperature, wind, pressure, UV index and rain chance, used by `WeatherApiService`.
+- **Overpass API** (OpenStreetMap data, with a fallback mirror) — queried by
+  `OverpassService` with `buildNearbyBeachesQuery`'s query, for beaches and nearby
+  amenities around a picked point.
+- **OpenStreetMap tiles** (`tile.openstreetmap.org`) — used by `flutter_map` in
+  `HomeScreen`'s `LocationMapCard`; credited via the `OsmAttribution` widget as
+  required by OSM's ODbL license.
 
 ## Tests
 
-- `flutter test` — unit tests for the models, services, and repositories
-  (`test/data/models`, `test/data/services`, `test/data/repositories`), provider tests
-  (`test/logic/providers`), widget tests for each presentational widget
-  (`test/presentation/widgets`), plus a widget test (`test/widget_test.dart`) that
-  renders `HomeScreen` with a fake tile provider to avoid real network calls. The API
-  service tests fake `http.Client` so none of them hit the network.
+- `flutter test` — unit tests for models, mappers, services, repositories
+  (`test/data/`), pure logic (`test/logic/swim_suitability_test.dart`,
+  `condition_alert_service_test.dart`, `beach_gear_advisor_test.dart`,
+  `unit_preferences_test.dart`), provider tests (`test/logic/providers/`, including
+  `NearbyBeachesProvider`/`FavoritesProvider`/`UnitPreferencesProvider`/
+  `MarineProvider`/`WeatherProvider`), widget tests for every presentational widget and
+  for `SearchScreen` (`test/presentation/`), plus `test/widget_test.dart` rendering
+  `HomeScreen` with a fake tile provider. API/service tests fake `http.Client` so none
+  hit the network.
 - `flutter test integration_test` — `integration_test/app_test.dart` boots the real
-  `MarineApp` widget tree and checks the home screen and map come up with
-  `MarineProvider` in a clean state (`isLoading: false`, `error: null`). CI runs this on
-  Linux under a virtual display: `xvfb-run -a flutter test integration_test -d linux
-  --reporter expanded`.
+  `MarineApp` widget tree with a fake tile provider and a fixture `http.Client`
+  (covering Overpass and the marine batch endpoint) and checks: the app boots with
+  `MarineProvider` clean; Home-to-Search navigation (search entry → `SearchScreen`,
+  back chevron → `HomeScreen`); and the full nearby-beaches flow (pick on boot → real
+  `BeachResultCard` fields from the fixture data). CI runs this on Linux under a
+  virtual display: `xvfb-run -a flutter test integration_test -d linux --reporter
+  expanded`.
