@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:beachiq/data/models/beach.dart';
@@ -197,6 +198,18 @@ class BeachCache {
         'city': beach.city,
         'latitude': beach.latitude,
         'longitude': beach.longitude,
+        'surface': beach.surface,
+        'hasLifeguard': beach.hasLifeguard,
+        'fee': beach.fee.name,
+        'hasShower': beach.hasShower,
+        'hasToilets': beach.hasToilets,
+        'hasChangingRoom': beach.hasChangingRoom,
+        'hasParking': beach.hasParking,
+        'hasCafe': beach.hasCafe,
+        'hasBeachResort': beach.hasBeachResort,
+        'geometry': beach.geometry
+            ?.map((point) => [point.latitude, point.longitude])
+            .toList(),
       };
 
   static Beach _beachFromJson(Map<String, dynamic> json) => Beach(
@@ -204,6 +217,27 @@ class BeachCache {
         city: json['city'] as String,
         latitude: (json['latitude'] as num).toDouble(),
         longitude: (json['longitude'] as num).toDouble(),
+        surface: json['surface'] as String?,
+        hasLifeguard: json['hasLifeguard'] as bool?,
+        fee: BeachFee.values.firstWhere(
+          (value) => value.name == json['fee'],
+          orElse: () => BeachFee.unknown,
+        ),
+        hasShower: json['hasShower'] as bool? ?? false,
+        hasToilets: json['hasToilets'] as bool? ?? false,
+        hasChangingRoom: json['hasChangingRoom'] as bool? ?? false,
+        hasParking: json['hasParking'] as bool? ?? false,
+        hasCafe: json['hasCafe'] as bool? ?? false,
+        hasBeachResort: json['hasBeachResort'] as bool? ?? false,
+        geometry: (json['geometry'] as List?)
+            ?.cast<List<dynamic>>()
+            .map(
+              (point) => LatLng(
+                (point[0] as num).toDouble(),
+                (point[1] as num).toDouble(),
+              ),
+            )
+            .toList(),
       );
 
   static double _haversineKm(
