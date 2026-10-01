@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.09.1] - 2026-10-01
+
 ### Added
 
 - `OsmAttribution` widget showing the required "© OpenStreetMap contributors" credit
