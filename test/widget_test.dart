@@ -900,5 +900,54 @@ void main() {
         expect(card.waterTemperatureCelsius, closeTo(25.0, 0.001));
       },
     );
+
+    testWidgets(
+      "Search's pull-to-refresh calls onRefresh, which re-invokes "
+      'nearbyBeachesProvider.pickLocation for the fixed place center',
+      (WidgetTester tester) async {
+        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+        addTearDown(nearbyBeachesProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        // Lets the postFrameCallback-triggered initial fetch resolve.
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('home-search-entry')));
+        await tester.pumpAndSettle();
+
+        // A second pickLocation for the exact same spot still re-runs the
+        // whole fetch (MarineBatchService's own 1-hour cache means it may
+        // not necessarily re-hit the network), which always notifies
+        // listeners at least twice: once entering NearbyBeachesStatus.loading
+        // and once resolving back to loaded. Counting notifications (rather
+        // than network calls) is what actually distinguishes a real
+        // pickLocation call from onRefresh being a silent no-op.
+        var notifications = 0;
+        nearbyBeachesProvider.addListener(() => notifications++);
+
+        final refreshIndicator = tester.widget<RefreshIndicator>(
+          find.descendant(
+            of: find.byType(SearchScreen),
+            matching: find.byType(RefreshIndicator),
+          ),
+        );
+        // The onRefresh closure itself only calls pickLocation() (it does
+        // not await the debounced fetch), so it resolves immediately;
+        // pumpAndSettle afterwards is what lets the debounce timer fire
+        // and the resulting fetch actually run to completion.
+        await refreshIndicator.onRefresh();
+        await tester.pumpAndSettle();
+
+        expect(notifications, greaterThanOrEqualTo(2));
+        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+      },
+    );
   });
 }
