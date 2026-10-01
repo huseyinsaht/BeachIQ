@@ -11,17 +11,86 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/marine_batch_service.dart';
+import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
+import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
+import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// A fake [http.Client] that never touches the real network: it answers an
+/// Overpass query with a single fixture beach and a marine-batch request
+/// with fixture wave/temperature data, keyed off the request host.
+class _FixtureNetworkClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.8,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 25.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+NearbyBeachesProvider _fixtureNearbyBeachesProvider() {
+  final client = _FixtureNetworkClient();
+  return NearbyBeachesProvider(
+    OverpassService(client),
+    BeachCache(_mockPrefs!),
+    MarineBatchService(client),
+    debounceDuration: const Duration(milliseconds: 1),
+  );
+}
+
+SharedPreferences? _mockPrefs;
 
 // Minimal valid 1x1 transparent PNG, used so the fake tile provider can
 // resolve a real image without any network access.
@@ -159,10 +228,12 @@ class _FixedWeatherRepository extends WeatherRepository {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     // HomeScreen's search entry point constructs a FavoritesProvider (via
-    // SharedPreferences.getInstance()) before pushing SearchScreen.
+    // SharedPreferences.getInstance()) before pushing SearchScreen, and
+    // NearbyBeachesProvider's BeachCache needs one too.
     SharedPreferences.setMockInitialValues({});
+    _mockPrefs = await SharedPreferences.getInstance();
   });
 
   testWidgets('HomeScreen renders the composed location-detail layout', (
@@ -680,4 +751,85 @@ void main() {
       expect(find.byIcon(Icons.favorite_border), findsWidgets);
     },
   );
+
+  group('nearbyBeachesProvider wiring', () {
+    testWidgets(
+      'HomeScreen fetches nearby beaches for the fixed place center on init',
+      (WidgetTester tester) async {
+        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+        addTearDown(nearbyBeachesProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+        expect(nearbyBeachesProvider.beaches, isNotEmpty);
+      },
+    );
+
+    testWidgets(
+      'HomeScreen forwards nearbyBeachesProvider to LocationMapCard for '
+      'tap-to-pick',
+      (WidgetTester tester) async {
+        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+        addTearDown(nearbyBeachesProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        // Lets the postFrameCallback-triggered pickLocation's debounce timer
+        // fire and resolve, so none is left pending when the test ends.
+        await tester.pumpAndSettle();
+
+        final mapCard = tester.widget<LocationMapCard>(
+          find.byType(LocationMapCard),
+        );
+        expect(mapCard.nearbyBeachesProvider, same(nearbyBeachesProvider));
+      },
+    );
+
+    testWidgets(
+      'opening Search from Home forwards the nearbyBeachesProvider, so real '
+      'beach-info fields show on the real navigation path',
+      (WidgetTester tester) async {
+        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+        addTearDown(nearbyBeachesProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        // Lets the postFrameCallback-triggered fetch resolve before Search
+        // is opened, so the real list is already loaded.
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('home-search-entry')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SearchScreen), findsOneWidget);
+        expect(find.text('Fixture Beach'), findsOneWidget);
+        final card = tester.widget<BeachResultCard>(
+          find.byType(BeachResultCard),
+        );
+        expect(card.waveHeightMeters, closeTo(0.8, 0.001));
+        expect(card.waterTemperatureCelsius, closeTo(25.0, 0.001));
+      },
+    );
+  });
 }

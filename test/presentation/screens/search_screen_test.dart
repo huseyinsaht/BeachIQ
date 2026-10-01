@@ -1,5 +1,14 @@
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/marine_batch_service.dart';
+import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/static_beaches.dart';
+import 'package:beachiq/logic/beach_gear_advisor.dart';
 import 'package:beachiq/logic/providers/favorites_provider.dart';
+import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
@@ -7,7 +16,99 @@ import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+/// A fake [http.Client] that never touches the real network: it answers an
+/// Overpass query with a single fixture beach (with a `surface=pebbles` tag
+/// and a parking node nearby) and a marine-batch request with fixture
+/// wave/temperature data, keyed off the request host.
+class _FixtureNetworkClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.6,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 23.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+            'surface': 'pebbles',
+          },
+          'geometry': [
+            {'lat': 38.30, 'lon': 26.30},
+            {'lat': 38.31, 'lon': 26.30},
+            {'lat': 38.31, 'lon': 26.31},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          'lat': 38.3003,
+          'lon': 26.3003,
+          'tags': {'amenity': 'parking'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+/// A fake [http.Client] whose response is controlled by [overpassCompleter],
+/// so a provider using it is deterministically stuck mid-fetch until the
+/// test completes it — rather than racing against a fixture client's
+/// (near-instant) response.
+class _PendingNetworkClient extends http.BaseClient {
+  final overpassCompleter = Completer<http.StreamedResponse>();
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return overpassCompleter.future;
+  }
+}
+
+Future<NearbyBeachesProvider> _loadedFixtureProvider(
+  WidgetTester tester,
+) async {
+  SharedPreferences.setMockInitialValues({});
+  final client = _FixtureNetworkClient();
+  final provider = NearbyBeachesProvider(
+    OverpassService(client),
+    BeachCache(await SharedPreferences.getInstance()),
+    MarineBatchService(client),
+    debounceDuration: const Duration(milliseconds: 1),
+  );
+  provider.pickLocation(const LatLng(38.3, 26.3));
+  await tester.pump(const Duration(milliseconds: 10));
+  await tester.pump(const Duration(milliseconds: 10));
+  return provider;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -332,6 +433,79 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('Imperial (ft, °F, mph)'), findsNothing);
+      },
+    );
+  });
+
+  group('nearbyBeachesProvider', () {
+    testWidgets(
+      'without a nearbyBeachesProvider, results stay the static placeholder '
+      'list with no beach-info block',
+      (tester) async {
+        await tester.pumpWidget(wrap(const SearchScreen()));
+
+        expect(find.text(staticBeaches.first.name), findsOneWidget);
+        expect(find.textContaining('Wave height'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a loaded nearbyBeachesProvider replaces the static list and shows '
+      'real beach-info fields on each result',
+      (tester) async {
+        final provider = await _loadedFixtureProvider(tester);
+        addTearDown(provider.dispose);
+        expect(provider.status, NearbyBeachesStatus.loaded);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(nearbyBeachesProvider: provider)),
+        );
+        await tester.pump();
+
+        expect(find.text('Fixture Beach'), findsOneWidget);
+        expect(find.text(staticBeaches.first.name), findsNothing);
+
+        final card = tester.widget<BeachResultCard>(
+          find.byType(BeachResultCard),
+        );
+        expect(card.fee, BeachFee.free);
+        expect(card.waveHeightMeters, closeTo(0.6, 0.001));
+        expect(card.waterTemperatureCelsius, closeTo(23.0, 0.001));
+        expect(card.shoeAdvice, ShoeAdvice.advised);
+        expect(card.hasParking, isTrue);
+        expect(find.textContaining('Wave height'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'a nearbyBeachesProvider mid-fetch shows the loading indicator',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final client = _PendingNetworkClient();
+        final provider = NearbyBeachesProvider(
+          OverpassService(client, endpoints: const ['https://example.com/api']),
+          BeachCache(await SharedPreferences.getInstance()),
+          MarineBatchService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+        provider.pickLocation(const LatLng(38.3, 26.3));
+        await tester.pump(const Duration(milliseconds: 2));
+        expect(provider.isLoading, isTrue);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(nearbyBeachesProvider: provider)),
+        );
+
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(BeachResultCard), findsNothing);
+
+        // Resolves the pending fetch so no future is left dangling past the
+        // test, matching NearbyBeachesProvider's own test conventions.
+        client.overpassCompleter.complete(
+          http.StreamedResponse(Stream.value(utf8.encode('{"elements":[]}')), 200),
+        );
+        await tester.pump(const Duration(milliseconds: 10));
       },
     );
   });

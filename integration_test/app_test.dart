@@ -9,13 +9,11 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
-import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:integration_test/integration_test.dart';
-import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -93,42 +91,6 @@ class _FixtureNetworkClient extends http.BaseClient {
   }
 }
 
-/// A minimal "nearby beaches" results sheet composed from already-shipped
-/// widgets/providers (the map's tap-to-pick from #79, the real-field
-/// binding from #81) purely for this test's own widget tree — mirroring
-/// what a future screen composition would render, without touching any
-/// `lib/` source file.
-class _NearbyBeachesResultsSheet extends StatelessWidget {
-  const _NearbyBeachesResultsSheet({required this.provider});
-
-  final NearbyBeachesProvider provider;
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: provider,
-      builder: (context, _) => Column(
-        children: [
-          for (final beach in provider.beaches)
-            BeachResultCard(
-              placeName: beach.name,
-              areaSubtitle: beach.city,
-              temperature: '--°',
-              fee: beach.fee,
-              waveHeightMeters: provider.seaConditionFor(beach)?.waveHeight,
-              waterTemperatureCelsius: provider
-                  .seaConditionFor(beach)
-                  ?.seaSurfaceTemperature,
-              hasParking: beach.hasParking,
-              hasBeachResort: beach.hasBeachResort,
-              hasCafe: beach.hasCafe,
-            ),
-        ],
-      ),
-    );
-  }
-}
-
 /// App-level smoke test: boots the real widget tree (MarineApp with its
 /// provider) on a device/emulator and checks the home screen comes up.
 /// Extend this file whenever a PR adds or changes a screen.
@@ -175,8 +137,9 @@ void main() {
   );
 
   testWidgets(
-    'Nearby beaches flow: picking a location on the map lists a beach and '
-    'the result card shows real fixture-derived fields',
+    'Nearby beaches flow: Home fetches real beaches for the fixed place '
+    'center on boot, and Search shows the result card with real '
+    'fixture-derived fields',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final overpassService = OverpassService(_FixtureNetworkClient());
@@ -190,39 +153,20 @@ void main() {
       );
       addTearDown(provider.dispose);
 
-      const center = LatLng(38.3, 26.3);
-
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Column(
-              children: [
-                LocationMapCard(
-                  center: center,
-                  placeName: 'Cesme, Izmir',
-                  tileProvider: _FakeTileProvider(),
-                  nearbyBeachesProvider: provider,
-                ),
-                Expanded(child: _NearbyBeachesResultsSheet(provider: provider)),
-              ],
-            ),
-          ),
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          nearbyBeachesProvider: provider,
         ),
       );
-      await tester.pump();
-
-      expect(find.byType(BeachResultCard), findsNothing);
-
-      // Tapping the map's visual center taps `initialCenter`. flutter_map
-      // delays a single tap by its double-tap-to-zoom window before firing
-      // `onTap`, so the first pump has to advance past that; the second
-      // advances past the provider's own (shortened) debounce.
-      await tester.tap(find.byType(FlutterMap));
-      await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(milliseconds: 50));
       await tester.pumpAndSettle();
 
       expect(provider.status, NearbyBeachesStatus.loaded);
+
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SearchScreen), findsOneWidget);
       expect(find.byType(BeachResultCard), findsOneWidget);
 
       final card = tester.widget<BeachResultCard>(find.byType(BeachResultCard));
