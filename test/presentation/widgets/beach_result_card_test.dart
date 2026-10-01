@@ -1,5 +1,6 @@
 import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/logic/beach_gear_advisor.dart';
+import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -155,9 +156,7 @@ void main() {
     expect(find.byIcon(Icons.favorite_border), findsNothing);
   });
 
-  testWidgets('a non-favorited beach shows an outlined heart', (
-    tester,
-  ) async {
+  testWidgets('a non-favorited beach shows an outlined heart', (tester) async {
     await tester.pumpWidget(
       wrap(
         BeachResultCard(
@@ -210,4 +209,46 @@ void main() {
 
     expect(tapCount, 1);
   });
+
+  testWidgets(
+    'defaults to metric, rendering wave height/water temp exactly as before',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            waveHeightMeters: 0.4,
+            waterTemperatureCelsius: 24,
+          ),
+        ),
+      );
+
+      expect(find.text('0.4 m'), findsOneWidget);
+      expect(find.text('24°'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'imperial renders wave height in feet and water temp in Fahrenheit',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            waveHeightMeters: 1,
+            waterTemperatureCelsius: 25,
+            unitSystem: UnitSystem.imperial,
+          ),
+        ),
+      );
+
+      expect(find.text('3.3 ft'), findsOneWidget);
+      expect(find.text('77°F'), findsOneWidget);
+      expect(find.text('0.4 m'), findsNothing);
+    },
+  );
 }

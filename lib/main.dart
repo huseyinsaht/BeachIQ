@@ -12,27 +12,79 @@ import 'data/services/api_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/favorites_provider.dart';
 import 'logic/providers/marine_provider.dart';
+import 'logic/providers/unit_preferences_provider.dart';
 import 'logic/providers/weather_provider.dart';
+import 'logic/unit_preferences.dart';
 import 'presentation/screens/search_screen.dart';
 import 'presentation/widgets/hourly_forecast_item.dart';
 import 'presentation/widgets/location_map_card.dart';
 import 'presentation/widgets/search_field.dart';
 import 'presentation/widgets/stat_tile.dart';
 
-void main() {
-  runApp(const MarineApp());
+void main() async {
+  // Required before any plugin platform-channel call (here,
+  // SharedPreferences.getInstance()) made ahead of runApp(), which would
+  // otherwise initialize the binding itself.
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  runApp(MarineApp(unitPreferencesProvider: UnitPreferencesProvider(prefs)));
 }
 
 const String _noData = 'No data';
 
-String _formatTemperature(double? celsius) {
+/// Formats a temperature per [unitSystem]. Metric keeps today's exact
+/// bare-degree style (no unit letter); imperial converts via
+/// [celsiusToFahrenheit] and appends "F" so the active system stays
+/// legible, matching [formatWindSpeed]'s existing km/h-vs-mph suffix.
+String _formatTemperature(double? celsius, UnitSystem unitSystem) {
   if (celsius == null) return '--°';
+  if (unitSystem == UnitSystem.imperial) {
+    return '${celsiusToFahrenheit(celsius).round()}°F';
+  }
   return '${celsius.round()}°';
 }
 
-String _formatWindSpeed(double? kmh) {
+String _formatWindSpeed(double? kmh, UnitSystem unitSystem) {
   if (kmh == null) return _noData;
-  return '${kmh.round()} km/h';
+  return formatWindSpeed(kmh, unitSystem);
+}
+
+/// Opens a small bottom sheet to switch between metric and imperial units,
+/// the "small toggle entry point" added to the existing overflow ("...")
+/// menu on the Home screen's map card (an identical copy of this lives in
+/// `search_screen.dart` for its own header's overflow menu, matching this
+/// codebase's existing convention of small per-file duplication over a
+/// shared presentation/main.dart dependency).
+Future<void> _showUnitSystemSheet(
+  BuildContext context,
+  UnitPreferencesProvider provider,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final option in UnitSystem.values)
+              RadioListTile<UnitSystem>(
+                title: Text(
+                  option == UnitSystem.metric
+                      ? 'Metric (m, °C, km/h)'
+                      : 'Imperial (ft, °F, mph)',
+                ),
+                value: option,
+                groupValue: provider.unitSystem,
+                onChanged: (value) {
+                  if (value != null) provider.setUnitSystem(value);
+                  Navigator.of(sheetContext).pop();
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 String _formatPercent(double? percent) {
@@ -93,10 +145,16 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 }
 
 class MarineApp extends StatelessWidget {
-  const MarineApp({super.key, this.tileProvider});
+  const MarineApp({super.key, this.tileProvider, this.unitPreferencesProvider});
 
   /// Overridable so integration tests can avoid the real tile network.
   final TileProvider? tileProvider;
+
+  /// Drives the metric/imperial toggle on both Home and Search. Null (the
+  /// default for any existing call site that doesn't pass one, e.g. the
+  /// integration tests) hides the toggle and renders every value in metric,
+  /// unchanged from before.
+  final UnitPreferencesProvider? unitPreferencesProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -117,6 +175,7 @@ class MarineApp extends StatelessWidget {
             tileProvider: tileProvider,
             marineProvider: marineProvider,
             weatherProvider: weatherProvider,
+            unitPreferencesProvider: unitPreferencesProvider,
           ),
         ),
       ),
@@ -139,6 +198,7 @@ class HomeScreen extends StatefulWidget {
     this.tileProvider,
     this.marineProvider,
     this.weatherProvider,
+    this.unitPreferencesProvider,
     this.now,
   });
 
@@ -153,6 +213,12 @@ class HomeScreen extends StatefulWidget {
   /// Drives the header, stat grid and hourly row's real values. Null (the
   /// default) renders every value as "No data"/"--°" instead of fetching.
   final WeatherProvider? weatherProvider;
+
+  /// Drives the metric/imperial unit toggle, formatting the header/hourly
+  /// temperatures and the wind speed stat tile accordingly. Null (the
+  /// default) hides the map card's overflow toggle and renders every
+  /// value in metric, unchanged from before.
+  final UnitPreferencesProvider? unitPreferencesProvider;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -184,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     widget.marineProvider?.addListener(_onProviderChanged);
     widget.weatherProvider?.addListener(_onProviderChanged);
+    widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     // Deferred to after the first frame: HomeScreen is built inside the
     // Consumer2<MarineProvider, WeatherProvider> that also listens to
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
@@ -209,12 +276,17 @@ class _HomeScreenState extends State<HomeScreen> {
       oldWidget.marineProvider?.removeListener(_onProviderChanged);
       widget.marineProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.unitPreferencesProvider != widget.unitPreferencesProvider) {
+      oldWidget.unitPreferencesProvider?.removeListener(_onProviderChanged);
+      widget.unitPreferencesProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
   void dispose() {
     widget.marineProvider?.removeListener(_onProviderChanged);
     widget.weatherProvider?.removeListener(_onProviderChanged);
+    widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 
@@ -255,8 +327,10 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!context.mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (context) =>
-              SearchScreen(favoritesProvider: FavoritesProvider(prefs)),
+          builder: (context) => SearchScreen(
+            favoritesProvider: FavoritesProvider(prefs),
+            unitPreferencesProvider: widget.unitPreferencesProvider,
+          ),
         ),
       );
     } finally {
@@ -297,6 +371,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     final weatherData = widget.weatherProvider?.currentData;
+    final unitSystem =
+        widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
     final hourly = _upcomingHourly(
       weatherData?.hourly ?? const [],
       (widget.now ?? DateTime.now)(),
@@ -346,7 +422,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       Text(
-                        _formatTemperature(weatherData?.temperature),
+                        _formatTemperature(
+                          weatherData?.temperature,
+                          unitSystem,
+                        ),
                         style: const TextStyle(
                           color: _textPrimary,
                           fontWeight: FontWeight.bold,
@@ -369,8 +448,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       Text(
-                        'H:${_formatTemperature(weatherData?.highTemperature)} '
-                        'L:${_formatTemperature(weatherData?.lowTemperature)}',
+                        'H:${_formatTemperature(weatherData?.highTemperature, unitSystem)} '
+                        'L:${_formatTemperature(weatherData?.lowTemperature, unitSystem)}',
                         style: const TextStyle(
                           color: _textSecondary,
                           fontSize: 13,
@@ -383,6 +462,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     center: _placeCenter,
                     placeName: 'Çeşme, İzmir',
                     tileProvider: widget.tileProvider,
+                    onOverflowPressed: widget.unitPreferencesProvider == null
+                        ? null
+                        : () => _showUnitSystemSheet(
+                            context,
+                            widget.unitPreferencesProvider!,
+                          ),
                   ),
                   const SizedBox(height: 16),
                   // A tappable, non-editable search entry point (per
@@ -443,9 +528,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       StatTile(
                         icon: Icons.air,
                         label: 'Wind speed',
-                        value: _formatWindSpeed(weatherData?.windSpeed),
+                        value: _formatWindSpeed(
+                          weatherData?.windSpeed,
+                          unitSystem,
+                        ),
                         trendDirection: StatTrendDirection.up,
-                        trendDelta: '2 km/h',
+                        trendDelta: unitSystem == UnitSystem.imperial
+                            ? '1 mph'
+                            : '2 km/h',
                       ),
                       StatTile(
                         icon: Icons.water_drop_outlined,
@@ -496,7 +586,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             isFirst: index == 0,
                           ),
                           icon: _iconForWeatherCode(entry.weatherCode),
-                          temperature: _formatTemperature(entry.temperature),
+                          temperature: _formatTemperature(
+                            entry.temperature,
+                            unitSystem,
+                          ),
                         );
                       },
                     ),

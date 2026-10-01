@@ -1,5 +1,7 @@
 import 'package:beachiq/data/static_beaches.dart';
 import 'package:beachiq/logic/providers/favorites_provider.dart';
+import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
+import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
@@ -287,6 +289,49 @@ void main() {
 
         expect(find.byType(BeachResultCard), findsNothing);
         expect(find.text('No favorite beaches yet.'), findsOneWidget);
+      },
+    );
+  });
+
+  group('unit preferences', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'the "More" button opens the unit sheet, and picking Imperial updates '
+      'the shared provider',
+      (tester) async {
+        final provider = UnitPreferencesProvider(
+          await SharedPreferences.getInstance(),
+        );
+        await tester.pumpWidget(
+          wrap(SearchScreen(unitPreferencesProvider: provider)),
+        );
+
+        expect(find.text('Imperial (ft, °F, mph)'), findsNothing);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Imperial (ft, °F, mph)'), findsOneWidget);
+
+        await tester.tap(find.text('Imperial (ft, °F, mph)'));
+        await tester.pumpAndSettle();
+
+        expect(provider.unitSystem, UnitSystem.imperial);
+      },
+    );
+
+    testWidgets(
+      'the "More" button is a no-op without a unitPreferencesProvider',
+      (tester) async {
+        await tester.pumpWidget(wrap(const SearchScreen()));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Imperial (ft, °F, mph)'), findsNothing);
       },
     );
   });

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/beach.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/unit_preferences.dart';
 
 /// A single label/value line shown in [BeachResultCard]'s two-column
 /// "Beaches Near" info block.
@@ -30,17 +31,25 @@ String _feeText(BeachFee? fee) {
   }
 }
 
-/// Renders a marine-forecast wave height (meters), or "No data" when no
-/// marine data is available for this beach.
-String _waveHeightText(double? meters) {
+/// Renders a marine-forecast wave height, or "No data" when no marine data
+/// is available for this beach. [unitSystem]'s metric output is identical
+/// to [formatWaveHeight]'s own metric string ("X.Y m"), so this delegates
+/// straight to it for both systems.
+String _waveHeightText(double? meters, UnitSystem unitSystem) {
   if (meters == null) return _noData;
-  return '${meters.toStringAsFixed(1)} m';
+  return formatWaveHeight(meters, unitSystem);
 }
 
-/// Renders a sea surface temperature (Celsius), or "No data" when no marine
-/// data is available for this beach.
-String _waterTemperatureText(double? celsius) {
+/// Renders a sea surface temperature, or "No data" when no marine data is
+/// available for this beach. Metric keeps today's exact bare-degree style
+/// (no unit letter, unlike [formatTemperature]'s "°C"); imperial converts
+/// via [celsiusToFahrenheit] and appends "F" so the active system stays
+/// legible.
+String _waterTemperatureText(double? celsius, UnitSystem unitSystem) {
   if (celsius == null) return _noData;
+  if (unitSystem == UnitSystem.imperial) {
+    return '${celsiusToFahrenheit(celsius).round()}°F';
+  }
   return '${celsius.toStringAsFixed(0)}°';
 }
 
@@ -113,6 +122,7 @@ class BeachResultCard extends StatelessWidget {
     this.hasCafe,
     this.isFavorite = false,
     this.onFavoriteToggle,
+    this.unitSystem = UnitSystem.metric,
   });
 
   /// The beach/location name shown bold in the result row (e.g. "Altinkum
@@ -161,6 +171,11 @@ class BeachResultCard extends StatelessWidget {
   /// the icon entirely, so existing callers render exactly as before.
   final VoidCallback? onFavoriteToggle;
 
+  /// The unit system [waveHeightMeters]/[waterTemperatureCelsius] render
+  /// in. Defaults to [UnitSystem.metric], matching every existing caller's
+  /// output exactly.
+  final UnitSystem unitSystem;
+
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
   static const _textSecondary = Color(0xFF8B93A6);
@@ -184,10 +199,13 @@ class BeachResultCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final leftLines = <_BeachInfoLine>[
       _BeachInfoLine('Entry', _feeText(fee)),
-      _BeachInfoLine('Wave height', _waveHeightText(waveHeightMeters)),
+      _BeachInfoLine(
+        'Wave height',
+        _waveHeightText(waveHeightMeters, unitSystem),
+      ),
       _BeachInfoLine(
         'Water temp',
-        _waterTemperatureText(waterTemperatureCelsius),
+        _waterTemperatureText(waterTemperatureCelsius, unitSystem),
       ),
     ];
     final rightLines = <_BeachInfoLine>[
