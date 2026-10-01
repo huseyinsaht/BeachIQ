@@ -5,6 +5,78 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- `OsmAttribution` widget showing the required "© OpenStreetMap contributors" credit
+  on the map, tappable to OSM's copyright page (#109)
+- `MarineBatchService`, fetching wave height and sea surface temperature for many
+  beach coordinates in a single batched Open-Meteo Marine request, with a 1-hour
+  in-memory cache (#110)
+- `OverpassService`, querying the public Overpass API for nearby beaches with a
+  fallback mirror endpoint, 429/504 retry with exponential backoff, and de-duplication
+  of concurrent identical requests (#111)
+- `BeachResultCard` widget for the Search result sheet: beach name/subtitle, weather
+  icon/temperature, and a two-column block of entry fee / wave height / water
+  temperature / shoe advice / parking / beach club / cafe info lines (#112)
+- `Beach` model extended with OSM-derived fields (surface, lifeguard, fee, amenities,
+  geometry) and an OSM-to-`Beach` mapper that merges adjoining beach ways and attaches
+  nearby amenities (#113)
+- A persistent, grid-cell-keyed cache for OSM beach query results (`BeachCache`), with
+  a 7-day TTL, stale-while-revalidate refresh, and a static-beach-list fallback when
+  offline (#114)
+- `BeachGearAdvisor`: a pure heuristic advising whether shoes/slippers are needed,
+  from a beach's OSM `surface` tag (#116)
+- The Search screen composed from `SearchField` and `BeachResultCard`, replacing the
+  placeholder screen shell (#117)
+- `NearbyBeachesProvider`, combining cached/live OSM beach results for a picked
+  location with batched marine data (#118)
+- The Home screen composed from `StatTile`, `HourlyForecastItem`, and
+  `LocationMapCard` into the real dashboard layout (#120)
+- Swim suitability scoring (wave height, wind speed, rain chance) and the
+  `SwimSuggestionPill` widget showing a one-line verdict (#121)
+- `ConditionAlertService`: pure logic deciding when a "conditions turned favorable"
+  alert should fire on a swim-suitability transition; not yet wired to any
+  notification delivery (#124)
+- `WeatherCondition` extended with rain chance, pressure, UV index, an hourly forecast
+  list, and daily high/low temperature, parsed from Open-Meteo's hourly/daily fields
+  (#125)
+- Tap-to-pick location, a 20km search-radius circle, and a gold beach-geometry overlay
+  on `LocationMapCard` (#127)
+- Loading and error states on the Home and Search screens (#128)
+- Navigation from the Home screen's search entry to the Search screen (#129)
+- An integration test covering pick location → nearby beaches listed → result card
+  showing real fields (#130)
+- Pull-to-refresh on the Home and Search screens (#131)
+- Unit tests for `MarineProvider` and `WeatherProvider` (#133)
+- A name/city search filter on the Search screen's results (#140)
+- Unit preferences: a metric/imperial toggle (`UnitSystem`) persisted via
+  `SharedPreferences`, with a `UnitPreferencesProvider` (#141)
+- Favorites: mark/unmark beaches and filter the Search screen to favorites only,
+  persisted via `SharedPreferences` (#144)
+- A test covering the Search screen's pull-to-refresh wiring to
+  `NearbyBeachesProvider.pickLocation` (#149)
+
+### Changed
+
+- `flutter_map` upgraded to 8.3.2 and `latlong2` to 0.10.x (#119)
+- `BeachResultCard`'s beach-info block is now bound to real OSM/marine/gear-advisor
+  fields instead of placeholder values (#126)
+- The Home screen is now bound to real `WeatherProvider`/`MarineProvider` data instead
+  of static placeholders (#132)
+- Unit preferences (metric/imperial) wired into the Home and Search screens'
+  displayed values (#145)
+- `NearbyBeachesProvider` wired into the shipped Home and Search screens, replacing
+  the static placeholder beach list (#147)
+- `SwimSuggestionPill` wired into the Home screen's suggestion pill using real
+  swim-suitability scoring (#148)
+
+### Fixed
+
+- A flaky integration test caused by `WeatherProvider`/`MarineProvider` being used
+  after dispose (#142)
+- `BeachCache` dropping newer `Beach` fields (amenities, geometry, etc.) when
+  serializing/deserializing cached entries (#146)
+
 ## [2026.10.3] - 2026-09-29
 
 ### Added
