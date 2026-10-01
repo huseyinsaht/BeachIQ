@@ -26,6 +26,7 @@ import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
+import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -116,6 +117,15 @@ class _PendingMarineRepository extends MarineRepository {
   @override
   Future<SeaCondition> getMarineData(double lat, double lon) =>
       completer.future;
+}
+
+class _FixedMarineRepository extends MarineRepository {
+  _FixedMarineRepository(this.data) : super(MarineApiService());
+
+  final SeaCondition data;
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async => data;
 }
 
 class _FailingMarineRepository extends MarineRepository {
@@ -604,6 +614,65 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('My Location'), findsOneWidget);
       expect(find.byType(StatTile), findsNWidgets(4));
+    },
+  );
+
+  testWidgets(
+    'the suggestion pill reflects real wave height/wind/rain data instead '
+    'of a hardcoded string',
+    (WidgetTester tester) async {
+      final marineProvider = MarineProvider(_SucceedingMarineRepository());
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+            weatherProvider: weatherProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Fixture data (0.5m waves, 12 km/h wind, 10% rain chance) is all
+      // below the "caution" thresholds, so the real verdict is "good".
+      expect(find.byType(SwimSuggestionPill), findsOneWidget);
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(find.text('Good conditions for a swim right now'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'the suggestion pill downgrades to a poor verdict once real wave '
+    'height crosses the rough-conditions threshold',
+    (WidgetTester tester) async {
+      final marineProvider = MarineProvider(
+        _FixedMarineRepository(
+          SeaCondition(
+            waveHeight: 1.5,
+            waveDirection: 90,
+            wavePeriod: 5,
+            seaSurfaceTemperature: 22,
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+      await marineProvider.fetchData(38.3, 26.3);
+      await tester.pump();
+
+      expect(
+        find.text('Rough conditions — best to skip swimming today.'),
+        findsOneWidget,
+      );
     },
   );
 
