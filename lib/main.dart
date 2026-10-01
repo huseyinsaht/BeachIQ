@@ -174,6 +174,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static final _placeCenter = LatLng(38.3220, 26.3260);
 
+  /// Guards [_openSearch] against a fast double-tap pushing two
+  /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
+  /// await is still pending.
+  bool _openingSearch = false;
+
   @override
   void initState() {
     super.initState();
@@ -243,14 +248,20 @@ class _HomeScreenState extends State<HomeScreen> {
   /// and pushes [SearchScreen] with it, so the favorite hearts and the
   /// favorites-only star toggle are live on the real navigation path.
   Future<void> _openSearch(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!context.mounted) return;
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            SearchScreen(favoritesProvider: FavoritesProvider(prefs)),
-      ),
-    );
+    if (_openingSearch) return;
+    _openingSearch = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!context.mounted) return;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) =>
+              SearchScreen(favoritesProvider: FavoritesProvider(prefs)),
+        ),
+      );
+    } finally {
+      _openingSearch = false;
+    }
   }
 
   @override

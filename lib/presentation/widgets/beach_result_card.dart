@@ -262,11 +262,9 @@ class BeachResultCard extends StatelessWidget {
                   tooltip: isFavorite
                       ? 'Remove from favorites'
                       : 'Add to favorites',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(
-                    minWidth: 32,
-                    minHeight: 32,
-                  ),
+                  // Default IconButton padding/constraints give a 48x48
+                  // tap target (Material's minimum), rather than shrinking
+                  // it down to the icon's own visual size.
                 ),
             ],
           ),
