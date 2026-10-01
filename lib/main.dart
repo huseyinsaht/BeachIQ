@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,9 +10,13 @@ import 'data/models/weather_condition.dart';
 import 'data/repositories/marine_repository.dart';
 import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
+import 'data/services/beach_cache.dart';
+import 'data/services/marine_batch_service.dart';
+import 'data/services/overpass_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/favorites_provider.dart';
 import 'logic/providers/marine_provider.dart';
+import 'logic/providers/nearby_beaches_provider.dart';
 import 'logic/providers/unit_preferences_provider.dart';
 import 'logic/providers/weather_provider.dart';
 import 'logic/unit_preferences.dart';
@@ -27,7 +32,18 @@ void main() async {
   // otherwise initialize the binding itself.
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  runApp(MarineApp(unitPreferencesProvider: UnitPreferencesProvider(prefs)));
+  final httpClient = http.Client();
+  final nearbyBeachesProvider = NearbyBeachesProvider(
+    OverpassService(httpClient),
+    BeachCache(prefs),
+    MarineBatchService(httpClient),
+  );
+  runApp(
+    MarineApp(
+      unitPreferencesProvider: UnitPreferencesProvider(prefs),
+      nearbyBeachesProvider: nearbyBeachesProvider,
+    ),
+  );
 }
 
 const String _noData = 'No data';
@@ -145,7 +161,12 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 }
 
 class MarineApp extends StatelessWidget {
-  const MarineApp({super.key, this.tileProvider, this.unitPreferencesProvider});
+  const MarineApp({
+    super.key,
+    this.tileProvider,
+    this.unitPreferencesProvider,
+    this.nearbyBeachesProvider,
+  });
 
   /// Overridable so integration tests can avoid the real tile network.
   final TileProvider? tileProvider;
@@ -155,6 +176,13 @@ class MarineApp extends StatelessWidget {
   /// integration tests) hides the toggle and renders every value in metric,
   /// unchanged from before.
   final UnitPreferencesProvider? unitPreferencesProvider;
+
+  /// Drives the map's tap-to-pick/beach overlay and the Search screen's
+  /// real results list. Null (the default for any existing call site that
+  /// doesn't pass one, e.g. most widget/integration tests) disables
+  /// tap-to-pick and falls back to the static placeholder beach list,
+  /// unchanged from before.
+  final NearbyBeachesProvider? nearbyBeachesProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -176,6 +204,7 @@ class MarineApp extends StatelessWidget {
             marineProvider: marineProvider,
             weatherProvider: weatherProvider,
             unitPreferencesProvider: unitPreferencesProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
           ),
         ),
       ),
@@ -199,6 +228,7 @@ class HomeScreen extends StatefulWidget {
     this.marineProvider,
     this.weatherProvider,
     this.unitPreferencesProvider,
+    this.nearbyBeachesProvider,
     this.now,
   });
 
@@ -219,6 +249,12 @@ class HomeScreen extends StatefulWidget {
   /// default) hides the map card's overflow toggle and renders every
   /// value in metric, unchanged from before.
   final UnitPreferencesProvider? unitPreferencesProvider;
+
+  /// Drives the map card's tap-to-pick/beach overlay and is forwarded to
+  /// `SearchScreen` for its real results list. Null (the default) disables
+  /// tap-to-pick on the map and falls back to the static placeholder beach
+  /// list on Search, unchanged from before.
+  final NearbyBeachesProvider? nearbyBeachesProvider;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -262,6 +298,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _placeCenter.latitude,
         _placeCenter.longitude,
       );
+      widget.nearbyBeachesProvider?.pickLocation(_placeCenter);
     });
   }
 
@@ -330,6 +367,11 @@ class _HomeScreenState extends State<HomeScreen> {
           builder: (context) => SearchScreen(
             favoritesProvider: FavoritesProvider(prefs),
             unitPreferencesProvider: widget.unitPreferencesProvider,
+            nearbyBeachesProvider: widget.nearbyBeachesProvider,
+            onRefresh: widget.nearbyBeachesProvider == null
+                ? null
+                : () async =>
+                      widget.nearbyBeachesProvider!.pickLocation(_placeCenter),
           ),
         ),
       );
@@ -462,6 +504,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     center: _placeCenter,
                     placeName: 'Çeşme, İzmir',
                     tileProvider: widget.tileProvider,
+                    nearbyBeachesProvider: widget.nearbyBeachesProvider,
                     onOverflowPressed: widget.unitPreferencesProvider == null
                         ? null
                         : () => _showUnitSystemSheet(

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/beach.dart';
 import '../../data/static_beaches.dart';
+import '../../logic/beach_gear_advisor.dart';
 import '../../logic/providers/favorites_provider.dart';
+import '../../logic/providers/nearby_beaches_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/unit_preferences.dart';
 import '../widgets/beach_result_card.dart';
@@ -13,13 +15,14 @@ import '../widgets/search_field.dart';
 /// bottom result sheet of [BeachResultCard] instances under a "Beaches Near"
 /// label.
 ///
-/// Backed by [staticBeaches] as placeholder data until the OSM nearby-beaches
-/// feature supplies real results. Pure UI composition — no network or
-/// provider dependency of its own; [isLoading]/[error] let a caller (e.g. a
-/// future `NearbyBeachesProvider` integration) drive the loading/error
-/// states instead of the results list. The search field filters the
-/// (placeholder or future real) results list by name or city as the user
-/// types, in addition to forwarding to [onSearchChanged]/[onSearchSubmitted].
+/// Backed by [staticBeaches] as placeholder data until [nearbyBeachesProvider]
+/// is supplied. Pure UI composition — no network dependency of its own;
+/// [nearbyBeachesProvider]'s loading/error states (combined with
+/// [isLoading]/[error], which a caller can still set directly) drive the
+/// loading/error states instead of the results list. The search field
+/// filters the (placeholder or real) results list by name or city as the
+/// user types, in addition to forwarding to
+/// [onSearchChanged]/[onSearchSubmitted].
 ///
 /// When [favoritesProvider] is supplied, each result gets a favorite-toggle
 /// heart icon and a star button appears in the header to switch the list to
@@ -35,6 +38,7 @@ class SearchScreen extends StatefulWidget {
     this.onRefresh,
     this.favoritesProvider,
     this.unitPreferencesProvider,
+    this.nearbyBeachesProvider,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`, alongside the local
@@ -44,20 +48,21 @@ class SearchScreen extends StatefulWidget {
   /// Forwarded to [SearchField]'s `onSubmitted`.
   final ValueChanged<String>? onSearchSubmitted;
 
-  /// Called on a pull-to-refresh gesture over the result sheet, mirroring
-  /// a caller's `NearbyBeachesProvider` re-fetch. Null (the default) makes
-  /// the gesture a no-op, so today's [staticBeaches] placeholder callers
-  /// render exactly as before.
+  /// Called on a pull-to-refresh gesture over the result sheet. Null (the
+  /// default) makes the gesture a no-op, so today's [staticBeaches]
+  /// placeholder callers render exactly as before.
   final Future<void> Function()? onRefresh;
 
-  /// Whether a search/nearby-beaches request is in flight, mirroring
-  /// `NearbyBeachesProvider.isLoading`. Defaults to false, so today's
-  /// [staticBeaches] placeholder callers render exactly as before.
+  /// Whether a search/nearby-beaches request is in flight, combined (via
+  /// OR) with [nearbyBeachesProvider]'s own `isLoading` when one is
+  /// supplied. Defaults to false, so today's [staticBeaches] placeholder
+  /// callers render exactly as before.
   final bool isLoading;
 
   /// A user-readable error message to show instead of the results list,
-  /// mirroring `NearbyBeachesProvider.error`. Null (the default) renders
-  /// normally.
+  /// combined with [nearbyBeachesProvider]'s own `error` when one is
+  /// supplied (this field wins when both are set). Null (the default)
+  /// renders normally.
   final String? error;
 
   /// Drives the per-result favorite heart icon and the header's
@@ -68,6 +73,15 @@ class SearchScreen extends StatefulWidget {
   /// and the header overflow menu's unit toggle. Null (the default)
   /// renders every value in metric, unchanged from before.
   final UnitPreferencesProvider? unitPreferencesProvider;
+
+  /// The real nearby-beaches results (and their marine data), replacing
+  /// [staticBeaches] and feeding each [BeachResultCard]'s beach-info block
+  /// (entry fee, wave height, water temperature, shoe advice, and nearby
+  /// amenities) once supplied. Also feeds this screen's loading/error
+  /// states (see [isLoading]/[error]). Null (the default) renders the
+  /// static placeholder list with no beach-info block, unchanged from
+  /// before.
+  final NearbyBeachesProvider? nearbyBeachesProvider;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -89,6 +103,7 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     widget.favoritesProvider?.addListener(_onProviderChanged);
     widget.unitPreferencesProvider?.addListener(_onProviderChanged);
+    widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
   }
 
   @override
@@ -102,33 +117,42 @@ class _SearchScreenState extends State<SearchScreen> {
       oldWidget.unitPreferencesProvider?.removeListener(_onProviderChanged);
       widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.nearbyBeachesProvider != widget.nearbyBeachesProvider) {
+      oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+      widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
   void dispose() {
     widget.favoritesProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
+    widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 
   /// Rebuilds so each result's heart icon (and, while filtering to
-  /// favorites only, the list itself) reflects the latest favorites, and
-  /// so a unit-system change re-formats the wave-height/water-temperature
-  /// lines.
+  /// favorites only, the list itself) reflects the latest favorites, so a
+  /// unit-system change re-formats the wave-height/water-temperature
+  /// lines, and so a [NearbyBeachesProvider] fetch resolving refreshes the
+  /// results list and loading/error states.
   void _onProviderChanged() {
     if (mounted) setState(() {});
   }
 
-  /// The placeholder beach list, filtered by [_query] against each beach's
-  /// name or city (case-insensitive substring match), and further narrowed
-  /// to favorites only when [_showFavoritesOnly] is set. An empty query
-  /// (the default) matches everything, so this renders identically to the
-  /// unfiltered list until the user types.
+  /// The beach list — [NearbyBeachesProvider.beaches] once
+  /// [SearchScreen.nearbyBeachesProvider] is supplied, else the
+  /// [staticBeaches] placeholder — filtered by [_query] against each
+  /// beach's name or city (case-insensitive substring match), and further
+  /// narrowed to favorites only when [_showFavoritesOnly] is set. An empty
+  /// query (the default) matches everything, so this renders identically
+  /// to the unfiltered list until the user types.
   List<Beach> get _filteredBeaches {
+    final source = widget.nearbyBeachesProvider?.beaches ?? staticBeaches;
     final query = _query.trim().toLowerCase();
     var beaches = query.isEmpty
-        ? staticBeaches
-        : staticBeaches
+        ? source
+        : source
               .where(
                 (beach) =>
                     beach.name.toLowerCase().contains(query) ||
@@ -259,10 +283,11 @@ class _SearchScreenState extends State<SearchScreen> {
   /// list, matching [SearchScreen.isLoading]/[SearchScreen.error], [_query]
   /// and [_showFavoritesOnly].
   Widget _buildResults() {
-    if (widget.isLoading) {
+    final nearbyBeachesProvider = widget.nearbyBeachesProvider;
+    if (widget.isLoading || (nearbyBeachesProvider?.isLoading ?? false)) {
       return const Center(child: CircularProgressIndicator());
     }
-    final error = widget.error;
+    final error = widget.error ?? nearbyBeachesProvider?.error;
     if (error != null) {
       return Center(
         child: Padding(
@@ -301,10 +326,22 @@ class _SearchScreenState extends State<SearchScreen> {
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final beach = beaches[index];
+        final seaCondition = nearbyBeachesProvider?.seaConditionFor(beach);
         return BeachResultCard(
           placeName: beach.name,
           areaSubtitle: beach.city,
           temperature: '--°',
+          fee: nearbyBeachesProvider == null ? null : beach.fee,
+          waveHeightMeters: seaCondition?.waveHeight,
+          waterTemperatureCelsius: seaCondition?.seaSurfaceTemperature,
+          shoeAdvice: nearbyBeachesProvider == null
+              ? null
+              : adviseOnShoes(beach.surface),
+          hasParking: nearbyBeachesProvider == null ? null : beach.hasParking,
+          hasBeachResort: nearbyBeachesProvider == null
+              ? null
+              : beach.hasBeachResort,
+          hasCafe: nearbyBeachesProvider == null ? null : beach.hasCafe,
           isFavorite: favoritesProvider?.isFavorite(beach) ?? false,
           onFavoriteToggle: favoritesProvider == null
               ? null
