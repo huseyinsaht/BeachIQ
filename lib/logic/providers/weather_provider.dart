@@ -10,6 +10,7 @@ class WeatherProvider extends ChangeNotifier {
   WeatherCondition? _currentData;
   bool _isLoading = false;
   String? _error;
+  bool _disposed = false;
 
   WeatherCondition? get currentData => _currentData;
   bool get isLoading => _isLoading;
@@ -18,7 +19,7 @@ class WeatherProvider extends ChangeNotifier {
   Future<void> fetchData(double lat, double lon) async {
     _isLoading = true;
     _error = null;
-    notifyListeners();
+    _notify();
 
     try {
       final data = await _repository.getWeatherData(lat, lon);
@@ -28,6 +29,20 @@ class WeatherProvider extends ChangeNotifier {
     }
 
     _isLoading = false;
+    _notify();
+  }
+
+  /// Notifies listeners, unless this provider has already been disposed
+  /// (e.g. a widget tree torn down while [fetchData]'s request was still
+  /// in flight) — calling `notifyListeners()` after `dispose()` throws.
+  void _notify() {
+    if (_disposed) return;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }
