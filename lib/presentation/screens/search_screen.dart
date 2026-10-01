@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../data/models/beach.dart';
 import '../../data/static_beaches.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/search_field.dart';
@@ -13,8 +14,10 @@ import '../widgets/search_field.dart';
 /// feature supplies real results. Pure UI composition — no network or
 /// provider dependency of its own; [isLoading]/[error] let a caller (e.g. a
 /// future `NearbyBeachesProvider` integration) drive the loading/error
-/// states instead of the results list.
-class SearchScreen extends StatelessWidget {
+/// states instead of the results list. The search field filters the
+/// (placeholder or future real) results list by name or city as the user
+/// types, in addition to forwarding to [onSearchChanged]/[onSearchSubmitted].
+class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
     this.onSearchChanged,
@@ -24,8 +27,8 @@ class SearchScreen extends StatelessWidget {
     this.onRefresh,
   });
 
-  /// Forwarded to [SearchField]'s `onChanged`. No filtering is wired up yet
-  /// — a later issue uses this to query nearby beaches.
+  /// Forwarded to [SearchField]'s `onChanged`, alongside the local
+  /// name/city filtering this screen now does on its own.
   final ValueChanged<String>? onSearchChanged;
 
   /// Forwarded to [SearchField]'s `onSubmitted`.
@@ -47,11 +50,39 @@ class SearchScreen extends StatelessWidget {
   /// normally.
   final String? error;
 
+  @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
   static const _bgBase = Color(0xFF0D1220);
   static const _bgGradientBottom = Color(0xFF2A3145);
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textPrimary = Color(0xFFFFFFFF);
   static const _textSecondary = Color(0xFF8B93A6);
+
+  String _query = '';
+
+  /// The placeholder beach list, filtered by [_query] against each beach's
+  /// name or city (case-insensitive substring match). An empty query (the
+  /// default) matches everything, so this renders identically to the
+  /// unfiltered list until the user types.
+  List<Beach> get _filteredBeaches {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return staticBeaches;
+    return staticBeaches
+        .where(
+          (beach) =>
+              beach.name.toLowerCase().contains(query) ||
+              beach.city.toLowerCase().contains(query),
+        )
+        .toList();
+  }
+
+  void _handleSearchChanged(String value) {
+    setState(() => _query = value);
+    widget.onSearchChanged?.call(value);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -98,8 +129,8 @@ class SearchScreen extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SearchField(
-                  onChanged: onSearchChanged,
-                  onSubmitted: onSearchSubmitted,
+                  onChanged: _handleSearchChanged,
+                  onSubmitted: widget.onSearchSubmitted,
                 ),
               ),
               const SizedBox(height: 16),
@@ -133,13 +164,14 @@ class SearchScreen extends StatelessWidget {
     );
   }
 
-  /// The bottom-sheet body: a loading spinner, an error message, or the
-  /// (placeholder) results list, matching [isLoading]/[error].
+  /// The bottom-sheet body: a loading spinner, an error message, a
+  /// "no matches" message, or the (placeholder) results list, matching
+  /// [SearchScreen.isLoading]/[SearchScreen.error] and [_query].
   Widget _buildResults() {
-    if (isLoading) {
+    if (widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-    final error = this.error;
+    final error = widget.error;
     if (error != null) {
       return Center(
         child: Padding(
@@ -152,13 +184,26 @@ class SearchScreen extends StatelessWidget {
         ),
       );
     }
+    final beaches = _filteredBeaches;
+    if (beaches.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'No beaches match "${_query.trim()}".',
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: _textSecondary, fontSize: 14),
+          ),
+        ),
+      );
+    }
     final list = ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 20),
-      itemCount: staticBeaches.length,
+      itemCount: beaches.length,
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final beach = staticBeaches[index];
+        final beach = beaches[index];
         return BeachResultCard(
           placeName: beach.name,
           areaSubtitle: beach.city,
@@ -170,7 +215,7 @@ class SearchScreen extends StatelessWidget {
     // Only wrap in a RefreshIndicator when there is something for it to
     // actually do — otherwise a pull gesture would show a spinner that
     // resolves into a no-op.
-    final refresh = onRefresh;
+    final refresh = widget.onRefresh;
     if (refresh == null) return list;
     return RefreshIndicator(onRefresh: refresh, child: list);
   }

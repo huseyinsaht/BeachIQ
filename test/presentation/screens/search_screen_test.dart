@@ -120,4 +120,64 @@ void main() {
       expect(find.byType(BeachResultCard), findsWidgets);
     },
   );
+
+  testWidgets('typing a name filters the beach results list', (tester) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    expect(find.text('Alaçatı Plajı'), findsOneWidget);
+    expect(find.text('Patara Plajı'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), 'Alaçatı');
+    await tester.pump();
+
+    expect(find.byType(BeachResultCard), findsOneWidget);
+    expect(find.text('Alaçatı Plajı'), findsOneWidget);
+    expect(find.text('Patara Plajı'), findsNothing);
+  });
+
+  testWidgets('typing a city filters the beach results list', (tester) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    await tester.enterText(find.byType(TextField), 'antalya');
+    await tester.pump();
+
+    final antalyaCount = staticBeaches
+        .where((beach) => beach.city.toLowerCase() == 'antalya')
+        .length;
+    expect(find.byType(BeachResultCard), findsNWidgets(antalyaCount));
+    expect(find.text('Patara Plajı'), findsOneWidget);
+    expect(find.text('Alaçatı Plajı'), findsNothing);
+  });
+
+  testWidgets('shows a "no matches" message when nothing matches the query', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    await tester.enterText(find.byType(TextField), 'nonexistent beach xyz');
+    await tester.pump();
+
+    expect(find.byType(BeachResultCard), findsNothing);
+    expect(
+      find.textContaining('No beaches match'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('clearing the query back to empty restores the full list', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const SearchScreen()));
+
+    await tester.enterText(find.byType(TextField), 'Alaçatı');
+    await tester.pump();
+    expect(find.byType(BeachResultCard), findsOneWidget);
+    expect(find.text('Patara Plajı'), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+
+    expect(find.text('Alaçatı Plajı'), findsOneWidget);
+    expect(find.text('Patara Plajı'), findsOneWidget);
+  });
 }
