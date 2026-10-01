@@ -1,11 +1,15 @@
 import 'package:beachiq/data/static_beaches.dart';
+import 'package:beachiq/logic/providers/favorites_provider.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   Widget wrap(Widget child) {
     return MaterialApp(home: child);
   }
@@ -179,5 +183,90 @@ void main() {
 
     expect(find.text('Alaçatı Plajı'), findsOneWidget);
     expect(find.text('Patara Plajı'), findsOneWidget);
+  });
+
+  group('favorites', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    Future<FavoritesProvider> favoritesProvider() async =>
+        FavoritesProvider(await SharedPreferences.getInstance());
+
+    testWidgets(
+      'no star toggle or favorite icons are shown without a favoritesProvider',
+      (tester) async {
+        await tester.pumpWidget(wrap(const SearchScreen()));
+
+        expect(find.byIcon(Icons.star), findsNothing);
+        expect(find.byIcon(Icons.star_border), findsNothing);
+        expect(find.byIcon(Icons.favorite), findsNothing);
+        expect(find.byIcon(Icons.favorite_border), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a favoritesProvider shows the star toggle and a heart on each result',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(SearchScreen(favoritesProvider: await favoritesProvider())),
+        );
+
+        expect(find.byIcon(Icons.star_border), findsOneWidget);
+        expect(find.byIcon(Icons.favorite_border), findsWidgets);
+      },
+    );
+
+    testWidgets('tapping a result\'s heart marks it as a favorite', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(SearchScreen(favoritesProvider: await favoritesProvider())),
+      );
+
+      await tester.tap(find.byIcon(Icons.favorite_border).first);
+      await tester.pump();
+
+      expect(find.byIcon(Icons.favorite), findsOneWidget);
+    });
+
+    testWidgets(
+      'the star toggle switches the list to favorites only, and back',
+      (tester) async {
+        final provider = await favoritesProvider();
+        await provider.toggleFavorite(staticBeaches.first);
+        await tester.pumpWidget(
+          wrap(SearchScreen(favoritesProvider: provider)),
+        );
+
+        await tester.tap(find.byIcon(Icons.star_border));
+        await tester.pump();
+
+        expect(find.text('Favorites'), findsOneWidget);
+        expect(find.byType(BeachResultCard), findsOneWidget);
+        expect(find.text(staticBeaches.first.name), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.star));
+        await tester.pump();
+
+        expect(find.text('Beaches Near'), findsOneWidget);
+        expect(find.byType(BeachResultCard), findsWidgets);
+      },
+    );
+
+    testWidgets(
+      'favorites-only with no favorites shows a dedicated empty message',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(SearchScreen(favoritesProvider: await favoritesProvider())),
+        );
+
+        await tester.tap(find.byIcon(Icons.star_border));
+        await tester.pump();
+
+        expect(find.byType(BeachResultCard), findsNothing);
+        expect(find.text('No favorite beaches yet.'), findsOneWidget);
+      },
+    );
   });
 }

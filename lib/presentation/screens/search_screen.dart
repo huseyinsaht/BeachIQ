@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/beach.dart';
 import '../../data/static_beaches.dart';
+import '../../logic/providers/favorites_provider.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/search_field.dart';
 
@@ -17,6 +18,11 @@ import '../widgets/search_field.dart';
 /// states instead of the results list. The search field filters the
 /// (placeholder or future real) results list by name or city as the user
 /// types, in addition to forwarding to [onSearchChanged]/[onSearchSubmitted].
+///
+/// When [favoritesProvider] is supplied, each result gets a favorite-toggle
+/// heart icon and a star button appears in the header to switch the list to
+/// favorites only. Null (the default) hides both, so existing callers render
+/// exactly as before.
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
@@ -25,6 +31,7 @@ class SearchScreen extends StatefulWidget {
     this.isLoading = false,
     this.error,
     this.onRefresh,
+    this.favoritesProvider,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`, alongside the local
@@ -50,6 +57,10 @@ class SearchScreen extends StatefulWidget {
   /// normally.
   final String? error;
 
+  /// Drives the per-result favorite heart icon and the header's
+  /// favorites-only toggle. Null (the default) hides both.
+  final FavoritesProvider? favoritesProvider;
+
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
@@ -60,23 +71,60 @@ class _SearchScreenState extends State<SearchScreen> {
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textPrimary = Color(0xFFFFFFFF);
   static const _textSecondary = Color(0xFF8B93A6);
+  static const _favoriteActive = Color(0xFFE05B6B);
 
   String _query = '';
+  bool _showFavoritesOnly = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.favoritesProvider?.addListener(_onFavoritesChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.favoritesProvider != widget.favoritesProvider) {
+      oldWidget.favoritesProvider?.removeListener(_onFavoritesChanged);
+      widget.favoritesProvider?.addListener(_onFavoritesChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.favoritesProvider?.removeListener(_onFavoritesChanged);
+    super.dispose();
+  }
+
+  /// Rebuilds so each result's heart icon (and, while filtering to
+  /// favorites only, the list itself) reflects the latest favorites.
+  void _onFavoritesChanged() {
+    if (mounted) setState(() {});
+  }
 
   /// The placeholder beach list, filtered by [_query] against each beach's
-  /// name or city (case-insensitive substring match). An empty query (the
-  /// default) matches everything, so this renders identically to the
+  /// name or city (case-insensitive substring match), and further narrowed
+  /// to favorites only when [_showFavoritesOnly] is set. An empty query
+  /// (the default) matches everything, so this renders identically to the
   /// unfiltered list until the user types.
   List<Beach> get _filteredBeaches {
     final query = _query.trim().toLowerCase();
-    if (query.isEmpty) return staticBeaches;
-    return staticBeaches
-        .where(
-          (beach) =>
-              beach.name.toLowerCase().contains(query) ||
-              beach.city.toLowerCase().contains(query),
-        )
-        .toList();
+    var beaches = query.isEmpty
+        ? staticBeaches
+        : staticBeaches
+              .where(
+                (beach) =>
+                    beach.name.toLowerCase().contains(query) ||
+                    beach.city.toLowerCase().contains(query),
+              )
+              .toList();
+
+    final favoritesProvider = widget.favoritesProvider;
+    if (_showFavoritesOnly && favoritesProvider != null) {
+      beaches = favoritesProvider.favoritesAmong(beaches);
+    }
+    return beaches;
   }
 
   void _handleSearchChanged(String value) {
@@ -84,8 +132,13 @@ class _SearchScreenState extends State<SearchScreen> {
     widget.onSearchChanged?.call(value);
   }
 
+  void _toggleShowFavoritesOnly() {
+    setState(() => _showFavoritesOnly = !_showFavoritesOnly);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final favoritesProvider = widget.favoritesProvider;
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -118,6 +171,19 @@ class _SearchScreenState extends State<SearchScreen> {
                         ),
                       ),
                     ),
+                    if (favoritesProvider != null)
+                      IconButton(
+                        icon: Icon(
+                          _showFavoritesOnly ? Icons.star : Icons.star_border,
+                          color: _showFavoritesOnly
+                              ? _favoriteActive
+                              : _textPrimary,
+                        ),
+                        onPressed: _toggleShowFavoritesOnly,
+                        tooltip: _showFavoritesOnly
+                            ? 'Show all beaches'
+                            : 'Show favorites only',
+                      ),
                     IconButton(
                       icon: const Icon(Icons.more_horiz, color: _textPrimary),
                       onPressed: () {},
@@ -147,9 +213,12 @@ class _SearchScreenState extends State<SearchScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Beaches Near',
-                        style: TextStyle(color: _textSecondary, fontSize: 13),
+                      Text(
+                        _showFavoritesOnly ? 'Favorites' : 'Beaches Near',
+                        style: const TextStyle(
+                          color: _textSecondary,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 12),
                       Expanded(child: _buildResults()),
@@ -165,8 +234,9 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   /// The bottom-sheet body: a loading spinner, an error message, a
-  /// "no matches" message, or the (placeholder) results list, matching
-  /// [SearchScreen.isLoading]/[SearchScreen.error] and [_query].
+  /// "no matches"/"no favorites" message, or the (placeholder) results
+  /// list, matching [SearchScreen.isLoading]/[SearchScreen.error], [_query]
+  /// and [_showFavoritesOnly].
   Widget _buildResults() {
     if (widget.isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -186,17 +256,21 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     final beaches = _filteredBeaches;
     if (beaches.isEmpty) {
+      final message = _showFavoritesOnly
+          ? 'No favorite beaches yet.'
+          : 'No beaches match "${_query.trim()}".';
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Text(
-            'No beaches match "${_query.trim()}".',
+            message,
             textAlign: TextAlign.center,
             style: const TextStyle(color: _textSecondary, fontSize: 14),
           ),
         ),
       );
     }
+    final favoritesProvider = widget.favoritesProvider;
     final list = ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(bottom: 20),
@@ -208,6 +282,10 @@ class _SearchScreenState extends State<SearchScreen> {
           placeName: beach.name,
           areaSubtitle: beach.city,
           temperature: '--°',
+          isFavorite: favoritesProvider?.isFavorite(beach) ?? false,
+          onFavoriteToggle: favoritesProvider == null
+              ? null
+              : () => favoritesProvider.toggleFavorite(beach),
         );
       },
     );

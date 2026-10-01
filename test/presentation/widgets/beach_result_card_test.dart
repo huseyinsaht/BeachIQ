@@ -137,4 +137,77 @@ void main() {
     // unambiguously the shoe advice line.
     expect(find.text('Unknown'), findsOneWidget);
   });
+
+  testWidgets('no favorite icon is shown when onFavoriteToggle is null', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        const BeachResultCard(
+          placeName: 'Altinkum Beach',
+          areaSubtitle: 'Cesme, Izmir',
+          temperature: '27°',
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.favorite), findsNothing);
+    expect(find.byIcon(Icons.favorite_border), findsNothing);
+  });
+
+  testWidgets('a non-favorited beach shows an outlined heart', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        BeachResultCard(
+          placeName: 'Altinkum Beach',
+          areaSubtitle: 'Cesme, Izmir',
+          temperature: '27°',
+          onFavoriteToggle: () {},
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.favorite_border), findsOneWidget);
+    expect(find.byIcon(Icons.favorite), findsNothing);
+  });
+
+  testWidgets('a favorited beach shows a filled heart', (tester) async {
+    await tester.pumpWidget(
+      wrap(
+        BeachResultCard(
+          placeName: 'Altinkum Beach',
+          areaSubtitle: 'Cesme, Izmir',
+          temperature: '27°',
+          isFavorite: true,
+          onFavoriteToggle: () {},
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    expect(find.byIcon(Icons.favorite_border), findsNothing);
+  });
+
+  testWidgets('tapping the favorite icon calls onFavoriteToggle', (
+    tester,
+  ) async {
+    var tapCount = 0;
+    await tester.pumpWidget(
+      wrap(
+        BeachResultCard(
+          placeName: 'Altinkum Beach',
+          areaSubtitle: 'Cesme, Izmir',
+          temperature: '27°',
+          onFavoriteToggle: () => tapCount++,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byIcon(Icons.favorite_border));
+    await tester.pump();
+
+    expect(tapCount, 1);
+  });
 }

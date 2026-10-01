@@ -111,6 +111,8 @@ class BeachResultCard extends StatelessWidget {
     this.hasParking,
     this.hasBeachResort,
     this.hasCafe,
+    this.isFavorite = false,
+    this.onFavoriteToggle,
   });
 
   /// The beach/location name shown bold in the result row (e.g. "Altinkum
@@ -151,11 +153,20 @@ class BeachResultCard extends StatelessWidget {
   final bool? hasBeachResort;
   final bool? hasCafe;
 
+  /// Whether this beach is currently marked as a favorite. Ignored (no
+  /// icon shown) when [onFavoriteToggle] is null.
+  final bool isFavorite;
+
+  /// Called when the favorite icon is tapped. Null (the default) hides
+  /// the icon entirely, so existing callers render exactly as before.
+  final VoidCallback? onFavoriteToggle;
+
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
   static const _textSecondary = Color(0xFF8B93A6);
   static const _iconSun = Color(0xFFFFC94D);
   static const _dividerColor = Color(0xFFE7E8EC);
+  static const _favoriteActive = Color(0xFFE05B6B);
 
   /// Whether the caller supplied any beach info at all — i.e. there is an
   /// actual nearby beach to describe, as distinct from a plain placeholder
@@ -240,6 +251,23 @@ class BeachResultCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
+              if (onFavoriteToggle != null)
+                IconButton(
+                  icon: Icon(
+                    isFavorite ? Icons.favorite : Icons.favorite_border,
+                    size: 20,
+                    color: isFavorite ? _favoriteActive : _textSecondary,
+                  ),
+                  onPressed: onFavoriteToggle,
+                  tooltip: isFavorite
+                      ? 'Remove from favorites'
+                      : 'Add to favorites',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 32,
+                    minHeight: 32,
+                  ),
+                ),
             ],
           ),
           if (_hasBeachInfo) ...[
