@@ -89,5 +89,32 @@ void main() {
         expect(provider.isFavorite(otherCity), isFalse);
       },
     );
+
+    test(
+      'disposing while a toggle\'s persistence write is in flight does not '
+      'throw once that write later completes',
+      () async {
+        final provider = FavoritesProvider(await prefs());
+
+        final future = provider.toggleFavorite(_alacati);
+        provider.dispose();
+
+        await expectLater(future, completes);
+      },
+    );
+
+    test('favoritesAmong reflects an un-favorite immediately', () async {
+      final provider = FavoritesProvider(await prefs());
+      await provider.toggleFavorite(_alacati);
+      await provider.toggleFavorite(_patara);
+      expect(provider.favoritesAmong([_alacati, _patara]), [
+        _alacati,
+        _patara,
+      ]);
+
+      await provider.toggleFavorite(_alacati);
+
+      expect(provider.favoritesAmong([_alacati, _patara]), [_patara]);
+    });
   });
 }

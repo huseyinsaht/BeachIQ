@@ -22,6 +22,7 @@ class FavoritesProvider extends ChangeNotifier {
 
   final SharedPreferences _prefs;
   Set<String> _favoriteKeys = const {};
+  bool _disposed = false;
 
   /// A stable key for [beach], used both to persist favorites and to look
   /// one up.
@@ -48,6 +49,21 @@ class FavoritesProvider extends ChangeNotifier {
     }
     _favoriteKeys = updated;
     await _prefs.setStringList(_prefsKey, _favoriteKeys.toList());
+    _notify();
+  }
+
+  /// Notifies listeners, unless this provider has already been disposed
+  /// (e.g. a widget tree torn down while [toggleFavorite]'s persistence
+  /// write was still in flight) — calling `notifyListeners()` after
+  /// `dispose()` throws.
+  void _notify() {
+    if (_disposed) return;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
   }
 }

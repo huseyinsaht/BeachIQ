@@ -19,6 +19,7 @@ import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Minimal valid 1x1 transparent PNG, used so the fake tile provider can
 // resolve a real image without any network access.
@@ -154,6 +155,14 @@ class _FixedWeatherRepository extends WeatherRepository {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  setUp(() {
+    // HomeScreen's search entry point constructs a FavoritesProvider (via
+    // SharedPreferences.getInstance()) before pushing SearchScreen.
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('HomeScreen renders the composed location-detail layout', (
     WidgetTester tester,
   ) async {
@@ -577,4 +586,21 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.byType(SearchScreen), findsNothing);
   });
+
+  testWidgets(
+    'the search entry point wires up a real FavoritesProvider, so results '
+    'show a favorite heart',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.star_border), findsOneWidget);
+      expect(find.byIcon(Icons.favorite_border), findsWidgets);
+    },
+  );
 }

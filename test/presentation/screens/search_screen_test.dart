@@ -255,6 +255,27 @@ void main() {
     );
 
     testWidgets(
+      'un-favoriting while favorites-only is active shrinks the list down '
+      'to the empty message',
+      (tester) async {
+        final provider = await favoritesProvider();
+        await provider.toggleFavorite(staticBeaches.first);
+        await tester.pumpWidget(
+          wrap(SearchScreen(favoritesProvider: provider)),
+        );
+        await tester.tap(find.byIcon(Icons.star_border));
+        await tester.pump();
+        expect(find.byType(BeachResultCard), findsOneWidget);
+
+        await tester.tap(find.byIcon(Icons.favorite));
+        await tester.pump();
+
+        expect(find.byType(BeachResultCard), findsNothing);
+        expect(find.text('No favorite beaches yet.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'favorites-only with no favorites shows a dedicated empty message',
       (tester) async {
         await tester.pumpWidget(
