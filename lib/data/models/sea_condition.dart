@@ -10,9 +10,10 @@ class SeaHourly {
   final double? wavePeriod;
   final double? seaSurfaceTemperature;
 
-  /// Ocean current speed in km/h. See [SeaCondition.currentVelocity] for
-  /// the unit conversion and [SeaCondition.currentDirection] for the
-  /// direction convention — both apply here too.
+  /// Ocean current speed in km/h, straight from Open-Meteo. See
+  /// [SeaCondition.currentVelocity] for why no unit conversion is needed
+  /// and [SeaCondition.currentDirection] for the direction convention —
+  /// both apply here too.
   final double? currentVelocity;
   final double? currentDirection;
 
@@ -33,13 +34,24 @@ class SeaCondition {
   final double? wavePeriod;
   final double? seaSurfaceTemperature;
 
-  /// Ocean current speed in km/h, converted from Open-Meteo's native m/s —
-  /// the oceanographic convention its Marine API uses for
-  /// `ocean_current_velocity` (currents are order-of-magnitude slower than
-  /// wind, so m/s rather than km/h is the natural default there), unlike
-  /// this app's wave/wind fields, which Open-Meteo already returns in
-  /// display units. If a future Open-Meteo response is confirmed to use a
-  /// different unit, update [_msToKmh]'s call site below and this comment.
+  /// Ocean current speed in km/h, exactly as Open-Meteo's Marine API
+  /// returns `ocean_current_velocity` — no unit conversion needed here.
+  ///
+  /// Resolving issue #191: Open-Meteo's marine API computes this variable
+  /// through the same derived-"wind speed" pipeline as `wind_speed_10m`
+  /// (see `VariableHourly.swift`'s `.ocean_current_velocity -> .windSpeed`
+  /// mapping in github.com/open-meteo/open-meteo), and that pipeline's
+  /// output unit is controlled by the API's `wind_speed_unit` query
+  /// parameter (declared on the marine endpoint's own OpenAPI spec,
+  /// `openapi/marine.yml`), which **defaults to `kmh`** — see
+  /// `SiUnit.swift`'s `convertAndRound`, which converts any
+  /// `.metrePerSecond`-tagged value (the raw current speed from the model)
+  /// to km/h whenever no `wind_speed_unit` is given. [MarineApiService]
+  /// never sets `wind_speed_unit`, so every response it receives already
+  /// carries `ocean_current_velocity` in km/h. PR #190's original
+  /// `_msToKmh` (x3.6) conversion was therefore double-converting —
+  /// inflating every value — and has been removed.
+  ///
   /// Null — never `0` — when Open-Meteo has no current data for this
   /// point, which is common very close to shore since the current model's
   /// grid is coarse (several km).
@@ -95,7 +107,7 @@ class SeaCondition {
               waveDirection: _listValue(directions, i),
               wavePeriod: _listValue(periods, i),
               seaSurfaceTemperature: _listValue(temperatures, i),
-              currentVelocity: _msToKmh(_listValue(currentVelocities, i)),
+              currentVelocity: _listValue(currentVelocities, i),
               currentDirection: _listValue(currentDirections, i),
             ),
           );
@@ -108,7 +120,7 @@ class SeaCondition {
       waveDirection: _asDouble(json['wave_direction']),
       wavePeriod: _asDouble(json['wave_period']),
       seaSurfaceTemperature: _asDouble(json['sea_surface_temperature']),
-      currentVelocity: _msToKmh(_asDouble(json['ocean_current_velocity'])),
+      currentVelocity: _asDouble(json['ocean_current_velocity']),
       currentDirection: _asDouble(json['ocean_current_direction']),
       hourly: hourlyList,
     );
@@ -124,8 +136,3 @@ double? _asDouble(dynamic value) => value is num ? value.toDouble() : null;
 /// isn't long enough or isn't a list at all.
 double? _listValue(dynamic list, int i) =>
     (list is List && i < list.length) ? _asDouble(list[i]) : null;
-
-/// Converts Open-Meteo's `ocean_current_velocity` (m/s) to km/h, the unit
-/// every other speed in this app (wind, display formatting) already uses.
-double? _msToKmh(double? metersPerSecond) =>
-    metersPerSecond == null ? null : metersPerSecond * 3.6;

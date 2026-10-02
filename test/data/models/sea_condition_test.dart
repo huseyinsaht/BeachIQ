@@ -18,8 +18,9 @@ void main() {
         expect(condition.waveDirection, 180.0);
         expect(condition.wavePeriod, 6.5);
         expect(condition.seaSurfaceTemperature, 21.3);
-        // 0.5 m/s -> km/h.
-        expect(condition.currentVelocity, closeTo(1.8, 0.001));
+        // Open-Meteo's `ocean_current_velocity` is already km/h by default
+        // (issue #191) -> passes through unchanged, no conversion.
+        expect(condition.currentVelocity, 0.5);
         expect(condition.currentDirection, 90.0);
       });
 
@@ -76,7 +77,7 @@ void main() {
           expect(condition.hourly, hasLength(2));
           expect(condition.hourly[0].time, DateTime.parse('2026-07-01T00:00'));
           expect(condition.hourly[0].waveHeight, 0.5);
-          expect(condition.hourly[0].currentVelocity, closeTo(0.72, 0.001));
+          expect(condition.hourly[0].currentVelocity, 0.2);
           expect(condition.hourly[0].currentDirection, 45.0);
           expect(condition.hourly[1].currentVelocity, isNull);
           expect(condition.hourly[1].currentDirection, isNull);
