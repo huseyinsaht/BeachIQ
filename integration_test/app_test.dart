@@ -2,10 +2,12 @@ import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
+import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
@@ -14,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -177,6 +180,64 @@ void main() {
       expect(card.waveHeightMeters, closeTo(0.7, 0.001));
       expect(card.waterTemperatureCelsius, closeTo(24.5, 0.001));
       expect(card.hasParking, isTrue);
+    },
+  );
+
+  testWidgets(
+    'Place search flow: typing a city on Search finds a real place beyond '
+    'the fixture beach, and selecting it re-centers nearbyBeachesProvider',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = _FixtureNetworkClient();
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      final geocodingClient = MockClient((request) async {
+        return http.Response(
+          json.encode({
+            'results': [
+              {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+            ],
+          }),
+          200,
+        );
+      });
+      final placeSearchProvider = PlaceSearchProvider(
+        GeocodingService(geocodingClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(placeSearchProvider.dispose);
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          nearbyBeachesProvider: nearbyBeachesProvider,
+          placeSearchProvider: placeSearchProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
+      expect(find.byType(SearchScreen), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), 'bodrum');
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bodrum'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('place-result-Bodrum')));
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+      expect(nearbyBeachesProvider.beaches.single.name, 'Fixture Beach');
     },
   );
 }

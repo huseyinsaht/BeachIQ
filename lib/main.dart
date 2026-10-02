@@ -8,11 +8,13 @@ import 'data/repositories/marine_repository.dart';
 import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
 import 'data/services/beach_cache.dart';
+import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
 import 'data/services/overpass_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/marine_provider.dart';
 import 'logic/providers/nearby_beaches_provider.dart';
+import 'logic/providers/place_search_provider.dart';
 import 'logic/providers/unit_preferences_provider.dart';
 import 'logic/providers/weather_provider.dart';
 import 'presentation/screens/home_screen.dart';
@@ -33,6 +35,7 @@ void main() async {
     MarineApp(
       unitPreferencesProvider: UnitPreferencesProvider(prefs),
       nearbyBeachesProvider: nearbyBeachesProvider,
+      placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
     ),
   );
 }
@@ -43,6 +46,7 @@ class MarineApp extends StatelessWidget {
     this.tileProvider,
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
+    this.placeSearchProvider,
   });
 
   /// Overridable so integration tests can avoid the real tile network.
@@ -60,6 +64,12 @@ class MarineApp extends StatelessWidget {
   /// tap-to-pick and falls back to the static placeholder beach list,
   /// unchanged from before.
   final NearbyBeachesProvider? nearbyBeachesProvider;
+
+  /// Forwarded to `HomeScreen`/`SearchScreen` for real-place search by
+  /// name. Null (the default for any existing call site that doesn't pass
+  /// one, e.g. most widget/integration tests) hides Search's "Places"
+  /// section, unchanged from before.
+  final PlaceSearchProvider? placeSearchProvider;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +92,7 @@ class MarineApp extends StatelessWidget {
             weatherProvider: weatherProvider,
             unitPreferencesProvider: unitPreferencesProvider,
             nearbyBeachesProvider: nearbyBeachesProvider,
+            placeSearchProvider: placeSearchProvider,
           ),
         ),
       ),
