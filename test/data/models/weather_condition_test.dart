@@ -60,10 +60,11 @@ void main() {
       expect(condition.hourly[1].cloudCoverPercent, 40.0);
       expect(condition.hourly[1].rainChancePercent, 20.0);
       expect(condition.hourly[1].pressureHpa, 1012.0);
+      expect(condition.hourly[1].uvIndex, 4.5);
     });
 
-    test('hourly pressure and rain chance default to null when absent from '
-        'the response', () {
+    test('hourly pressure, UV index and rain chance default to null when '
+        'absent from the response', () {
       final condition = WeatherCondition.fromJson({
         'hourly': {
           'time': ['2024-01-01T11:00'],
@@ -75,6 +76,7 @@ void main() {
       expect(condition.hourly, hasLength(1));
       expect(condition.hourly.first.pressureHpa, isNull);
       expect(condition.hourly.first.rainChancePercent, isNull);
+      expect(condition.hourly.first.uvIndex, isNull);
     });
 
     test('hourly wind speed, gusts, cloud cover and rain chance default to '

@@ -1,5 +1,6 @@
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -36,14 +37,44 @@ void main() {
       },
     );
 
-    // Every metric besides `pressure` has no screen yet (issues #178, #179,
-    // #166, #167, #180, #181). This both documents today's state and makes
-    // sure a future PR that wires one up notices this test (it will start
-    // throwing `TestFailure` instead of the expected `UnimplementedError`)
-    // rather than silently leaving stale coverage, since it loops over
-    // every DetailMetric value rather than naming them.
+    testWidgets(
+      'given DetailMetric.uvIndex, builds a named MaterialPageRoute to '
+      'UvIndexDetailScreen carrying the hourly series and current value',
+      (tester) async {
+        final hourly = [
+          aWeatherHourly(time: DateTime(2026, 1, 1, 12), uvIndex: 4.5),
+        ];
+
+        final route = buildDetailRoute(
+          DetailMetric.uvIndex,
+          hourly: hourly,
+          currentValue: 4.5,
+        );
+
+        expect(route, isA<MaterialPageRoute<void>>());
+        expect(route.settings.name, '/detail/uv-index');
+
+        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(UvIndexDetailScreen), findsOneWidget);
+        final screen = tester.widget<UvIndexDetailScreen>(
+          find.byType(UvIndexDetailScreen),
+        );
+        expect(screen.currentUvIndex, 4.5);
+        expect(screen.hourly, hasLength(1));
+      },
+    );
+
+    // Every metric besides `pressure`/`uvIndex` has no screen yet (issues
+    // #179, #166, #167, #180, #181). This both documents today's state and
+    // makes sure a future PR that wires one up notices this test (it will
+    // start throwing `TestFailure` instead of the expected
+    // `UnimplementedError`) rather than silently leaving stale coverage,
+    // since it loops over every DetailMetric value rather than naming them.
     for (final metric in DetailMetric.values) {
       if (metric == DetailMetric.pressure) continue;
+      if (metric == DetailMetric.uvIndex) continue;
 
       test('given DetailMetric.$metric (not yet implemented), buildDetailRoute '
           '-> throws UnimplementedError', () {
