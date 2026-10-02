@@ -4,7 +4,7 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'swim_suitability.dart';
 
 /// What a [ForecastAlert] is about.
-enum ForecastAlertType { wind, waves, clouds, rain }
+enum ForecastAlertType { wind, waves, clouds, rain, current }
 
 /// How urgent a [ForecastAlert] is.
 ///
@@ -69,6 +69,16 @@ const windRiseThresholdKmh = 10.0;
 /// one hourly reading to the next.
 const waveRiseThresholdM = 0.3;
 
+/// Current rise rule: alert when ocean current speed climbs by at least
+/// this much within a 2-hour window (same two-hour lookback as the wind
+/// rule below). Coastal current speeds are generally much lower than wind
+/// speeds — rarely more than a few km/h even in strong conditions — so
+/// this is set well below [windRiseThresholdKmh] rather than reusing it.
+/// `swim_suitability.dart` has no current-speed threshold to reuse (it
+/// doesn't score current at all), so this is defined fresh, same as the
+/// other rise thresholds above.
+const currentRiseThresholdKmh = 2.0;
+
 // --- Public API -------------------------------------------------------------
 
 /// Builds human-readable forecast heads-ups from hourly weather and sea
@@ -94,6 +104,17 @@ const waveRiseThresholdM = 0.3;
 /// `minutely_15` forecast for some variables, which could give tighter
 /// alert windows (e.g. "between 10:15 and 10:45") in a future revision —
 /// not implemented here, hourly is the baseline.
+///
+/// Current rule scope: the owner's 2026-10-01 update to issue #168 asks for
+/// a current alert when the current "turns `awayFromShore`" OR its speed
+/// rises by a documented threshold. Only the speed-rise half is
+/// implemented here — classifying a current direction as `awayFromShore`
+/// needs the shore-relative classifier from issue #164 (a beach's seaward
+/// bearing compared against [SeaHourly.currentDirection]), which does not
+/// exist in this codebase yet (#164 is still open, itself waiting on #163).
+/// Per this repo's "never invent a value" rule (see #164's own acceptance
+/// criteria), that half is deferred to a follow-up PR once #164 lands,
+/// rather than guessed at here.
 List<ForecastAlert> buildForecastAlerts({
   required List<WeatherHourly> weather,
   required List<SeaHourly> sea,
@@ -134,6 +155,17 @@ List<ForecastAlert> buildForecastAlerts({
       evaluate: (twoBack, prev, curr) =>
           _evaluateWaves(prev.waveHeight, curr.waveHeight),
     ),
+    ..._collectAlerts<SeaHourly>(
+      hourly: sea,
+      timeOf: (h) => h.time,
+      type: ForecastAlertType.current,
+      now: effectiveNow,
+      evaluate: (twoBack, prev, curr) => _evaluateCurrent(
+        twoBack?.currentVelocity,
+        prev.currentVelocity,
+        curr.currentVelocity,
+      ),
+    ),
   ];
 
   alerts.sort((a, b) => a.start.compareTo(b.start));
@@ -156,6 +188,7 @@ enum _Reason {
   cloudsClosingIn,
   rainCrossModerate,
   rainCrossHigh,
+  currentRise,
 }
 
 typedef _Trigger = ({ForecastAlertSeverity severity, _Reason reason});
@@ -212,6 +245,34 @@ _Trigger? _evaluateWaves(double? prev, double? curr) {
   }
   if (curr - prev >= waveRiseThresholdM) {
     return (severity: ForecastAlertSeverity.moderate, reason: _Reason.waveRise);
+  }
+  return null;
+}
+
+/// Current rule: a rise of >= [currentRiseThresholdKmh] within a 2-hour
+/// window (same two-hour lookback as [_evaluateWind]). There is no
+/// crossing-a-threshold variant — `swim_suitability.dart` has no current
+/// speed bands to reuse, unlike wind/waves/rain. This only covers the
+/// "its speed rises" half of the owner's current-alert request; the
+/// "turns `awayFromShore`" half needs #164's shore-relation classifier,
+/// not implemented here (see the doc comment on [buildForecastAlerts]). A
+/// `null` reading on either side means "no data to compare" — current data
+/// is commonly absent close to shore — so it is skipped, never treated as
+/// 0 km/h.
+_Trigger? _evaluateCurrent(double? twoBack, double? prev, double? curr) {
+  if (prev == null || curr == null) return null;
+
+  if (curr - prev >= currentRiseThresholdKmh) {
+    return (
+      severity: ForecastAlertSeverity.moderate,
+      reason: _Reason.currentRise,
+    );
+  }
+  if (twoBack != null && curr - twoBack >= currentRiseThresholdKmh) {
+    return (
+      severity: ForecastAlertSeverity.moderate,
+      reason: _Reason.currentRise,
+    );
   }
   return null;
 }
@@ -384,6 +445,8 @@ String _messageFor(_Reason reason, DateTime start, DateTime end) {
     case _Reason.rainCrossHigh:
       return 'Rain chance crosses $highRainChancePercent% between '
           '$startLabel and $endLabel — bring a cover.';
+    case _Reason.currentRise:
+      return 'Current picks up between $startLabel and $endLabel.';
   }
 }
 

@@ -162,6 +162,74 @@ void main() {
       });
     });
 
+    group('current rule', () {
+      test('given current speed rising >= ${currentRiseThresholdKmh}km/h '
+          'within an hour, buildForecastAlerts -> one current alert', () {
+        final sea = [
+          aSeaHourly(time: h(9), currentVelocity: 1.0),
+          aSeaHourly(time: h(10), currentVelocity: 3.5), // +2.5
+        ];
+
+        final alerts = buildForecastAlerts(
+          weather: const [],
+          sea: sea,
+          now: now,
+        );
+
+        expect(alerts, hasLength(1));
+        expect(alerts.single.type, ForecastAlertType.current);
+        expect(alerts.single.severity, ForecastAlertSeverity.moderate);
+        expect(alerts.single.start, h(9));
+        expect(alerts.single.end, h(10));
+      });
+
+      test('given current speed rising gradually over 2 hours with no single '
+          'hour-to-hour step reaching the threshold, buildForecastAlerts -> '
+          'one current alert', () {
+        final alerts = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), currentVelocity: 1.0),
+            aSeaHourly(time: h(10), currentVelocity: 2.2), // +1.2, under
+            aSeaHourly(time: h(11), currentVelocity: 3.4), // +1.2, under
+            // but hour 11 vs hour 9 (two back) is +2.4, over threshold
+          ],
+          now: now,
+        );
+
+        expect(alerts, hasLength(1));
+        expect(alerts.single.type, ForecastAlertType.current);
+      });
+
+      test('given current speed that does not rise enough, '
+          'buildForecastAlerts -> no current alert', () {
+        final alerts = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), currentVelocity: 1.0),
+            aSeaHourly(time: h(10), currentVelocity: 1.5),
+          ],
+          now: now,
+        );
+
+        expect(alerts, isEmpty);
+      });
+
+      test('given a null current reading, buildForecastAlerts -> that hour '
+          'is skipped, never treated as 0 km/h', () {
+        final alerts = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9)), // currentVelocity null
+            aSeaHourly(time: h(10), currentVelocity: 5.0),
+          ],
+          now: now,
+        );
+
+        expect(alerts, isEmpty);
+      });
+    });
+
     group('clouds rule', () {
       test(
         'given the weather code moving from clear/partly-cloudy into '
