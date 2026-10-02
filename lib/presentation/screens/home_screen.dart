@@ -8,6 +8,7 @@ import '../../data/models/weather_condition.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
+import '../../logic/providers/place_search_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
 import '../../logic/swim_suitability.dart';
@@ -150,6 +151,7 @@ class HomeScreen extends StatefulWidget {
     this.weatherProvider,
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
+    this.placeSearchProvider,
     this.now,
   });
 
@@ -176,6 +178,11 @@ class HomeScreen extends StatefulWidget {
   /// tap-to-pick on the map and falls back to the static placeholder beach
   /// list on Search, unchanged from before.
   final NearbyBeachesProvider? nearbyBeachesProvider;
+
+  /// Forwarded to `SearchScreen` for its real-place search ("Places"
+  /// section). Null (the default) hides that section on Search, unchanged
+  /// from before.
+  final PlaceSearchProvider? placeSearchProvider;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -286,6 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
             favoritesProvider: FavoritesProvider(prefs),
             unitPreferencesProvider: widget.unitPreferencesProvider,
             nearbyBeachesProvider: widget.nearbyBeachesProvider,
+            placeSearchProvider: widget.placeSearchProvider,
             onRefresh: widget.nearbyBeachesProvider == null
                 ? null
                 : () async =>

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/place.dart';
 import '../../data/static_beaches.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
+import '../../logic/providers/place_search_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/unit_preferences.dart';
 import '../widgets/beach_result_card.dart';
@@ -28,6 +31,11 @@ import '../widgets/search_field.dart';
 /// heart icon and a star button appears in the header to switch the list to
 /// favorites only. Null (the default) hides both, so existing callers render
 /// exactly as before.
+///
+/// When [placeSearchProvider] is supplied, typing also searches real places
+/// by name (any city, not limited to [staticBeaches]/the current
+/// [nearbyBeachesProvider] results) and shows them in a "Places" section
+/// above the beach list; selecting one re-centers [nearbyBeachesProvider].
 class SearchScreen extends StatefulWidget {
   const SearchScreen({
     super.key,
@@ -39,6 +47,7 @@ class SearchScreen extends StatefulWidget {
     this.favoritesProvider,
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
+    this.placeSearchProvider,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`, alongside the local
@@ -83,6 +92,15 @@ class SearchScreen extends StatefulWidget {
   /// before.
   final NearbyBeachesProvider? nearbyBeachesProvider;
 
+  /// Searches real places by name (any city, not just the current
+  /// [nearbyBeachesProvider] results or [staticBeaches]) as the user types,
+  /// shown as a "Places" section between the search field and the beach
+  /// list. Selecting one calls [NearbyBeachesProvider.pickLocation] with its
+  /// coordinates. Null (the default) hides the section entirely, so
+  /// existing callers render exactly as before — the name/city filter over
+  /// [nearbyBeachesProvider]/[staticBeaches] still works either way.
+  final PlaceSearchProvider? placeSearchProvider;
+
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
@@ -97,6 +115,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   String _query = '';
   bool _showFavoritesOnly = false;
+  final _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -104,6 +123,7 @@ class _SearchScreenState extends State<SearchScreen> {
     widget.favoritesProvider?.addListener(_onProviderChanged);
     widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    widget.placeSearchProvider?.addListener(_onProviderChanged);
   }
 
   @override
@@ -121,6 +141,10 @@ class _SearchScreenState extends State<SearchScreen> {
       oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
       widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.placeSearchProvider != widget.placeSearchProvider) {
+      oldWidget.placeSearchProvider?.removeListener(_onProviderChanged);
+      widget.placeSearchProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
@@ -128,6 +152,8 @@ class _SearchScreenState extends State<SearchScreen> {
     widget.favoritesProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+    widget.placeSearchProvider?.removeListener(_onProviderChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -169,11 +195,34 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _handleSearchChanged(String value) {
     setState(() => _query = value);
+    widget.placeSearchProvider?.search(value);
     widget.onSearchChanged?.call(value);
   }
 
   void _toggleShowFavoritesOnly() {
     setState(() => _showFavoritesOnly = !_showFavoritesOnly);
+  }
+
+  /// Picks [place]'s coordinates for [NearbyBeachesProvider] and clears the
+  /// search field/place results, so the (now re-centered) beach list shows
+  /// unfiltered once it loads.
+  void _selectPlace(Place place) {
+    widget.nearbyBeachesProvider?.pickLocation(
+      LatLng(place.latitude, place.longitude),
+    );
+    widget.placeSearchProvider?.search('');
+    _searchController.clear();
+    setState(() => _query = '');
+  }
+
+  /// A short "City, Country"-style subtitle for [place], or null when
+  /// neither part of its region is known.
+  String? _placeSubtitle(Place place) {
+    final parts = [
+      if (place.admin1 != null) place.admin1!,
+      if (place.country != null) place.country!,
+    ];
+    return parts.isEmpty ? null : parts.join(', ');
   }
 
   @override
@@ -240,10 +289,12 @@ class _SearchScreenState extends State<SearchScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: SearchField(
+                  controller: _searchController,
                   onChanged: _handleSearchChanged,
                   onSubmitted: widget.onSearchSubmitted,
                 ),
               ),
+              _buildPlaceResults(),
               const SizedBox(height: 16),
               Expanded(
                 child: Container(
@@ -273,6 +324,103 @@ class _SearchScreenState extends State<SearchScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// The real-place search results section, shown between the search field
+  /// and the beach list whenever [SearchScreen.placeSearchProvider] is
+  /// supplied and the user has typed something: a loading row while a
+  /// search is in flight, an error/empty message, or a tappable list of
+  /// [Place] matches. Returns an empty widget (no layout space) when there
+  /// is no provider or the query is blank, matching [PlaceSearchProvider]'s
+  /// own idle state for an empty query.
+  Widget _buildPlaceResults() {
+    final provider = widget.placeSearchProvider;
+    if (provider == null || _query.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    Widget content;
+    switch (provider.status) {
+      case PlaceSearchStatus.idle:
+        return const SizedBox.shrink();
+      case PlaceSearchStatus.loading:
+        content = const Padding(
+          padding: EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      case PlaceSearchStatus.error:
+        content = Text(
+          provider.error ?? 'Could not search for places.',
+          style: const TextStyle(color: _textPrimary, fontSize: 13),
+        );
+      case PlaceSearchStatus.empty:
+        content = Text(
+          'No places match "${_query.trim()}".',
+          style: const TextStyle(color: _textSecondary, fontSize: 13),
+        );
+      case PlaceSearchStatus.loaded:
+        content = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var i = 0; i < provider.results.length; i++)
+              _buildPlaceResultRow(i, provider.results[i]),
+          ],
+        );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      child: content,
+    );
+  }
+
+  /// One row of the loaded "Places" list, keyed by [index] rather than the
+  /// place's name alone: geocoding results routinely share a name (e.g. two
+  /// different "Paris"es), and a name-only key would collide and trip
+  /// Flutter's duplicate-key assertion.
+  Widget _buildPlaceResultRow(int index, Place place) {
+    final subtitle = _placeSubtitle(place);
+    return InkWell(
+      key: ValueKey('place-result-$index-${place.name}'),
+      onTap: () => _selectPlace(place),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.place_outlined, size: 18, color: _textPrimary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    place.name,
+                    style: const TextStyle(
+                      color: _textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
