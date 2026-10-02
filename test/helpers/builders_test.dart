@@ -58,6 +58,25 @@ void main() {
     });
   });
 
+  group('aSeaHourly', () {
+    test('given a required time, build -> produces a valid hourly entry', () {
+      final hourly = aSeaHourly(time: DateTime(2026, 7, 1, 12));
+
+      expect(hourly.time, DateTime(2026, 7, 1, 12));
+      expect(hourly.waveHeight, isNull);
+    });
+
+    test('given a named override, build -> only that field changes', () {
+      final hourly = aSeaHourly(
+        time: DateTime(2026, 7, 1, 12),
+        waveHeight: 1.1,
+      );
+
+      expect(hourly.waveHeight, 1.1);
+      expect(hourly.waveDirection, isNull);
+    });
+  });
+
   group('aWeatherCondition / aWeatherHourly', () {
     test(
       'given no overrides, build -> produces a valid default weather condition',
@@ -80,6 +99,17 @@ void main() {
       final hourly = aWeatherHourly(time: DateTime(2026, 7, 1, 12));
 
       expect(hourly.time, DateTime(2026, 7, 1, 12));
+      expect(hourly.windSpeed, isNull);
+      expect(hourly.rainChancePercent, isNull);
+    });
+
+    test('given a named override, build -> only that field changes', () {
+      final hourly = aWeatherHourly(
+        time: DateTime(2026, 7, 1, 12),
+        rainChancePercent: 55,
+      );
+
+      expect(hourly.rainChancePercent, 55);
       expect(hourly.windSpeed, isNull);
     });
   });

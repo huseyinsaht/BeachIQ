@@ -12,6 +12,13 @@ class WeatherHourly {
   final double? windGusts;
   final double? cloudCoverPercent;
 
+  // Issue #168: Open-Meteo's `precipitation_probability` was already being
+  // fetched and parsed for [WeatherCondition.rainChancePercent] (the
+  // "current" value) but discarded per-hour; exposing it here lets
+  // `lib/logic/forecast_alerts.dart`'s rain rule reuse the real forecast
+  // instead of guessing.
+  final double? rainChancePercent;
+
   // Issue #165: sea-level pressure per hour, for the Pressure detail
   // screen's hourly chart. Nullable/absent by default, matching the other
   // extended hourly fields above.
@@ -24,6 +31,7 @@ class WeatherHourly {
     this.windSpeed,
     this.windGusts,
     this.cloudCoverPercent,
+    this.rainChancePercent,
     this.pressureHpa,
   });
 }
@@ -103,6 +111,11 @@ class WeatherCondition {
                   : null,
               cloudCoverPercent: (cloudCovers is List && i < cloudCovers.length)
                   ? _asDouble(cloudCovers[i])
+                  : null,
+              rainChancePercent:
+                  (precipitationProbabilities is List &&
+                      i < precipitationProbabilities.length)
+                  ? _asDouble(precipitationProbabilities[i])
                   : null,
               pressureHpa: (pressures is List && i < pressures.length)
                   ? _asDouble(pressures[i])

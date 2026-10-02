@@ -91,6 +91,26 @@ WeatherCondition aWeatherCondition({
   );
 }
 
+SeaHourly aSeaHourly({
+  required DateTime time,
+  double? waveHeight,
+  double? waveDirection,
+  double? wavePeriod,
+  double? seaSurfaceTemperature,
+  double? currentVelocity,
+  double? currentDirection,
+}) {
+  return SeaHourly(
+    time: time,
+    waveHeight: waveHeight,
+    waveDirection: waveDirection,
+    wavePeriod: wavePeriod,
+    seaSurfaceTemperature: seaSurfaceTemperature,
+    currentVelocity: currentVelocity,
+    currentDirection: currentDirection,
+  );
+}
+
 WeatherHourly aWeatherHourly({
   required DateTime time,
   double temperature = 28.0,
@@ -98,6 +118,7 @@ WeatherHourly aWeatherHourly({
   double? windSpeed,
   double? windGusts,
   double? cloudCoverPercent,
+  double? rainChancePercent,
   double? pressureHpa,
 }) {
   return WeatherHourly(
@@ -107,6 +128,7 @@ WeatherHourly aWeatherHourly({
     windSpeed: windSpeed,
     windGusts: windGusts,
     cloudCoverPercent: cloudCoverPercent,
+    rainChancePercent: rainChancePercent,
     pressureHpa: pressureHpa,
   );
 }
