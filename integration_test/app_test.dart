@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
@@ -9,6 +10,7 @@ import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -20,6 +22,8 @@ import 'package:http/testing.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../test/helpers/pump_app.dart' show aLoadedWeatherProvider;
 
 // Minimal valid 1x1 transparent PNG so map tiles resolve without network.
 final _transparentPixelPng = base64Decode(
@@ -180,6 +184,60 @@ void main() {
       expect(card.waveHeightMeters, closeTo(0.7, 0.001));
       expect(card.waterTemperatureCelsius, closeTo(24.5, 0.001));
       expect(card.hasParking, isTrue);
+    },
+  );
+
+  testWidgets(
+    'Pressure detail flow: tapping the pressure stat tile on Home opens '
+    'PressureDetailScreen with the real WeatherProvider data, and the back '
+    "button returns to Home (no real network: WeatherProvider's repository "
+    'is faked via test/helpers/pump_app.dart)',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 12,
+          weatherCode: 1,
+          pressureHpa: 1013,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 12),
+              temperature: 26,
+              weatherCode: 1,
+              pressureHpa: 1013,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsNothing);
+
+      // The pressure tile sits below the fold on the test surface's fixed
+      // size, so it needs scrolling into view before it can be hit.
+      await tester.ensureVisible(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(PressureDetailScreen), findsNothing);
     },
   );
 

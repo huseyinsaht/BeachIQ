@@ -20,6 +20,7 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -688,38 +689,37 @@ void main() {
     },
   );
 
-  testWidgets(
-    'the suggestion pill downgrades to a poor verdict once real wave '
-    'height crosses the rough-conditions threshold',
-    (WidgetTester tester) async {
-      final marineProvider = MarineProvider(
-        _FixedMarineRepository(
-          SeaCondition(
-            waveHeight: 1.5,
-            waveDirection: 90,
-            wavePeriod: 5,
-            seaSurfaceTemperature: 22,
-          ),
+  testWidgets('the suggestion pill downgrades to a poor verdict once real wave '
+      'height crosses the rough-conditions threshold', (
+    WidgetTester tester,
+  ) async {
+    final marineProvider = MarineProvider(
+      _FixedMarineRepository(
+        SeaCondition(
+          waveHeight: 1.5,
+          waveDirection: 90,
+          wavePeriod: 5,
+          seaSurfaceTemperature: 22,
         ),
-      );
+      ),
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            tileProvider: _FakeTileProvider(),
-            marineProvider: marineProvider,
-          ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          marineProvider: marineProvider,
         ),
-      );
-      await marineProvider.fetchData(38.3, 26.3);
-      await tester.pump();
+      ),
+    );
+    await marineProvider.fetchData(38.3, 26.3);
+    await tester.pump();
 
-      expect(
-        find.text('Rough conditions — best to skip swimming today.'),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(
+      find.text('Rough conditions — best to skip swimming today.'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     "the Home background gradient stays the navy bg.base/bg.gradientBottom "
@@ -740,7 +740,8 @@ void main() {
         await provider.fetchData(38.3, 26.3);
         await tester.pump();
         final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        final decoration = (scaffold.body as Container).decoration as BoxDecoration;
+        final decoration =
+            (scaffold.body as Container).decoration as BoxDecoration;
         return decoration.gradient as LinearGradient;
       }
 
@@ -912,6 +913,45 @@ void main() {
     },
   );
 
+  testWidgets(
+    'tapping the pressure stat tile opens PressureDetailScreen with the '
+    'real weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsNothing);
+
+      // The pressure tile sits below the fold on the test surface's fixed
+      // 800x600 size, so it needs scrolling into view before it can be hit.
+      await tester.ensureVisible(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The hero value carries over the real current pressure reading.
+      expect(find.text('1013'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(PressureDetailScreen), findsNothing);
+    },
+  );
+
   group('nearbyBeachesProvider wiring', () {
     testWidgets(
       'HomeScreen fetches nearby beaches for the fixed place center on init',
@@ -992,53 +1032,52 @@ void main() {
       },
     );
 
-    testWidgets(
-      "Search's pull-to-refresh calls onRefresh, which re-invokes "
-      'nearbyBeachesProvider.pickLocation for the fixed place center',
-      (WidgetTester tester) async {
-        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
-        addTearDown(nearbyBeachesProvider.dispose);
+    testWidgets("Search's pull-to-refresh calls onRefresh, which re-invokes "
+        'nearbyBeachesProvider.pickLocation for the fixed place center', (
+      WidgetTester tester,
+    ) async {
+      final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+      addTearDown(nearbyBeachesProvider.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: HomeScreen(
-              tileProvider: _FakeTileProvider(),
-              nearbyBeachesProvider: nearbyBeachesProvider,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: nearbyBeachesProvider,
           ),
-        );
-        // Lets the postFrameCallback-triggered initial fetch resolve.
-        await tester.pumpAndSettle();
+        ),
+      );
+      // Lets the postFrameCallback-triggered initial fetch resolve.
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('home-search-entry')));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.pumpAndSettle();
 
-        // A second pickLocation for the exact same spot still re-runs the
-        // whole fetch (MarineBatchService's own 1-hour cache means it may
-        // not necessarily re-hit the network), which always notifies
-        // listeners at least twice: once entering NearbyBeachesStatus.loading
-        // and once resolving back to loaded. Counting notifications (rather
-        // than network calls) is what actually distinguishes a real
-        // pickLocation call from onRefresh being a silent no-op.
-        var notifications = 0;
-        nearbyBeachesProvider.addListener(() => notifications++);
+      // A second pickLocation for the exact same spot still re-runs the
+      // whole fetch (MarineBatchService's own 1-hour cache means it may
+      // not necessarily re-hit the network), which always notifies
+      // listeners at least twice: once entering NearbyBeachesStatus.loading
+      // and once resolving back to loaded. Counting notifications (rather
+      // than network calls) is what actually distinguishes a real
+      // pickLocation call from onRefresh being a silent no-op.
+      var notifications = 0;
+      nearbyBeachesProvider.addListener(() => notifications++);
 
-        final refreshIndicator = tester.widget<RefreshIndicator>(
-          find.descendant(
-            of: find.byType(SearchScreen),
-            matching: find.byType(RefreshIndicator),
-          ),
-        );
-        // The onRefresh closure itself only calls pickLocation() (it does
-        // not await the debounced fetch), so it resolves immediately;
-        // pumpAndSettle afterwards is what lets the debounce timer fire
-        // and the resulting fetch actually run to completion.
-        await refreshIndicator.onRefresh();
-        await tester.pumpAndSettle();
+      final refreshIndicator = tester.widget<RefreshIndicator>(
+        find.descendant(
+          of: find.byType(SearchScreen),
+          matching: find.byType(RefreshIndicator),
+        ),
+      );
+      // The onRefresh closure itself only calls pickLocation() (it does
+      // not await the debounced fetch), so it resolves immediately;
+      // pumpAndSettle afterwards is what lets the debounce timer fire
+      // and the resulting fetch actually run to completion.
+      await refreshIndicator.onRefresh();
+      await tester.pumpAndSettle();
 
-        expect(notifications, greaterThanOrEqualTo(2));
-        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
-      },
-    );
+      expect(notifications, greaterThanOrEqualTo(2));
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+    });
   });
 }

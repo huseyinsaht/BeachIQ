@@ -13,6 +13,7 @@ import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
+import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
@@ -490,6 +491,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         value: _formatPressure(weatherData?.pressureHpa),
                         trendDirection: StatTrendDirection.up,
                         trendDelta: '1 hPa',
+                        onTap: () => Navigator.of(context).push(
+                          buildDetailRoute(
+                            DetailMetric.pressure,
+                            hourly: weatherData?.hourly ?? const [],
+                            currentValue: weatherData?.pressureHpa,
+                            now: widget.now,
+                          ),
+                        ),
                       ),
                       StatTile(
                         icon: Icons.wb_sunny_outlined,

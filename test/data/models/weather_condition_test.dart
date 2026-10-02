@@ -30,11 +30,7 @@ void main() {
         'weather_code': 3,
         'time': '2024-01-01T12:00',
         'hourly': {
-          'time': [
-            '2024-01-01T11:00',
-            '2024-01-01T12:00',
-            '2024-01-01T13:00',
-          ],
+          'time': ['2024-01-01T11:00', '2024-01-01T12:00', '2024-01-01T13:00'],
           'temperature_2m': [20.0, 24.5, 25.0],
           'weather_code': [1, 3, 2],
           'uv_index': [2.0, 4.5, 5.0],
@@ -62,6 +58,20 @@ void main() {
       expect(condition.hourly[1].windSpeed, 15.0);
       expect(condition.hourly[1].windGusts, 25.0);
       expect(condition.hourly[1].cloudCoverPercent, 40.0);
+      expect(condition.hourly[1].pressureHpa, 1012.0);
+    });
+
+    test('hourly pressure defaults to null when absent from the response', () {
+      final condition = WeatherCondition.fromJson({
+        'hourly': {
+          'time': ['2024-01-01T11:00'],
+          'temperature_2m': [20.0],
+          'weather_code': [1],
+        },
+      });
+
+      expect(condition.hourly, hasLength(1));
+      expect(condition.hourly.first.pressureHpa, isNull);
     });
 
     test('hourly wind speed, gusts and cloud cover default to null when '
@@ -102,11 +112,7 @@ void main() {
         'weather_code': 3,
         'time': '2024-01-01T12:15',
         'hourly': {
-          'time': [
-            '2024-01-01T11:00',
-            '2024-01-01T12:00',
-            '2024-01-01T13:00',
-          ],
+          'time': ['2024-01-01T11:00', '2024-01-01T12:00', '2024-01-01T13:00'],
           'temperature_2m': [20.0, 24.5, 25.0],
           'weather_code': [1, 3, 2],
           'uv_index': [2.0, 4.5, 5.0],
