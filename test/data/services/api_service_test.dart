@@ -82,10 +82,11 @@ void main() {
         expect(uri.host, 'marine-api.open-meteo.com');
         expect(uri.queryParameters['latitude'], '38.3');
         expect(uri.queryParameters['longitude'], '26.3');
-        expect(
-          uri.queryParameters['current'],
-          'wave_height,sea_surface_temperature,wave_period,wave_direction',
-        );
+        const expectedFields =
+            'wave_height,sea_surface_temperature,wave_period,wave_direction,'
+            'ocean_current_velocity,ocean_current_direction';
+        expect(uri.queryParameters['current'], expectedFields);
+        expect(uri.queryParameters['hourly'], expectedFields);
       }, () => mockClient);
     });
   });

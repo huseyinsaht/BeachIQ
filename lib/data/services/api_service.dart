@@ -5,12 +5,15 @@ class MarineApiService {
   static const String _baseUrl = "https://marine-api.open-meteo.com/v1/marine";
 
   Future<Map<String, dynamic>> getSeaData(double lat, double lon) async {
-
+    const marineFields =
+        'wave_height,sea_surface_temperature,wave_period,wave_direction,'
+        'ocean_current_velocity,ocean_current_direction';
     final queryParams = {
       'latitude': lat.toString(),
       'longitude': lon.toString(),
-      'current': 'wave_height,sea_surface_temperature,wave_period,wave_direction',
-      'timezone': 'auto'
+      'current': marineFields,
+      'hourly': marineFields,
+      'timezone': 'auto',
     };
 
     final uri = Uri.parse(_baseUrl).replace(queryParameters: queryParams);
