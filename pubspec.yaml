@@ -54,6 +54,11 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
+  # Null-safe mocking without code generation (issue #174's test
+  # conventions), for stubbing collaborators that aren't already fakeable
+  # via a scripted http.Client.
+  mocktail: ^1.0.4
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
