@@ -1,5 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
+import 'beach_amenity.dart';
+
 /// Whether a beach charges an entry fee, as tagged in OSM (`fee=yes`/`no`).
 ///
 /// [unknown] is used whenever OSM has no `fee` tag at all, so it is never
@@ -37,6 +39,13 @@ class Beach {
   /// known. Null when no geometry is available.
   final List<LatLng>? geometry;
 
+  /// Amenities (toilets, showers, cafes, parking, beach clubs, lifeguard
+  /// posts) found near this beach, each with its own real map position.
+  /// Empty by default, including for a cache entry written before this
+  /// field existed. A flag above being `true` always means at least one
+  /// amenity of that kind is present here (see `osm_beach_mapper.dart`).
+  final List<BeachAmenity> amenities;
+
   Beach({
     required this.name,
     required this.city,
@@ -52,5 +61,6 @@ class Beach {
     this.hasCafe = false,
     this.hasBeachResort = false,
     this.geometry,
+    this.amenities = const [],
   });
 }

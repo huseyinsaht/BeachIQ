@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/beach_amenity.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/static_beaches.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -30,6 +33,14 @@ final _fullyPopulatedBeach = Beach(
   hasCafe: true,
   hasBeachResort: true,
   geometry: [LatLng(36.90, 30.65), LatLng(36.91, 30.66)],
+  amenities: [
+    BeachAmenity(
+      kind: AmenityKind.shower,
+      position: LatLng(36.901, 30.651),
+      name: 'Beach Shower',
+    ),
+    BeachAmenity(kind: AmenityKind.lifeguard, position: LatLng(36.902, 30.652)),
+  ],
 );
 
 void _expectSameBeaches(List<Beach> actual, List<Beach> expected) {
@@ -51,6 +62,12 @@ void _expectSameBeaches(List<Beach> actual, List<Beach> expected) {
     expect(a.hasCafe, e.hasCafe);
     expect(a.hasBeachResort, e.hasBeachResort);
     expect(a.geometry, e.geometry);
+    expect(a.amenities.length, e.amenities.length);
+    for (var j = 0; j < a.amenities.length; j++) {
+      expect(a.amenities[j].kind, e.amenities[j].kind);
+      expect(a.amenities[j].position, e.amenities[j].position);
+      expect(a.amenities[j].name, e.amenities[j].name);
+    }
   }
 }
 
@@ -255,6 +272,49 @@ void main() {
       expect(result.beaches.single.hasLifeguard, isNull);
       expect(result.beaches.single.geometry, isNull);
       expect(result.beaches.single.fee, BeachFee.unknown);
+    });
+
+    test('an old cache entry written before amenities existed still loads, '
+        'with an empty amenities list', () async {
+      final sharedPrefs = await prefs();
+      final cache = BeachCache(sharedPrefs);
+      final key = cache.gridKeyFor(36.90, 30.65);
+
+      // Hand-written payload matching the pre-#171 schema: no "amenities"
+      // key at all, only the fields that existed before this issue.
+      await sharedPrefs.setString(
+        key,
+        json.encode({
+          'fetchedAt': DateTime.now().toIso8601String(),
+          'beaches': [
+            {
+              'name': 'Old Schema Plajı',
+              'city': 'Test City',
+              'latitude': 36.90,
+              'longitude': 30.65,
+              'surface': null,
+              'hasLifeguard': null,
+              'fee': 'unknown',
+              'hasShower': false,
+              'hasToilets': false,
+              'hasChangingRoom': false,
+              'hasParking': false,
+              'hasCafe': false,
+              'hasBeachResort': false,
+              'geometry': null,
+            },
+          ],
+        }),
+      );
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called; this entry is not stale'),
+      );
+
+      expect(result.beaches.single.name, 'Old Schema Plajı');
+      expect(result.beaches.single.amenities, isEmpty);
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'package:beachiq/data/mappers/osm_beach_mapper.dart';
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/beach_amenity.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A small, hand-written Overpass-shaped fixture covering:
@@ -68,6 +69,13 @@ Map<String, dynamic> _rawResponse() => {
       'lon': 27.1000,
       'tags': {'amenity': 'cafe'},
     },
+    {
+      'type': 'node',
+      'id': 105,
+      'lat': 36.00012,
+      'lon': 27.05004,
+      'tags': {'amenity': 'parking', 'name': 'Beach C Car Park'},
+    },
   ],
 };
 
@@ -123,6 +131,69 @@ void main() {
       final beaches = mapOverpassToBeaches(_rawResponse());
 
       expect(beaches.every((b) => !b.hasCafe), isTrue);
+    });
+
+    test('fills amenities with the real position and kind of every attached amenity', () {
+      final beaches = mapOverpassToBeaches(_rawResponse());
+      final mergedA = _byApproxLon(beaches, 27.0000);
+      final beachC = _byApproxLon(beaches, 27.0500);
+
+      expect(mergedA.amenities, hasLength(1));
+      expect(mergedA.amenities.single.kind, AmenityKind.shower);
+      expect(mergedA.amenities.single.position.latitude, closeTo(36.00005, 1e-6));
+      expect(mergedA.amenities.single.position.longitude, closeTo(27.0000, 1e-6));
+      expect(mergedA.amenities.single.name, isNull);
+
+      expect(beachC.amenities, hasLength(3));
+      expect(
+        beachC.amenities.map((a) => a.kind),
+        containsAll([AmenityKind.toilets, AmenityKind.lifeguard, AmenityKind.parking]),
+      );
+    });
+
+    test('fills the amenity name from the OSM name tag when present', () {
+      final beaches = mapOverpassToBeaches(_rawResponse());
+      final beachC = _byApproxLon(beaches, 27.0500);
+
+      final parking = beachC.amenities.firstWhere((a) => a.kind == AmenityKind.parking);
+      expect(parking.name, 'Beach C Car Park');
+    });
+
+    test('a boolean has... flag is true if and only if a matching amenity exists', () {
+      final beaches = mapOverpassToBeaches(_rawResponse());
+
+      for (final beach in beaches) {
+        expect(
+          beach.hasShower,
+          beach.amenities.any((a) => a.kind == AmenityKind.shower),
+        );
+        expect(
+          beach.hasToilets,
+          beach.amenities.any((a) => a.kind == AmenityKind.toilets),
+        );
+        expect(
+          beach.hasParking,
+          beach.amenities.any((a) => a.kind == AmenityKind.parking),
+        );
+      }
+    });
+
+    test('a beach with no attached amenities has an empty amenities list', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'way',
+            'id': 1,
+            'tags': {'natural': 'beach', 'name': 'Lonely Beach'},
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+        ],
+      });
+
+      expect(beaches.single.amenities, isEmpty);
     });
 
     test('ignores elements without natural=beach or a recognized amenity tag', () {
