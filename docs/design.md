@@ -56,6 +56,7 @@ hourly row have **no card background at all** — they sit directly on the gradi
 | `text.onPaper` | `#2E3057` | Text on light surfaces (place name, beach name, temperature) |
 | `text.secondary` | `#8B93A6` | Subtitles, labels, unit text |
 | `icon.sun` | `#FFC94D` | Sun glyph in weather icons |
+| `color.warning` | `#EF5350` | Away-from-shore shore-relation label (Sea section, see below) |
 
 ### Typography
 
@@ -103,7 +104,16 @@ Top to bottom:
    wave is actually heading), while ocean current direction is oceanographic "flowing toward" (bearing
    already is where the current is heading, so the tile reads e.g. "toward SE" and its arrow is
    rotated straight to that bearing). See the doc comments on `SeaCondition.waveDirection` /
-   `.currentDirection` for the authoritative explanation.
+   `.currentDirection` for the authoritative explanation. When the nearest fetched beach (by real
+   distance to the selected point, not list order) has usable OSM geometry and amenities (issue #164),
+   the current-direction tile (primary) and wave-direction tile (secondary) each show a small
+   shore-relation line under the value — "(towards shore)" / "(away from shore — stay close!)" /
+   "(along shore)" — with the away-from-shore case in `color.warning` and bold, wrapping onto extra
+   lines rather than being clipped, since it signals drift-out / rip-current risk. The derivation
+   (`lib/logic/wave_shore_relation.dart`'s `seawardBearingFromGeometry`) is a best-effort heuristic
+   (land-side amenities as an anchor), not a guaranteed fact; when no geometry/amenities are
+   available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
+   labels and never an invented relation.
 6. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
    tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
    trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa

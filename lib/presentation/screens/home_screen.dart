@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/providers/favorites_provider.dart';
@@ -13,6 +14,7 @@ import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
+import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
 import '../widgets/hourly_forecast_item.dart';
@@ -23,6 +25,26 @@ import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
 
 const String _noData = 'No data';
+
+const Distance _distance = Distance();
+
+/// The entry of [beaches] whose `(latitude, longitude)` is closest to
+/// [point] by real distance, or null when [beaches] is empty.
+/// `NearbyBeachesProvider.beaches` carries no distance ordering of its own
+/// (Overpass returns elements in element-id order, not by distance), so
+/// this must be computed explicitly rather than assumed from list order.
+Beach? _nearestBeachTo(List<Beach> beaches, LatLng point) {
+  Beach? nearest;
+  var nearestMeters = double.infinity;
+  for (final beach in beaches) {
+    final meters = _distance(point, LatLng(beach.latitude, beach.longitude));
+    if (meters < nearestMeters) {
+      nearestMeters = meters;
+      nearest = beach;
+    }
+  }
+  return nearest;
+}
 
 /// Formats a temperature per [unitSystem]. Metric keeps today's exact
 /// bare-degree style (no unit letter); imperial converts via
@@ -214,6 +236,12 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.marineProvider?.addListener(_onProviderChanged);
     widget.weatherProvider?.addListener(_onProviderChanged);
     widget.unitPreferencesProvider?.addListener(_onProviderChanged);
+    // Needed so the Sea section's shore-relation bearing (derived from
+    // nearbyBeachesProvider.beaches, see seawardBearingDegrees below)
+    // actually appears once the beaches list resolves — without this,
+    // HomeScreen never rebuilds after the async pickLocation() call below
+    // completes.
+    widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
     // Deferred to after the first frame: HomeScreen is built inside the
     // Consumer2<MarineProvider, WeatherProvider> that also listens to
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
@@ -244,6 +272,10 @@ class _HomeScreenState extends State<HomeScreen> {
       oldWidget.unitPreferencesProvider?.removeListener(_onProviderChanged);
       widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.nearbyBeachesProvider != widget.nearbyBeachesProvider) {
+      oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+      widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
@@ -251,6 +283,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.marineProvider?.removeListener(_onProviderChanged);
     widget.weatherProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
+    widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 
@@ -311,6 +344,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
+    // `NearbyBeachesProvider.beaches` is NOT sorted by distance anywhere
+    // (Overpass returns elements in element-id order) - the nearest beach
+    // must be found explicitly, by actual distance to _placeCenter, rather
+    // than assumed to be the first list entry. Null whenever there's no
+    // provider or no beach was found, in which case SeaConditionsRow falls
+    // back to its cardinal-only display.
+    final nearestBeach = _nearestBeachTo(
+      widget.nearbyBeachesProvider?.beaches ?? const [],
+      _placeCenter,
+    );
+    final seawardBearingDegrees = nearestBeach == null
+        ? null
+        : seawardBearingFromGeometry(nearestBeach);
     // Once data has loaded once, a pull-to-refresh re-fetch must not tear
     // down this screen (and the RefreshIndicator/scroll view driving that
     // very refresh) back to a full-screen shell — only the *first* load
@@ -463,6 +509,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SeaConditionsRow(
                       data: marineProvider?.currentData,
                       unitSystem: unitSystem,
+                      seawardBearingDegrees: seawardBearingDegrees,
                     ),
                   ],
                   const SizedBox(height: 20),

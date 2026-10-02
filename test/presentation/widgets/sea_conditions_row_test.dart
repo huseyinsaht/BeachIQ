@@ -4,6 +4,7 @@ import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/builders.dart';
@@ -212,6 +213,144 @@ void main() {
       expect(
         rotationDegreesUnder(tester, const Key('current-direction-tile')),
         closeTo(0, 0.01),
+      );
+    });
+
+    group('shore relation', () {
+      testWidgets('given no seawardBearingDegrees (no beach geometry for this '
+          'location), build -> shows cardinal direction only, never an '
+          'invented shore relation', (tester) async {
+        final data = SeaCondition(currentDirection: 90, waveDirection: 270);
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.text('toward E'), findsOneWidget);
+        expect(find.textContaining('towards shore'), findsNothing);
+        expect(find.textContaining('away from shore'), findsNothing);
+        expect(find.textContaining('along shore'), findsNothing);
+      });
+
+      testWidgets(
+        'given a seawardBearingDegrees and a current flowing straight out '
+        'to sea, build -> flags the current-direction tile as away from '
+        'shore',
+        (tester) async {
+          // Current bearing 90° ("toward E") with a seaward normal of 90°:
+          // the current is flowing straight out to sea.
+          final data = SeaCondition(currentDirection: 90);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          expect(find.text('toward E'), findsOneWidget);
+          expect(find.text('(away from shore — stay close!)'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given the away-from-shore label (the longest, and the one safety '
+        'warning this row shows), build -> it wraps instead of being '
+        'truncated at the tile width',
+        (tester) async {
+          final data = SeaCondition(currentDirection: 90);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.text('(away from shore — stay close!)'),
+          );
+          expect(
+            paragraph.didExceedMaxLines,
+            isFalse,
+            reason:
+                'the away-from-shore safety warning must fully render, not '
+                'be clipped by TextOverflow.ellipsis',
+          );
+        },
+      );
+
+      testWidgets(
+        'given a seawardBearingDegrees and a current flowing straight in '
+        'from sea, build -> labels the current-direction tile as toward '
+        'shore',
+        (tester) async {
+          // Current bearing 270° with a seaward normal of 90°: the current
+          // flows straight toward the beach.
+          final data = SeaCondition(currentDirection: 270);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          expect(find.text('(towards shore)'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given a seawardBearingDegrees and a current flowing parallel to '
+        'the shore, build -> labels the current-direction tile as along '
+        'shore',
+        (tester) async {
+          final data = SeaCondition(currentDirection: 0);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          expect(find.text('(along shore)'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given a seawardBearingDegrees, build -> also labels the secondary '
+        'wave-direction tile',
+        (tester) async {
+          // Wave bearing 90° ("coming from" E, i.e. heading W) against a
+          // seaward normal of 90°: the wave travels landward -> toward
+          // shore.
+          final data = SeaCondition(waveDirection: 90);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          expect(find.text('(towards shore)'), findsOneWidget);
+        },
       );
     });
   });
