@@ -261,12 +261,14 @@ class _LocationMapCardState extends State<LocationMapCard> {
                   for (final amenity in visibleAmenities)
                     Marker(
                       point: amenity.position,
-                      width: 40,
-                      height: 40,
+                      width: amenityMarkerLabeledWidth,
+                      height: amenityMarkerLabeledHeight,
+                      alignment: AmenityMarker.pointAlignment,
                       child: AmenityMarker(
                         kind: amenity.kind,
                         name: amenity.name,
                         selected: identical(selected, amenity),
+                        showLabel: true,
                         onTap: () => _selectAmenity(amenity),
                       ),
                     ),

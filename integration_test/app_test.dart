@@ -13,6 +13,7 @@ import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
+import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
@@ -428,7 +429,16 @@ void main() {
       expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
       expect(nearbyBeachesProvider.beaches.single.amenities, isNotEmpty);
       expect(find.byType(AmenityMarker), findsOneWidget);
-      expect(find.text('Parking'), findsOneWidget);
+      // "Parking" appears twice once the pin's own label is drawn (the
+      // legend chip and the marker's under-pin label, since this fixture's
+      // amenity has no OSM name), so scope to the legend specifically.
+      expect(
+        find.descendant(
+          of: find.byType(AmenityLegend),
+          matching: find.text('Parking'),
+        ),
+        findsOneWidget,
+      );
     },
   );
 }

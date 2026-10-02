@@ -221,8 +221,50 @@ void main() {
         expect(provider.beaches.single.amenities, hasLength(2));
         expect(find.byType(AmenityMarker), findsNWidgets(2));
         expect(find.byType(AmenityLegend), findsOneWidget);
-        expect(find.text('Cafe'), findsOneWidget);
-        expect(find.text('Parking'), findsOneWidget);
+        // Marker labels can show the same text as the legend chips (e.g.
+        // "Parking" has no OSM name, so its pin label falls back to the
+        // kind label too), so scope these to the legend specifically.
+        final legend = find.byType(AmenityLegend);
+        expect(
+          find.descendant(of: legend, matching: find.text('Cafe')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: legend, matching: find.text('Parking')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'each marker shows a short name-or-kind label under its pin at the '
+      "map's default (beach) zoom, per the owner's Google-Maps-style note",
+      (tester) async {
+        final provider = buildSingleAmenityFixtureProvider();
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+              ),
+            ),
+          ),
+        );
+        provider.pickLocation(center);
+        await tester.pumpAndSettle();
+
+        // Default zoom (13.0, per _initialZoom) is above
+        // kAmenityMarkersMinZoom, so the label is already visible without
+        // any zoom gesture or marker tap.
+        expect(find.byType(AmenityMarker), findsOneWidget);
+        final marker = tester.widget<AmenityMarker>(find.byType(AmenityMarker));
+        expect(marker.showLabel, isTrue);
+        expect(find.text('Fixture Cafe'), findsOneWidget);
       },
     );
 
@@ -282,10 +324,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(AmenityMarker), findsOneWidget);
+      // The pin itself already shows a "Fixture Cafe" label (#172's "label
+      // at beach zoom" requirement); the selected card's text is the more
+      // specific "name · kind" combination, so assert on that exact string
+      // rather than a substring match that the pin's own label would also
+      // satisfy.
       await tester.tap(find.byType(AmenityMarker));
       await tester.pump();
 
-      expect(find.textContaining('Fixture Cafe'), findsOneWidget);
+      expect(find.text('Fixture Cafe · Cafe'), findsOneWidget);
     });
   });
 }

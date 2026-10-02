@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 
 import '../../data/models/beach_amenity.dart';
 
@@ -65,66 +66,115 @@ String amenityLabel(AmenityKind kind) {
   }
 }
 
+/// Width/height of the box an [AmenityMarker] needs when [AmenityMarker.
+/// showLabel] is true, so callers (the map's `Marker`) can size and anchor
+/// it correctly — see [AmenityMarker.pointAlignment].
+const double amenityMarkerLabeledWidth = 64;
+const double amenityMarkerLabeledHeight = 48;
+
 /// A single amenity pin on the map: a filled colored circle (per
 /// [amenityColor]) with a white glyph (per [amenityIcon]) and a soft drop
 /// shadow, matching the Google-Maps-style visual language the owner asked
 /// for (issue #172) without copying any Google asset or logo.
 ///
 /// Grows slightly and gains a stronger shadow when [selected]; parking
-/// shows a "P" badge instead of its icon, per the owner's note.
+/// shows a "P" badge instead of its icon, per the owner's note. When
+/// [showLabel] is true (the owner's "a short label under the pin at high
+/// zoom" note), a small name-or-kind label is drawn below the circle — the
+/// circle itself stays the real geographic anchor (see [pointAlignment]),
+/// not the label or the taller box around both.
 class AmenityMarker extends StatelessWidget {
   const AmenityMarker({
     super.key,
     required this.kind,
     this.name,
     this.selected = false,
+    this.showLabel = false,
     this.onTap,
   });
 
   final AmenityKind kind;
   final String? name;
   final bool selected;
+  final bool showLabel;
   final VoidCallback? onTap;
 
   static const double _baseSize = 28;
   static const double _selectedSize = 36;
 
+  /// The `Marker.alignment` a caller must pass alongside
+  /// [amenityMarkerLabeledWidth]/[amenityMarkerLabeledHeight] so the
+  /// circle's center — not the taller label box's center — sits on the
+  /// real geographic point.
+  static final Alignment pointAlignment = Marker.computePixelAlignment(
+    width: amenityMarkerLabeledWidth,
+    height: amenityMarkerLabeledHeight,
+    left: amenityMarkerLabeledWidth / 2,
+    top: _baseSize / 2,
+  );
+
   @override
   Widget build(BuildContext context) {
     final size = selected ? _selectedSize : _baseSize;
+    final effectiveLabel = name ?? amenityLabel(kind);
     return Semantics(
       label: name == null ? amenityLabel(kind) : '${amenityLabel(kind)}, $name',
       button: true,
       child: GestureDetector(
         onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            color: amenityColor(kind),
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white, width: 2),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: selected ? 0.45 : 0.3),
-                blurRadius: selected ? 6 : 3,
-                offset: const Offset(0, 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: size,
+              height: size,
+              decoration: BoxDecoration(
+                color: amenityColor(kind),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: selected ? 0.45 : 0.3,
+                    ),
+                    blurRadius: selected ? 6 : 3,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Center(
+                child: kind == AmenityKind.parking
+                    ? const Text(
+                        'P',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      )
+                    : Icon(amenityIcon(kind), color: Colors.white, size: 16),
+              ),
+            ),
+            if (showLabel) ...[
+              const SizedBox(height: 2),
+              Text(
+                effectiveLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  shadows: [
+                    Shadow(color: Colors.black87, blurRadius: 3),
+                    Shadow(color: Colors.black87, blurRadius: 3),
+                  ],
+                ),
               ),
             ],
-          ),
-          child: Center(
-            child: kind == AmenityKind.parking
-                ? const Text(
-                    'P',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  )
-                : Icon(amenityIcon(kind), color: Colors.white, size: 16),
-          ),
+          ],
         ),
       ),
     );

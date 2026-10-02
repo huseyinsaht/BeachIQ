@@ -85,5 +85,44 @@ void main() {
 
       expect(tapped, isTrue);
     });
+
+    testWidgets('given showLabel false (the default), draws no label text', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(const AmenityMarker(kind: AmenityKind.cafe, name: 'Beach Cafe')),
+      );
+
+      expect(find.text('Beach Cafe'), findsNothing);
+      expect(find.text('Cafe'), findsNothing);
+    });
+
+    testWidgets(
+      'given showLabel true and a name, draws the name as the label',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const AmenityMarker(
+              kind: AmenityKind.cafe,
+              name: 'Beach Cafe',
+              showLabel: true,
+            ),
+          ),
+        );
+
+        expect(find.text('Beach Cafe'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given showLabel true and no name, falls back to the kind label',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(const AmenityMarker(kind: AmenityKind.parking, showLabel: true)),
+        );
+
+        expect(find.text('Parking'), findsOneWidget);
+      },
+    );
   });
 }

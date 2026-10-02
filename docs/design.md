@@ -89,8 +89,10 @@ Top to bottom:
    teal `#00897B`; lifeguard red `#D93025`). A legend row of toggle chips (top-left of the map, one
    chip per kind actually present — never the full set) shows/hides a kind's markers. Below
    `kAmenityMarkersMinZoom` markers are hidden entirely rather than drawn as an unreadable cluster of
-   overlapping pins; tapping a marker grows it slightly and shows a small card with its name (or kind,
-   when OSM has no name) and distance from the current pick. Markers never intercept the map's own
+   overlapping pins; at or above it each pin also shows a short white, shadowed label underneath it
+   (its name, or its kind when OSM has no name). Tapping a marker grows it slightly and shows a small
+   card with its name (or kind, when OSM has no name) and distance from the current pick. Markers never
+   intercept the map's own
    pan/zoom or the radius circle's tap-to-pick.
 4. **Smart suggestion pill** — a single full-width rounded pill, one short line + leading icon, verdict
    text. The mockup shows a single light-grey pill; this deliberately extends it: the background
