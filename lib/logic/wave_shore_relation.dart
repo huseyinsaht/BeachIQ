@@ -8,6 +8,67 @@
 /// (secondary) — see [classifyDirection]'s `convention` parameter.
 library;
 
+import 'package:latlong2/latlong.dart';
+
+import '../data/models/beach.dart';
+
+const Distance _distance = Distance();
+
+/// Below this separation (in meters) between a [Beach]'s geometry centroid
+/// and its amenities' average position, [seawardBearingFromGeometry] treats
+/// the two points as effectively coincident and returns null rather than a
+/// meaningless/unstable bearing between two near-identical points.
+const double _minAnchorSeparationMeters = 1;
+
+/// Derives a beach's seaward-pointing bearing (degrees clockwise from true
+/// north, suitable as [classifyDirection]'s `seawardBearingDegrees`) from
+/// its OSM-sourced [Beach.geometry] and [Beach.amenities].
+///
+/// **This is a heuristic approximation, not ground truth** — OSM's
+/// `natural=beach` ways carry no tag for which side faces open water, so
+/// there is no way to read the true seaward direction directly off the
+/// geometry. Instead this assumes land-side amenities (parking, cafés,
+/// showers, etc. — see `beach_amenity.dart`) cluster on the landward side,
+/// a reasonable but imperfect proxy: it takes the bearing from the
+/// amenities' average position toward the beach geometry's centroid, i.e.
+/// "away from where the amenities cluster", as the seaward direction. A
+/// beach with amenities spread unevenly around it (e.g. on a headland), or
+/// with amenities that happen to sit seaward of the sand (rare, but
+/// possible for a pier-mounted cafe), will get a wrong bearing from this
+/// heuristic.
+///
+/// Returns null — never a fabricated/guessed bearing — when [beach] has no
+/// geometry, no amenities to anchor the heuristic, or when its geometry
+/// centroid and amenity average are too close together
+/// ([_minAnchorSeparationMeters]) to yield a stable direction.
+double? seawardBearingFromGeometry(Beach beach) {
+  final geometry = beach.geometry;
+  if (geometry == null || geometry.isEmpty) return null;
+  if (beach.amenities.isEmpty) return null;
+
+  final geometryCentroid = _average(geometry);
+  final amenityAverage = _average([
+    for (final a in beach.amenities) a.position,
+  ]);
+
+  if (_distance.as(LengthUnit.Meter, amenityAverage, geometryCentroid) <
+      _minAnchorSeparationMeters) {
+    return null;
+  }
+
+  return _distance.bearing(amenityAverage, geometryCentroid);
+}
+
+LatLng _average(List<LatLng> points) {
+  var latSum = 0.0;
+  var lonSum = 0.0;
+  for (final p in points) {
+    latSum += p.latitude;
+    lonSum += p.longitude;
+  }
+  return LatLng(latSum / points.length, lonSum / points.length);
+}
+
 /// The two bearing conventions [SeaCondition] documents for its direction
 /// fields (see its doc comments on `waveDirection`/`currentDirection` for
 /// the authoritative explanation) — [classifyDirection] needs to know which

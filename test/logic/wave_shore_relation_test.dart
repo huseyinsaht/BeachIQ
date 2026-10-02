@@ -1,5 +1,8 @@
+import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/beach_amenity.dart';
 import 'package:beachiq/logic/wave_shore_relation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 void main() {
   group('classifyDirection', () {
@@ -124,5 +127,111 @@ void main() {
         expect(shoreRelationThresholdDegrees, 45);
       });
     });
+  });
+
+  group('seawardBearingFromGeometry', () {
+    // A short synthetic east-west shoreline (a beach "way") a little north
+    // of a cluster of land-side amenities (parking, cafe) a little south of
+    // it. The amenities anchor the heuristic's "landward" side, so the
+    // derived seaward bearing should point away from them, i.e. roughly due
+    // north (0°), back toward the beach geometry.
+    final shorelineGeometry = [LatLng(36.000, 28.000), LatLng(36.000, 28.010)];
+    final landSideAmenities = [
+      BeachAmenity(kind: AmenityKind.parking, position: LatLng(35.990, 28.003)),
+      BeachAmenity(kind: AmenityKind.cafe, position: LatLng(35.990, 28.007)),
+    ];
+
+    test('given geometry north of its amenities, '
+        'seawardBearingFromGeometry -> points back toward the geometry '
+        '(roughly due north, away from the amenity cluster)', () {
+      final beach = Beach(
+        name: 'Synthetic Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        geometry: shorelineGeometry,
+        amenities: landSideAmenities,
+      );
+
+      final bearing = seawardBearingFromGeometry(beach);
+
+      expect(bearing, isNotNull);
+      expect(bearing, closeTo(0, 5));
+    });
+
+    test('given geometry south of its amenities, seawardBearingFromGeometry -> '
+        'points roughly due south (the opposite case)', () {
+      final beach = Beach(
+        name: 'Synthetic Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        geometry: [LatLng(35.990, 28.000), LatLng(35.990, 28.010)],
+        amenities: [
+          BeachAmenity(
+            kind: AmenityKind.parking,
+            position: LatLng(36.000, 28.005),
+          ),
+        ],
+      );
+
+      final bearing = seawardBearingFromGeometry(beach);
+
+      expect(bearing, isNotNull);
+      // Due south is +-180 degrees; closeTo doesn't wrap, so compare via
+      // the absolute value crossing the +-180 boundary.
+      expect(bearing!.abs(), greaterThan(175));
+    });
+
+    test('given a beach with no geometry, seawardBearingFromGeometry -> null '
+        '(never a fabricated bearing)', () {
+      final beach = Beach(
+        name: 'No Geometry Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        amenities: landSideAmenities,
+      );
+
+      expect(seawardBearingFromGeometry(beach), isNull);
+    });
+
+    test(
+      'given a beach with geometry but no amenities, '
+      'seawardBearingFromGeometry -> null (no anchor to derive a side from)',
+      () {
+        final beach = Beach(
+          name: 'No Amenities Beach',
+          city: 'Testville',
+          latitude: 36.000,
+          longitude: 28.005,
+          geometry: shorelineGeometry,
+        );
+
+        expect(seawardBearingFromGeometry(beach), isNull);
+      },
+    );
+
+    test(
+      'given a beach whose geometry centroid and amenity average coincide, '
+      'seawardBearingFromGeometry -> null (no stable direction to derive)',
+      () {
+        final beach = Beach(
+          name: 'Degenerate Beach',
+          city: 'Testville',
+          latitude: 36.000,
+          longitude: 28.005,
+          geometry: const [LatLng(36.000, 28.005)],
+          amenities: [
+            BeachAmenity(
+              kind: AmenityKind.parking,
+              position: LatLng(36.000, 28.005),
+            ),
+          ],
+        );
+
+        expect(seawardBearingFromGeometry(beach), isNull);
+      },
+    );
   });
 }

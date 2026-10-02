@@ -13,6 +13,7 @@ import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
+import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
 import '../widgets/hourly_forecast_item.dart';
@@ -311,6 +312,19 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
+    // nearbyBeachesProvider.beaches is already nearest-first for the picked
+    // location (see location_map_card.dart's clustering comment), so the
+    // first entry is the closest beach to _placeCenter — reusing that
+    // existing ordering instead of inventing a new distance threshold here.
+    // Null whenever there's no provider or no beach was found, in which
+    // case SeaConditionsRow falls back to its cardinal-only display.
+    final nearestBeach =
+        widget.nearbyBeachesProvider?.beaches.isNotEmpty ?? false
+        ? widget.nearbyBeachesProvider!.beaches.first
+        : null;
+    final seawardBearingDegrees = nearestBeach == null
+        ? null
+        : seawardBearingFromGeometry(nearestBeach);
     // Once data has loaded once, a pull-to-refresh re-fetch must not tear
     // down this screen (and the RefreshIndicator/scroll view driving that
     // very refresh) back to a full-screen shell — only the *first* load
@@ -463,6 +477,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SeaConditionsRow(
                       data: marineProvider?.currentData,
                       unitSystem: unitSystem,
+                      seawardBearingDegrees: seawardBearingDegrees,
                     ),
                   ],
                   const SizedBox(height: 20),
