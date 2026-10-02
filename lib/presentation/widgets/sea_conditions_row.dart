@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/sea_condition.dart';
 import '../../logic/unit_preferences.dart';
+import '../../logic/wave_shore_relation.dart';
 
 /// Shown for any null field in [SeaConditionsRow]'s tiles, matching
 /// `home_screen.dart`'s `_noData` constant: "no data for this hour/point",
@@ -52,6 +53,21 @@ String _formatCurrentSpeed(double? kmh, UnitSystem unitSystem) {
   return formatWindSpeed(kmh, unitSystem);
 }
 
+/// The short suffix shown under a direction tile's value once a
+/// [ShoreRelation] is known (i.e. [SeaConditionsRow.seawardBearingDegrees]
+/// was supplied). [ShoreRelation.awayFromShore] gets a stronger warning
+/// ("stay close!") since it signals drift-out / rip-current risk.
+String _shoreRelationLabel(ShoreRelation relation) {
+  switch (relation) {
+    case ShoreRelation.towardShore:
+      return '(towards shore)';
+    case ShoreRelation.awayFromShore:
+      return '(away from shore — stay close!)';
+    case ShoreRelation.alongShore:
+      return '(along shore)';
+  }
+}
+
 /// A section under the Home screen's smart suggestion pill showing the
 /// current [SeaCondition] (`MarineProvider.currentData`): wave height,
 /// water temperature, wave direction, current speed and current direction.
@@ -73,15 +89,28 @@ String _formatCurrentSpeed(double? kmh, UnitSystem unitSystem) {
 ///
 /// Pure presentational widget — no network, provider, or repository
 /// dependency.
+///
+/// [seawardBearingDegrees] is the selected beach's shore-normal bearing
+/// (degrees clockwise from true north, pointing from the beach straight out
+/// to open water) when it can be derived from the beach's OSM geometry; see
+/// `wave_shore_relation.dart`. It is null whenever no beach geometry is
+/// available for the current location — in that case the direction tiles
+/// show today's cardinal-only labels and NEVER an invented shore relation.
+/// When non-null, the current-direction tile (primary) and the
+/// wave-direction tile (secondary) each append a `ShoreRelation` label,
+/// with [ShoreRelation.awayFromShore] visually flagged since it signals
+/// drift-out / rip-current risk.
 class SeaConditionsRow extends StatelessWidget {
   const SeaConditionsRow({
     super.key,
     required this.data,
     required this.unitSystem,
+    this.seawardBearingDegrees,
   });
 
   final SeaCondition? data;
   final UnitSystem unitSystem;
+  final double? seawardBearingDegrees;
 
   static const _textSecondary = Color(0xFF8B93A6);
 
@@ -89,6 +118,23 @@ class SeaConditionsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final condition = data;
     if (condition == null) return const SizedBox.shrink();
+
+    final seaward = seawardBearingDegrees;
+    final waveShoreRelation = seaward == null || condition.waveDirection == null
+        ? null
+        : classifyDirection(
+            degrees: condition.waveDirection!,
+            convention: DirectionConvention.comingFrom,
+            seawardBearingDegrees: seaward,
+          );
+    final currentShoreRelation =
+        seaward == null || condition.currentDirection == null
+        ? null
+        : classifyDirection(
+            degrees: condition.currentDirection!,
+            convention: DirectionConvention.flowingToward,
+            seawardBearingDegrees: seaward,
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,7 +148,10 @@ class SeaConditionsRow extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 78,
+          // Taller once a shore-relation line can appear under a direction
+          // tile's value (only when seawardBearingDegrees is known), so that
+          // extra line never overflows the row.
+          height: seaward == null ? 78 : 94,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -133,6 +182,7 @@ class SeaConditionsRow extends StatelessWidget {
                     ? null
                     : condition.waveDirection! + 180,
                 value: _waveDirectionLabel(condition.waveDirection),
+                shoreRelation: waveShoreRelation,
               ),
               const SizedBox(width: 20),
               _SeaStatTile(
@@ -154,6 +204,7 @@ class SeaConditionsRow extends StatelessWidget {
                 // doc comment) — the opposite of the wave tile above.
                 arrowRotationDegrees: condition.currentDirection,
                 value: _currentDirectionLabel(condition.currentDirection),
+                shoreRelation: currentShoreRelation,
               ),
             ],
           ),
@@ -226,25 +277,42 @@ class _SeaStatTile extends StatelessWidget {
 /// Shows a non-rotated, muted arrow and "No data" when
 /// [arrowRotationDegrees] is null, instead of defaulting to a fabricated
 /// bearing of 0.
+///
+/// [shoreRelation] is only non-null once a beach's seaward bearing is known
+/// (see [SeaConditionsRow.seawardBearingDegrees]); when present, its label
+/// (" (towards shore)" / " (away from shore — stay close!)" /
+/// " (along shore)") renders as a small line under the value, with
+/// [ShoreRelation.awayFromShore] shown in a warning color since it signals
+/// drift-out / rip-current risk. Null shows nothing extra — never an
+/// invented relation.
 class _SeaDirectionStatTile extends StatelessWidget {
   const _SeaDirectionStatTile({
     super.key,
     required this.label,
     required this.arrowRotationDegrees,
     required this.value,
+    this.shoreRelation,
   });
 
   final String label;
   final double? arrowRotationDegrees;
   final String value;
+  final ShoreRelation? shoreRelation;
 
   static const _textSecondary = Color(0xFF8B93A6);
+  static const _warning = Color(0xFFEF5350);
 
   @override
   Widget build(BuildContext context) {
     final degrees = arrowRotationDegrees;
+    final relation = shoreRelation;
+    final relationLabel = relation == null
+        ? null
+        : _shoreRelationLabel(relation);
     return Semantics(
-      label: '$label, $value',
+      label: relationLabel == null
+          ? '$label, $value'
+          : '$label, $value $relationLabel',
       excludeSemantics: true,
       child: SizedBox(
         width: 120,
@@ -278,6 +346,23 @@ class _SeaDirectionStatTile extends StatelessWidget {
                 fontWeight: FontWeight.bold,
               ),
             ),
+            if (relationLabel != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                relationLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: relation == ShoreRelation.awayFromShore
+                      ? _warning
+                      : _textSecondary,
+                  fontSize: 11,
+                  fontWeight: relation == ShoreRelation.awayFromShore
+                      ? FontWeight.bold
+                      : FontWeight.normal,
+                ),
+              ),
+            ],
           ],
         ),
       ),
