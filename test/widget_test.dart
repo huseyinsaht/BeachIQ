@@ -448,6 +448,51 @@ void main() {
     },
   );
 
+  testWidgets(
+    "the hourly row's icons follow each entry's own hour, not the real "
+    'clock: a clear noon entry shows a sun and a clear 11PM entry shows a '
+    'moon side by side',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(
+        _FixedWeatherRepository(
+          WeatherCondition(
+            temperature: 20,
+            windSpeed: 5,
+            weatherCode: 1,
+            hourly: [
+              WeatherHourly(
+                time: DateTime(2026, 1, 1, 12),
+                temperature: 26,
+                weatherCode: 1,
+              ),
+              WeatherHourly(
+                time: DateTime(2026, 1, 1, 23),
+                temperature: 18,
+                weatherCode: 1,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            // Deliberately before both entries; the runner's own real
+            // clock time must not affect which icon shows for which hour.
+            now: () => DateTime(2026, 1, 1, 8),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
+      expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
+    },
+  );
+
   testWidgets('a stat tile whose WeatherProvider field is null shows "No data" '
       'instead of a fabricated value', (WidgetTester tester) async {
     final weatherProvider = WeatherProvider(

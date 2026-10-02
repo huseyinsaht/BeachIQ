@@ -2,9 +2,6 @@ import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-DateTime _noon() => DateTime(2024, 6, 15, 12);
-DateTime _midnight() => DateTime(2024, 6, 15, 2);
-
 void main() {
   Widget wrap(Widget child) {
     return MaterialApp(home: Scaffold(body: child));
@@ -17,7 +14,7 @@ void main() {
           timeLabel: 'Now',
           icon: Icons.wb_sunny,
           temperature: '28°',
-          now: _noon,
+          time: DateTime(2024, 6, 15, 12),
         ),
       ),
     );
@@ -42,25 +39,25 @@ void main() {
                   timeLabel: 'Now',
                   icon: Icons.wb_sunny,
                   temperature: '28°',
-                  now: _noon,
+                  time: DateTime(2024, 6, 15, 12),
                 ),
                 HourlyForecastItem(
                   timeLabel: '3PM',
                   icon: Icons.cloud,
                   temperature: '26°',
-                  now: _noon,
+                  time: DateTime(2024, 6, 15, 12),
                 ),
                 HourlyForecastItem(
                   timeLabel: '4PM',
                   icon: Icons.cloud,
                   temperature: '25°',
-                  now: _noon,
+                  time: DateTime(2024, 6, 15, 12),
                 ),
                 HourlyForecastItem(
                   timeLabel: '5PM',
                   icon: Icons.grain,
                   temperature: '24°',
-                  now: _noon,
+                  time: DateTime(2024, 6, 15, 12),
                 ),
               ],
             ),
@@ -150,7 +147,7 @@ void main() {
           timeLabel: '2AM',
           icon: Icons.wb_sunny,
           temperature: '18°',
-          now: _midnight,
+          time: DateTime(2024, 6, 15, 2),
         ),
       ),
     );
@@ -168,12 +165,65 @@ void main() {
           timeLabel: 'Now',
           icon: Icons.thunderstorm,
           temperature: '22°',
-          now: _noon,
+          time: DateTime(2024, 6, 15, 12),
         ),
       ),
     );
 
     expect(find.byIcon(Icons.cloud), findsOneWidget);
     expect(find.byIcon(Icons.bolt), findsOneWidget);
+  });
+
+  testWidgets(
+    'a row mixing a daytime and a nighttime clear hour shows one sun and '
+    'one moon, each per its own entry time (not the real clock)',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          Row(
+            children: [
+              HourlyForecastItem(
+                timeLabel: '12PM',
+                icon: Icons.wb_sunny,
+                temperature: '28°',
+                time: DateTime(2024, 6, 15, 12),
+              ),
+              HourlyForecastItem(
+                timeLabel: '11PM',
+                icon: Icons.wb_sunny,
+                temperature: '18°',
+                time: DateTime(2024, 6, 15, 23),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
+      expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
+    },
+  );
+
+  testWidgets('a thunderstorm bolt accent is not clipped by the icon box', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        HourlyForecastItem(
+          timeLabel: 'Now',
+          icon: Icons.thunderstorm,
+          temperature: '22°',
+          time: DateTime(2024, 6, 15, 12),
+        ),
+      ),
+    );
+
+    final stack = tester.widget<Stack>(
+      find.descendant(
+        of: find.byType(HourlyForecastItem),
+        matching: find.byType(Stack),
+      ),
+    );
+    expect(stack.clipBehavior, Clip.none);
   });
 }

@@ -38,7 +38,7 @@ WeatherIconStyle styleForWeatherIcon(IconData baseIcon, {required bool isDay}) {
   if (baseIcon == Icons.wb_cloudy) {
     return isDay
         ? const WeatherIconStyle(icon: Icons.wb_cloudy, color: Color(0xFF90A4AE))
-        : const WeatherIconStyle(icon: Icons.nights_stay, color: Color(0xFF90A4AE));
+        : const WeatherIconStyle(icon: Icons.nights_stay, color: Color(0xFFCFD8DC));
   }
   if (baseIcon == Icons.cloud) {
     return const WeatherIconStyle(icon: Icons.cloud, color: Color(0xFF78909C));
@@ -69,10 +69,12 @@ WeatherIconStyle styleForWeatherIcon(IconData baseIcon, {required bool isDay}) {
 /// The icon is colored by WMO weather-code group via [styleForWeatherIcon]
 /// (sun yellow, cloud/fog blue-grey, rain blue, snow light blue,
 /// thunderstorm violet + a yellow bolt accent), with a moon variant for a
-/// clear/partly-cloudy hour at night. [now] decides day/night; it is a
-/// real-time check applied to every item in the row alike (an hourly entry
-/// carries no per-hour "is this hour daytime" flag today), not a per-hour
-/// sunrise/sunset calculation.
+/// clear/partly-cloudy hour. The day/night choice is this *entry's own*
+/// hour via [time] (e.g. `entry.time` from `WeatherHourly`) — a row
+/// spanning many hours must show a moon for a night entry and a sun for a
+/// day one side by side, not whatever the device clock says "now". A null
+/// [time] (no existing call site passes one) falls back to the real clock,
+/// so this stays additive. This is a 6-20 bucket, not sunrise/sunset.
 ///
 /// Pure presentational widget — no network, provider, or repository
 /// dependency.
@@ -82,7 +84,7 @@ class HourlyForecastItem extends StatelessWidget {
     required this.timeLabel,
     required this.icon,
     required this.temperature,
-    this.now,
+    this.time,
   });
 
   /// e.g. "Now", "3PM".
@@ -90,15 +92,14 @@ class HourlyForecastItem extends StatelessWidget {
   final IconData icon;
   final String temperature;
 
-  /// Overridable "current time" source for the day/night check, so widget
-  /// tests can pin it instead of depending on the real clock. Defaults to
-  /// [DateTime.now], mirroring `HomeScreen.now`.
-  final DateTime Function()? now;
+  /// This entry's own forecast time, used only to decide its day/night
+  /// icon variant (see class doc). Defaults to the real clock when null.
+  final DateTime? time;
 
   static const _textSecondary = Color(0xFF8B93A6);
 
   bool get _isDay {
-    final hour = (now ?? DateTime.now)().hour;
+    final hour = (time ?? DateTime.now()).hour;
     return hour >= 6 && hour < 20;
   }
 
@@ -118,6 +119,7 @@ class HourlyForecastItem extends StatelessWidget {
           height: 24,
           child: Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
               Icon(style.icon, size: 24, color: style.color),
               if (style.accentIcon != null)
