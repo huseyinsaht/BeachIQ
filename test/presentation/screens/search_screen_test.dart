@@ -655,16 +655,90 @@ void main() {
       },
     );
 
+    testWidgets('given a loaded place result, selecting it -> picks its exact '
+        'location for nearbyBeachesProvider and clears the search field', (
+      tester,
+    ) async {
+      final geocodingClient = FakeHttpClient()
+        ..queueJson(
+          host: 'geocoding-api.open-meteo.com',
+          json: {
+            'results': [
+              {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+            ],
+          },
+        );
+      final placeSearchProvider = PlaceSearchProvider(
+        GeocodingService(geocodingClient),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+      addTearDown(placeSearchProvider.dispose);
+
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = FakeHttpClient()
+        ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+        ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          SearchScreen(
+            placeSearchProvider: placeSearchProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'bodrum');
+      await tester.pump(const Duration(milliseconds: 2));
+      await tester.pump();
+
+      expect(find.text('Bodrum'), findsOneWidget);
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.idle);
+
+      await tester.tap(find.byKey(const ValueKey('place-result-0-Bodrum')));
+      await tester.pump();
+
+      expect(find.text('Bodrum'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '',
+      );
+
+      // Lets the debounced pickLocation fetch settle, then proves it was
+      // called with Bodrum's own coordinates (not some other place's) by
+      // inspecting the Overpass POST body the fetch actually sent: a
+      // coordinate mix-up would send the wrong lat/lon here even though
+      // the fixture response (and thus the final "loaded" status) looks
+      // the same regardless of which point was requested.
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+
+      // The fixture Overpass response has no beaches, so this resolves
+      // to the explicit "empty" status rather than "loaded" — what
+      // matters for this test is which coordinates were requested.
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.empty);
+      final overpassRequest = nearbyClient.requests.single as http.Request;
+      expect(overpassRequest.body, contains('37.03'));
+      expect(overpassRequest.body, contains('27.43'));
+    });
+
     testWidgets(
-      'given a loaded place result, selecting it -> picks its location for '
-      'nearbyBeachesProvider and clears the search field',
+      'given two places with the same name, selecting the second -> picks '
+      'its own (different) location, not the first',
       (tester) async {
         final geocodingClient = FakeHttpClient()
           ..queueJson(
             host: 'geocoding-api.open-meteo.com',
             json: {
               'results': [
-                {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+                {'name': 'Springfield', 'latitude': 39.78, 'longitude': -89.65},
+                {'name': 'Springfield', 'latitude': 42.1, 'longitude': -72.59},
               ],
             },
           );
@@ -675,7 +749,9 @@ void main() {
         addTearDown(placeSearchProvider.dispose);
 
         SharedPreferences.setMockInitialValues({});
-        final nearbyClient = _FixtureNetworkClient();
+        final nearbyClient = FakeHttpClient()
+          ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+          ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
         final nearbyBeachesProvider = NearbyBeachesProvider(
           OverpassService(nearbyClient),
           BeachCache(await SharedPreferences.getInstance()),
@@ -692,32 +768,34 @@ void main() {
             ),
           ),
         );
-        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.enterText(find.byType(TextField), 'springfield');
         await tester.pump(const Duration(milliseconds: 2));
         await tester.pump();
 
-        expect(find.text('Bodrum'), findsOneWidget);
-
-        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.idle);
-
-        await tester.tap(find.byKey(const ValueKey('place-result-Bodrum')));
-        await tester.pump();
-
-        expect(find.text('Bodrum'), findsNothing);
+        // Both rows render without Flutter's duplicate-key assertion
+        // firing (it would throw during this pump), each under its own
+        // index-qualified key.
+        expect(find.text('Springfield'), findsNWidgets(2));
         expect(
-          tester.widget<TextField>(find.byType(TextField)).controller!.text,
-          '',
+          find.byKey(const ValueKey('place-result-0-Springfield')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('place-result-1-Springfield')),
+          findsOneWidget,
         );
 
-        // _FixtureNetworkClient resolves on the spot (no real async delay),
-        // so by the time the debounced pickLocation fetch settles, the
-        // reliable way to prove it ran is the now-loaded end state (see the
-        // "mid-fetch" test above for why isLoading can't be caught here).
+        await tester.tap(
+          find.byKey(const ValueKey('place-result-1-Springfield')),
+        );
+        await tester.pump();
         await tester.pump(const Duration(milliseconds: 10));
         await tester.pump(const Duration(milliseconds: 10));
 
-        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
-        expect(nearbyBeachesProvider.beaches.single.name, 'Fixture Beach');
+        final overpassRequest = nearbyClient.requests.single as http.Request;
+        expect(overpassRequest.body, contains('42.1'));
+        expect(overpassRequest.body, contains('-72.59'));
+        expect(overpassRequest.body, isNot(contains('39.78')));
       },
     );
   });

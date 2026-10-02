@@ -370,47 +370,8 @@ class _SearchScreenState extends State<SearchScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            for (final place in provider.results)
-              InkWell(
-                key: ValueKey('place-result-${place.name}'),
-                onTap: () => _selectPlace(place),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.place_outlined,
-                        size: 18,
-                        color: _textPrimary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              place.name,
-                              style: const TextStyle(
-                                color: _textPrimary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            if (_placeSubtitle(place) != null)
-                              Text(
-                                _placeSubtitle(place)!,
-                                style: const TextStyle(
-                                  color: _textSecondary,
-                                  fontSize: 12,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+            for (var i = 0; i < provider.results.length; i++)
+              _buildPlaceResultRow(i, provider.results[i]),
           ],
         );
     }
@@ -418,6 +379,50 @@ class _SearchScreenState extends State<SearchScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       child: content,
+    );
+  }
+
+  /// One row of the loaded "Places" list, keyed by [index] rather than the
+  /// place's name alone: geocoding results routinely share a name (e.g. two
+  /// different "Paris"es), and a name-only key would collide and trip
+  /// Flutter's duplicate-key assertion.
+  Widget _buildPlaceResultRow(int index, Place place) {
+    final subtitle = _placeSubtitle(place);
+    return InkWell(
+      key: ValueKey('place-result-$index-${place.name}'),
+      onTap: () => _selectPlace(place),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.place_outlined, size: 18, color: _textPrimary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    place.name,
+                    style: const TextStyle(
+                      color: _textPrimary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

@@ -232,7 +232,7 @@ void main() {
 
       expect(find.text('Bodrum'), findsOneWidget);
 
-      await tester.tap(find.byKey(const ValueKey('place-result-Bodrum')));
+      await tester.tap(find.byKey(const ValueKey('place-result-0-Bodrum')));
       await tester.pump(const Duration(milliseconds: 30));
       await tester.pumpAndSettle();
 
