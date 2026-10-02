@@ -44,7 +44,10 @@ hourly row have **no card background at all** — they sit directly on the gradi
 |---|---|---|
 | `bg.base` | `#0D1220` | Screen background |
 | `bg.gradientBottom` | `#2A3145` | Bottom of the background gradient |
-| `surface.pill` | `#D9DBDF` → `#F2F3F5` | Smart suggestion pill (light grey gradient, not a dark card) |
+| `surface.pill` | `#D9DBDF` → `#F2F3F5` | Smart suggestion pill, `unknown` verdict only (see below) |
+| `surface.pill.good` | `#1B5E20` → `#2E7D32` | Smart suggestion pill, `good` verdict (white text/icon) |
+| `surface.pill.caution` | `#92400E` → `#B45309` | Smart suggestion pill, `caution` verdict (white text/icon) |
+| `surface.pill.poor` | `#7F1D1D` → `#9A3412` | Smart suggestion pill, `poor` verdict (white text/icon) |
 | `surface.paper` | `#FFFFFF` | Map card, search field, search-result sheet |
 | `map.water` | `#A8D3E0` | Sea on the map |
 | `map.land` | `#EDEBE6` | Land on the map |
@@ -78,10 +81,14 @@ Top to bottom:
    app must draw beach geometry on the map. A location bar is docked to the card's bottom edge
    (same white surface): small grey "Location" label, place name bold in `text.onPaper`, and an
    overflow ("...") menu on the right. There is no pin glyph in the home version of the bar.
-4. **Smart suggestion pill** — a single full-width rounded pill with the light grey gradient
-   (`surface.pill`), a leading icon and one short line in `text.onPaper`. The pill text and icon in the
-   mockup are placeholders; the intent is a one-line verdict/suggestion (e.g. whether it is a good time
-   to swim). Muted, not a primary CTA.
+4. **Smart suggestion pill** — a single full-width rounded pill, one short line + leading icon, verdict
+   text. The mockup shows a single light-grey pill; this deliberately extends it: the background
+   gradient, foreground color and icon follow the swim verdict's level (`VerdictPalette`) — good =
+   green (`surface.pill.good`), caution = orange (`surface.pill.caution`), poor = red-orange
+   (`surface.pill.poor`), unknown = the mockup's neutral grey (`surface.pill`, dark `text.onPaper`).
+   Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
+   pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
+   unrelated and never changes with the verdict. Muted, not a primary CTA.
 5. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
    tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
    trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa

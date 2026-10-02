@@ -5,10 +5,20 @@ class WeatherHourly {
   final double temperature;
   final int weatherCode;
 
+  // Issue #155: nullable/absent by default so callers can distinguish
+  // "no data available" from "value is zero", matching the rest of this
+  // model's extended fields.
+  final double? windSpeed;
+  final double? windGusts;
+  final double? cloudCoverPercent;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
     required this.weatherCode,
+    this.windSpeed,
+    this.windGusts,
+    this.cloudCoverPercent,
   });
 }
 
@@ -55,6 +65,9 @@ class WeatherCondition {
       final precipitationProbabilities =
           hourlyJson['precipitation_probability'];
       final pressures = hourlyJson['pressure_msl'];
+      final windSpeeds = hourlyJson['wind_speed_10m'];
+      final windGustsList = hourlyJson['wind_gusts_10m'];
+      final cloudCovers = hourlyJson['cloud_cover'];
 
       if (times is List) {
         final parsedTimes = <DateTime?>[];
@@ -70,7 +83,20 @@ class WeatherCondition {
           // fabricating a 0/"Clear" value, since both are valid real values.
           if (temperature == null || code == null) continue;
           hourlyList.add(
-            WeatherHourly(time: time, temperature: temperature, weatherCode: code),
+            WeatherHourly(
+              time: time,
+              temperature: temperature,
+              weatherCode: code,
+              windSpeed: (windSpeeds is List && i < windSpeeds.length)
+                  ? _asDouble(windSpeeds[i])
+                  : null,
+              windGusts: (windGustsList is List && i < windGustsList.length)
+                  ? _asDouble(windGustsList[i])
+                  : null,
+              cloudCoverPercent: (cloudCovers is List && i < cloudCovers.length)
+                  ? _asDouble(cloudCovers[i])
+                  : null,
+            ),
           );
         }
 

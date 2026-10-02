@@ -40,6 +40,9 @@ void main() {
           'uv_index': [2.0, 4.5, 5.0],
           'precipitation_probability': [10, 20, 30],
           'pressure_msl': [1010.0, 1012.0, 1013.0],
+          'wind_speed_10m': [10.0, 15.0, 20.0],
+          'wind_gusts_10m': [18.0, 25.0, 32.0],
+          'cloud_cover': [10.0, 40.0, 90.0],
         },
         'daily': {
           'temperature_2m_max': [26.0],
@@ -56,6 +59,25 @@ void main() {
       expect(condition.hourly[1].time, DateTime.parse('2024-01-01T12:00'));
       expect(condition.hourly[1].temperature, 24.5);
       expect(condition.hourly[1].weatherCode, 3);
+      expect(condition.hourly[1].windSpeed, 15.0);
+      expect(condition.hourly[1].windGusts, 25.0);
+      expect(condition.hourly[1].cloudCoverPercent, 40.0);
+    });
+
+    test('hourly wind speed, gusts and cloud cover default to null when '
+        'absent from the response', () {
+      final condition = WeatherCondition.fromJson({
+        'hourly': {
+          'time': ['2024-01-01T11:00'],
+          'temperature_2m': [20.0],
+          'weather_code': [1],
+        },
+      });
+
+      expect(condition.hourly, hasLength(1));
+      expect(condition.hourly.first.windSpeed, isNull);
+      expect(condition.hourly.first.windGusts, isNull);
+      expect(condition.hourly.first.cloudCoverPercent, isNull);
     });
 
     test('defaults new forecast fields to null/empty when absent', () {

@@ -11,7 +11,7 @@ class WeatherApiService {
       'longitude': lon.toString(),
       'current': 'temperature_2m,wind_speed_10m,weather_code',
       'hourly':
-          'temperature_2m,weather_code,uv_index,precipitation_probability,pressure_msl',
+          'temperature_2m,weather_code,uv_index,precipitation_probability,pressure_msl,wind_speed_10m,wind_gusts_10m,cloud_cover',
       'daily': 'temperature_2m_max,temperature_2m_min',
       'timezone': 'auto'
     };
