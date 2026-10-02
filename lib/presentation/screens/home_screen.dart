@@ -522,6 +522,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             entry.temperature,
                             unitSystem,
                           ),
+                          time: entry.time,
                         );
                       },
                     ),

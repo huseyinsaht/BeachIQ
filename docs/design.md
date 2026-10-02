@@ -94,7 +94,11 @@ Top to bottom:
    trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
    (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
 6. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
-   items (time label, weather icon, bold temperature), starting with "Now".
+   items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
+   weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
+   rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
+   moon instead of the sun icon at night, decided per entry from its own hour (a fixed 06:00-20:00
+   bucket, not a sunrise/sunset calculation).
 
 ## Screen: Search
 
