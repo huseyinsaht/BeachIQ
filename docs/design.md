@@ -97,8 +97,8 @@ Top to bottom:
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
    rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
-   moon instead of the sun icon at night (a real-time day/night check, applied uniformly across the row,
-   not a per-hour sunrise/sunset calculation).
+   moon instead of the sun icon at night, decided per entry from its own hour (a fixed 06:00-20:00
+   bucket, not a sunrise/sunset calculation).
 
 ## Screen: Search
 
