@@ -20,7 +20,7 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
-import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
