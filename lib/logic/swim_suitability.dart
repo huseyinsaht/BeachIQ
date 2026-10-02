@@ -20,12 +20,16 @@ class SwimVerdict {
 // guidance generally treats >1.2m wave height and >40km/h wind as conditions
 // where casual swimmers should stay out, and >70% rain chance as likely to
 // bring a storm/lightning risk rather than just a wet towel.
-const _highWaveHeightM = 1.2;
-const _moderateWaveHeightM = 0.6;
-const _highWindSpeedKmh = 40.0;
-const _moderateWindSpeedKmh = 20.0;
-const _highRainChancePercent = 70;
-const _moderateRainChancePercent = 40;
+//
+// Public (not `_`-prefixed) so other pure logic — e.g.
+// `lib/logic/forecast_alerts.dart`'s wind/wave/rain alert rules — can import
+// and reuse these exact numbers instead of redefining them.
+const highWaveHeightM = 1.2;
+const moderateWaveHeightM = 0.6;
+const highWindSpeedKmh = 40.0;
+const moderateWindSpeedKmh = 20.0;
+const highRainChancePercent = 70;
+const moderateRainChancePercent = 40;
 
 /// Scores swim suitability from wave height, wind speed and rain chance.
 ///
@@ -39,7 +43,9 @@ SwimVerdict scoreSwimSuitability({
   double? windSpeedKmh,
   int? rainChancePercent,
 }) {
-  if (waveHeightM == null && windSpeedKmh == null && rainChancePercent == null) {
+  if (waveHeightM == null &&
+      windSpeedKmh == null &&
+      rainChancePercent == null) {
     return const SwimVerdict(
       SwimSuitabilityLevel.unknown,
       'Not enough data to judge swim conditions right now.',
@@ -52,25 +58,25 @@ SwimVerdict scoreSwimSuitability({
   }
 
   if (waveHeightM != null) {
-    if (waveHeightM >= _highWaveHeightM) {
+    if (waveHeightM >= highWaveHeightM) {
       consider(SwimSuitabilityLevel.poor);
-    } else if (waveHeightM >= _moderateWaveHeightM) {
+    } else if (waveHeightM >= moderateWaveHeightM) {
       consider(SwimSuitabilityLevel.caution);
     }
   }
 
   if (windSpeedKmh != null) {
-    if (windSpeedKmh >= _highWindSpeedKmh) {
+    if (windSpeedKmh >= highWindSpeedKmh) {
       consider(SwimSuitabilityLevel.poor);
-    } else if (windSpeedKmh >= _moderateWindSpeedKmh) {
+    } else if (windSpeedKmh >= moderateWindSpeedKmh) {
       consider(SwimSuitabilityLevel.caution);
     }
   }
 
   if (rainChancePercent != null) {
-    if (rainChancePercent >= _highRainChancePercent) {
+    if (rainChancePercent >= highRainChancePercent) {
       consider(SwimSuitabilityLevel.poor);
-    } else if (rainChancePercent >= _moderateRainChancePercent) {
+    } else if (rainChancePercent >= moderateRainChancePercent) {
       consider(SwimSuitabilityLevel.caution);
     }
   }

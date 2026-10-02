@@ -12,6 +12,13 @@ class WeatherHourly {
   final double? windGusts;
   final double? cloudCoverPercent;
 
+  // Issue #168: Open-Meteo's `precipitation_probability` was already being
+  // fetched and parsed for [WeatherCondition.rainChancePercent] (the
+  // "current" value) but discarded per-hour; exposing it here lets
+  // `lib/logic/forecast_alerts.dart`'s rain rule reuse the real forecast
+  // instead of guessing.
+  final double? rainChancePercent;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
@@ -19,6 +26,7 @@ class WeatherHourly {
     this.windSpeed,
     this.windGusts,
     this.cloudCoverPercent,
+    this.rainChancePercent,
   });
 }
 
@@ -75,10 +83,12 @@ class WeatherCondition {
           final time = DateTime.tryParse(times[i].toString());
           parsedTimes.add(time);
           if (time == null) continue;
-          final temperature =
-              (temps is List && i < temps.length) ? _asDouble(temps[i]) : null;
-          final code =
-              (codes is List && i < codes.length) ? _asInt(codes[i]) : null;
+          final temperature = (temps is List && i < temps.length)
+              ? _asDouble(temps[i])
+              : null;
+          final code = (codes is List && i < codes.length)
+              ? _asInt(codes[i])
+              : null;
           // Skip entries missing temperature or weather code rather than
           // fabricating a 0/"Clear" value, since both are valid real values.
           if (temperature == null || code == null) continue;
@@ -95,6 +105,11 @@ class WeatherCondition {
                   : null,
               cloudCoverPercent: (cloudCovers is List && i < cloudCovers.length)
                   ? _asDouble(cloudCovers[i])
+                  : null,
+              rainChancePercent:
+                  (precipitationProbabilities is List &&
+                      i < precipitationProbabilities.length)
+                  ? _asDouble(precipitationProbabilities[i])
                   : null,
             ),
           );
@@ -127,7 +142,9 @@ class WeatherCondition {
         }
         if (precipitationProbabilities is List &&
             currentIndex < precipitationProbabilities.length) {
-          rainChancePercent = _asDouble(precipitationProbabilities[currentIndex]);
+          rainChancePercent = _asDouble(
+            precipitationProbabilities[currentIndex],
+          );
         }
         if (pressures is List && currentIndex < pressures.length) {
           pressureHpa = _asDouble(pressures[currentIndex]);
