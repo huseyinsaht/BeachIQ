@@ -74,10 +74,7 @@ void main() {
       ),
     );
 
-    expect(
-      find.bySemanticsLabel('Wind, 12 km/h, trend up 2%'),
-      findsOneWidget,
-    );
+    expect(find.bySemanticsLabel('Wind, 12 km/h, trend up 2%'), findsOneWidget);
   });
 
   testWidgets('constrains a long value to one line with ellipsis overflow', (
@@ -106,5 +103,74 @@ void main() {
     final valueText = tester.widget<Text>(find.text(longValue));
     expect(valueText.maxLines, 1);
     expect(valueText.overflow, TextOverflow.ellipsis);
+  });
+
+  group('onTap', () {
+    testWidgets('given no onTap, renders with no InkWell/tap target', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          const StatTile(
+            icon: Icons.speed,
+            label: 'Pressure',
+            value: '1013 hPa',
+            trendDirection: StatTrendDirection.up,
+            trendDelta: '1 hPa',
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('stat-tile-tap-target')), findsNothing);
+      expect(find.byType(InkWell), findsNothing);
+    });
+
+    testWidgets('given an onTap, wraps the tile in an InkWell and invokes '
+        'it on tap', (tester) async {
+      var tapped = false;
+
+      await tester.pumpWidget(
+        wrap(
+          StatTile(
+            icon: Icons.speed,
+            label: 'Pressure',
+            value: '1013 hPa',
+            trendDirection: StatTrendDirection.up,
+            trendDelta: '1 hPa',
+            onTap: () => tapped = true,
+          ),
+        ),
+      );
+
+      expect(find.byKey(const Key('stat-tile-tap-target')), findsOneWidget);
+      expect(find.byType(InkWell), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('stat-tile-tap-target')));
+      await tester.pump();
+
+      expect(tapped, isTrue);
+    });
+
+    testWidgets('given an onTap, still renders icon/label/value/trend '
+        'exactly like before', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          StatTile(
+            icon: Icons.speed,
+            label: 'Pressure',
+            value: '1013 hPa',
+            trendDirection: StatTrendDirection.down,
+            trendDelta: '2 hPa',
+            onTap: () {},
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.speed), findsOneWidget);
+      expect(find.text('Pressure'), findsOneWidget);
+      expect(find.text('1013 hPa'), findsOneWidget);
+      expect(find.text('2 hPa'), findsOneWidget);
+      expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
+    });
   });
 }

@@ -100,6 +100,29 @@ Top to bottom:
    moon instead of the sun icon at night, decided per entry from its own hour (a fixed 06:00-20:00
    bucket, not a sunrise/sunset calculation).
 
+## Screen: Metric detail
+
+Not in the mockup — the mockup only covers Home/location-detail and Search (see the top of this
+doc). Each Home stat tile (wind speed, rain chance, pressure, UV index) opens its own detail screen
+when tapped, on its own route, with a back button to Home (issue #165 and the per-metric issues that
+follow it: #178 UV index, #179 rain chance, #166 wind, #167 wave height, #180 water temperature, #181
+current).
+
+All of these screens share one layout (`MetricDetailScaffold`, not a shared screen — each metric still
+gets its own screen file/route) on the same `bg.base`/`bg.gradientBottom` gradient as Home, so they read
+as part of the same app:
+
+1. **Header row** — back button (`chevron_left`, same as Search's) + the metric name, `text.primary`.
+2. **Hero value** — the current reading, large and bold like Home's hero temperature, with its unit
+   underneath in `text.secondary` and (where the metric has one) a short trend line, e.g. Pressure's
+   "Rising — ...".
+3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
+   band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
+4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
+   stat-grid's label/value styling.
+5. **Explanation paragraph** — one short `text.secondary` paragraph on what the metric means for the
+   weather (e.g. what rising vs. falling pressure implies).
+
 ## Screen: Search
 
 1. **Header row** — back chevron left, "Search" title centered, overflow ("...") menu right.

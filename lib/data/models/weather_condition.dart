@@ -12,6 +12,11 @@ class WeatherHourly {
   final double? windGusts;
   final double? cloudCoverPercent;
 
+  // Issue #165: sea-level pressure per hour, for the Pressure detail
+  // screen's hourly chart. Nullable/absent by default, matching the other
+  // extended hourly fields above.
+  final double? pressureHpa;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
@@ -19,6 +24,7 @@ class WeatherHourly {
     this.windSpeed,
     this.windGusts,
     this.cloudCoverPercent,
+    this.pressureHpa,
   });
 }
 
@@ -75,10 +81,12 @@ class WeatherCondition {
           final time = DateTime.tryParse(times[i].toString());
           parsedTimes.add(time);
           if (time == null) continue;
-          final temperature =
-              (temps is List && i < temps.length) ? _asDouble(temps[i]) : null;
-          final code =
-              (codes is List && i < codes.length) ? _asInt(codes[i]) : null;
+          final temperature = (temps is List && i < temps.length)
+              ? _asDouble(temps[i])
+              : null;
+          final code = (codes is List && i < codes.length)
+              ? _asInt(codes[i])
+              : null;
           // Skip entries missing temperature or weather code rather than
           // fabricating a 0/"Clear" value, since both are valid real values.
           if (temperature == null || code == null) continue;
@@ -95,6 +103,9 @@ class WeatherCondition {
                   : null,
               cloudCoverPercent: (cloudCovers is List && i < cloudCovers.length)
                   ? _asDouble(cloudCovers[i])
+                  : null,
+              pressureHpa: (pressures is List && i < pressures.length)
+                  ? _asDouble(pressures[i])
                   : null,
             ),
           );
@@ -127,7 +138,9 @@ class WeatherCondition {
         }
         if (precipitationProbabilities is List &&
             currentIndex < precipitationProbabilities.length) {
-          rainChancePercent = _asDouble(precipitationProbabilities[currentIndex]);
+          rainChancePercent = _asDouble(
+            precipitationProbabilities[currentIndex],
+          );
         }
         if (pressures is List && currentIndex < pressures.length) {
           pressureHpa = _asDouble(pressures[currentIndex]);
