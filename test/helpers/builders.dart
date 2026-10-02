@@ -119,6 +119,7 @@ WeatherHourly aWeatherHourly({
   double? windGusts,
   double? cloudCoverPercent,
   double? rainChancePercent,
+  double? pressureHpa,
 }) {
   return WeatherHourly(
     time: time,
@@ -128,5 +129,6 @@ WeatherHourly aWeatherHourly({
     windGusts: windGusts,
     cloudCoverPercent: cloudCoverPercent,
     rainChancePercent: rainChancePercent,
+    pressureHpa: pressureHpa,
   );
 }

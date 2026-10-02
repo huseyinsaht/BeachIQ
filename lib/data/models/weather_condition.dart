@@ -19,6 +19,11 @@ class WeatherHourly {
   // instead of guessing.
   final double? rainChancePercent;
 
+  // Issue #165: sea-level pressure per hour, for the Pressure detail
+  // screen's hourly chart. Nullable/absent by default, matching the other
+  // extended hourly fields above.
+  final double? pressureHpa;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
@@ -27,6 +32,7 @@ class WeatherHourly {
     this.windGusts,
     this.cloudCoverPercent,
     this.rainChancePercent,
+    this.pressureHpa,
   });
 }
 
@@ -110,6 +116,9 @@ class WeatherCondition {
                   (precipitationProbabilities is List &&
                       i < precipitationProbabilities.length)
                   ? _asDouble(precipitationProbabilities[i])
+                  : null,
+              pressureHpa: (pressures is List && i < pressures.length)
+                  ? _asDouble(pressures[i])
                   : null,
             ),
           );
