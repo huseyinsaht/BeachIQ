@@ -3,7 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/beach_amenity.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
+import 'amenity_legend.dart';
+import 'amenity_marker.dart';
 import 'osm_attribution.dart';
 
 /// Radius, in meters, of the "nearby beaches" search circle drawn around a
@@ -30,6 +33,21 @@ const int kMaxRenderedBeachOverlays = 40;
 /// docs/assets/mockup-home.png.
 const Color _goldHighlight = Color(0xFFC9A227);
 const Color _goldFill = Color(0x33C9A227);
+
+const Distance _distance = Distance();
+
+/// The map's starting zoom level (also [_LocationMapCardState]'s initial
+/// `_currentZoom`, before any real `onPositionChanged` event arrives).
+const double _initialZoom = 13.0;
+
+/// Minimum zoom at/above which amenity markers are drawn at all — this
+/// issue's "cluster or hide at low zoom" requirement, implemented as the
+/// simpler of the two (hide): below this, a 20 km radius pick can return
+/// far more amenities than are visually readable as individual pins.
+const double kAmenityMarkersMinZoom = 12.0;
+
+/// Pure so it's directly unit-testable without a widget/map in play.
+bool shouldShowAmenityMarkers(double zoom) => zoom >= kAmenityMarkersMinZoom;
 
 /// The light ("paper"), rounded map card with a coastline highlight and a
 /// docked location bar (pin icon + place name + overflow menu) at its
@@ -72,6 +90,9 @@ class _LocationMapCardState extends State<LocationMapCard> {
   static const _textOnPaper = Color(0xFF2E3057);
 
   late LatLng _pickedPoint = widget.center;
+  double _currentZoom = _initialZoom;
+  final Set<AmenityKind> _hiddenAmenityKinds = {};
+  BeachAmenity? _selectedAmenity;
 
   /// The last non-empty beach list rendered, kept around so an offline or
   /// failed fetch after an earlier successful pick still shows that
@@ -91,8 +112,25 @@ class _LocationMapCardState extends State<LocationMapCard> {
   }
 
   void _handleTap(TapPosition tapPosition, LatLng point) {
-    setState(() => _pickedPoint = point);
+    setState(() {
+      _pickedPoint = point;
+      _selectedAmenity = null;
+    });
     widget.nearbyBeachesProvider?.pickLocation(point);
+  }
+
+  void _toggleAmenityKind(AmenityKind kind) {
+    setState(() {
+      if (!_hiddenAmenityKinds.remove(kind)) {
+        _hiddenAmenityKinds.add(kind);
+      }
+    });
+  }
+
+  void _selectAmenity(BeachAmenity amenity) {
+    setState(() {
+      _selectedAmenity = identical(_selectedAmenity, amenity) ? null : amenity;
+    });
   }
 
   @override
@@ -111,7 +149,8 @@ class _LocationMapCardState extends State<LocationMapCard> {
                   ? _buildMap(const [])
                   : AnimatedBuilder(
                       animation: provider,
-                      builder: (context, _) => _buildMap(_beachesToShow(provider)),
+                      builder: (context, _) =>
+                          _buildMap(_beachesToShow(provider)),
                     ),
             ),
             Align(
@@ -175,15 +214,26 @@ class _LocationMapCardState extends State<LocationMapCard> {
 
   Widget _buildMap(List<Beach> beaches) {
     final overlayBeaches = beaches.take(kMaxRenderedBeachOverlays);
+    final allAmenities = [
+      for (final beach in overlayBeaches) ...beach.amenities,
+    ];
+    final presentKinds = {for (final a in allAmenities) a.kind};
+    final visibleAmenities = allAmenities
+        .where((a) => !_hiddenAmenityKinds.contains(a.kind))
+        .toList();
+    final showMarkers = shouldShowAmenityMarkers(_currentZoom);
+    final selected = _selectedAmenity;
 
     return Stack(
       children: [
         FlutterMap(
           options: MapOptions(
             initialCenter: widget.center,
-            initialZoom: 13.0,
+            initialZoom: _initialZoom,
             minZoom: kLocationMapMinZoom,
             onTap: _handleTap,
+            onPositionChanged: (camera, hasGesture) =>
+                setState(() => _currentZoom = camera.zoom),
           ),
           children: [
             TileLayer(
@@ -205,8 +255,46 @@ class _LocationMapCardState extends State<LocationMapCard> {
             ),
             PolygonLayer(polygons: _polygonsFor(overlayBeaches)),
             PolylineLayer(polylines: _polylinesFor(overlayBeaches)),
+            if (showMarkers)
+              MarkerLayer(
+                markers: [
+                  for (final amenity in visibleAmenities)
+                    Marker(
+                      point: amenity.position,
+                      width: 40,
+                      height: 40,
+                      child: AmenityMarker(
+                        kind: amenity.kind,
+                        name: amenity.name,
+                        selected: identical(selected, amenity),
+                        onTap: () => _selectAmenity(amenity),
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
+        if (presentKinds.isNotEmpty)
+          Positioned(
+            top: 8,
+            left: 8,
+            right: 48,
+            child: AmenityLegend(
+              presentKinds: presentKinds,
+              hiddenKinds: _hiddenAmenityKinds,
+              onToggle: _toggleAmenityKind,
+            ),
+          ),
+        if (selected != null)
+          Positioned(
+            top: presentKinds.isEmpty ? 8 : 44,
+            left: 8,
+            right: 48,
+            child: _SelectedAmenityCard(
+              amenity: selected,
+              distanceMeters: _distance(_pickedPoint, selected.position),
+            ),
+          ),
         const Positioned(left: 8, bottom: 8, child: OsmAttribution()),
       ],
     );
@@ -239,5 +327,65 @@ class _LocationMapCardState extends State<LocationMapCard> {
             strokeWidth: 3,
           ),
     ];
+  }
+}
+
+/// The small label shown when a marker is tapped: the amenity's kind (and
+/// name, when OSM has one) plus its distance from the current pick — "a
+/// small label with the name or kind", per #172's acceptance criteria.
+class _SelectedAmenityCard extends StatelessWidget {
+  const _SelectedAmenityCard({
+    required this.amenity,
+    required this.distanceMeters,
+  });
+
+  final BeachAmenity amenity;
+  final double distanceMeters;
+
+  static const _textOnPaper = Color(0xFF2E3057);
+
+  @override
+  Widget build(BuildContext context) {
+    final distanceLabel = distanceMeters >= 1000
+        ? '${(distanceMeters / 1000).toStringAsFixed(1)} km'
+        : '${distanceMeters.round()} m';
+    return Material(
+      color: Colors.white,
+      elevation: 3,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              amenityIcon(amenity.kind),
+              size: 16,
+              color: amenityColor(amenity.kind),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                amenity.name == null
+                    ? amenityLabel(amenity.kind)
+                    : '${amenity.name} · ${amenityLabel(amenity.kind)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _textOnPaper,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              distanceLabel,
+              style: const TextStyle(color: _textOnPaper, fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

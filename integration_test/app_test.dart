@@ -13,6 +13,7 @@ import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
+import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
@@ -90,6 +91,66 @@ class _FixtureNetworkClient extends http.BaseClient {
           'id': 2,
           'lat': 38.3003,
           'lon': 26.3003,
+          'tags': {'amenity': 'parking'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+/// Like [_FixtureNetworkClient], but the beach way (and its one amenity)
+/// sits right at `HomeScreen`'s fixed `_placeCenter` (38.3220, 26.3260)
+/// instead of ~2.4 km away - needed so the marker is inside the small map
+/// card's visible viewport, rather than culled off-screen by flutter_map's
+/// `MarkerLayer`.
+class _FixtureNetworkClientNearPlaceCenter extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.7,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 24.5,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          'lat': 38.32205,
+          'lon': 26.3261,
           'tags': {'amenity': 'parking'},
         },
       ],
@@ -332,4 +393,42 @@ void main() {
     expect(find.text('4 km/h'), findsOneWidget);
     expect(find.text('toward SE'), findsOneWidget);
   });
+
+  testWidgets(
+    'Amenity markers flow (#172): once beaches load, their real amenities '
+    "appear as markers on Home's map, with a legend chip for the kind "
+    'present',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      // _FixtureNetworkClient's beach sits ~2.4 km from HomeScreen's fixed
+      // _placeCenter, which flutter_map's MarkerLayer culls as outside the
+      // small map card's visible viewport at its zoom - this dedicated
+      // fixture instead puts the beach (and its amenity) right at
+      // _placeCenter so the marker is actually on screen to find.
+      final client = _FixtureNetworkClientNearPlaceCenter();
+      final overpassService = OverpassService(client);
+      final marineBatchService = MarineBatchService(client);
+      final beachCache = BeachCache(await SharedPreferences.getInstance());
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        overpassService,
+        beachCache,
+        marineBatchService,
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          nearbyBeachesProvider: nearbyBeachesProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+      expect(nearbyBeachesProvider.beaches.single.amenities, isNotEmpty);
+      expect(find.byType(AmenityMarker), findsOneWidget);
+      expect(find.text('Parking'), findsOneWidget);
+    },
+  );
 }

@@ -82,6 +82,16 @@ Top to bottom:
    app must draw beach geometry on the map. A location bar is docked to the card's bottom edge
    (same white surface): small grey "Location" label, place name bold in `text.onPaper`, and an
    overflow ("...") menu on the right. There is no pin glyph in the home version of the bar.
+   **Amenity markers** (issue #172) — each beach's real toilets/showers/changing rooms/parking/cafes/
+   beach clubs/lifeguard posts (`Beach.amenities`, from #171) are drawn as Google-Maps-style pins: a
+   filled colored circle with a white glyph and a soft drop shadow (food & drink orange `#F57C00`;
+   toilets/showers/changing rooms blue `#1A73E8`; parking blue-grey `#5F6368` with a "P"; beach club
+   teal `#00897B`; lifeguard red `#D93025`). A legend row of toggle chips (top-left of the map, one
+   chip per kind actually present — never the full set) shows/hides a kind's markers. Below
+   `kAmenityMarkersMinZoom` markers are hidden entirely rather than drawn as an unreadable cluster of
+   overlapping pins; tapping a marker grows it slightly and shows a small card with its name (or kind,
+   when OSM has no name) and distance from the current pick. Markers never intercept the map's own
+   pan/zoom or the radius circle's tap-to-pick.
 4. **Smart suggestion pill** — a single full-width rounded pill, one short line + leading icon, verdict
    text. The mockup shows a single light-grey pill; this deliberately extends it: the background
    gradient, foreground color and icon follow the swim verdict's level (`VerdictPalette`) — good =
