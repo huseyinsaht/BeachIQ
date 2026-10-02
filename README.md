@@ -40,7 +40,7 @@ BeachIQ is launching on **Google Play** — stay tuned!
 
 ## 🗺️ What's next
 
-- [ ] Core wave-height dashboard
+- [x] Core wave-height dashboard
 - [x] Nearby beach search
 - [ ] Google Play launch
 - [ ] Condition alerts
