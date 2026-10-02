@@ -677,6 +677,52 @@ void main() {
   );
 
   testWidgets(
+    "the Home background gradient stays the navy bg.base/bg.gradientBottom "
+    'pair regardless of the swim verdict (only the suggestion pill colors '
+    'follow it)',
+    (WidgetTester tester) async {
+      Future<LinearGradient> pumpAndGetBodyGradient(
+        MarineProvider provider,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: provider,
+            ),
+          ),
+        );
+        await provider.fetchData(38.3, 26.3);
+        await tester.pump();
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
+        final decoration = (scaffold.body as Container).decoration as BoxDecoration;
+        return decoration.gradient as LinearGradient;
+      }
+
+      const expectedColors = [Color(0xFF0D1220), Color(0xFF2A3145)];
+
+      final goodGradient = await pumpAndGetBodyGradient(
+        MarineProvider(_SucceedingMarineRepository()),
+      );
+      expect(goodGradient.colors, expectedColors);
+
+      final poorGradient = await pumpAndGetBodyGradient(
+        MarineProvider(
+          _FixedMarineRepository(
+            SeaCondition(
+              waveHeight: 1.5,
+              waveDirection: 90,
+              wavePeriod: 5,
+              seaSurfaceTemperature: 22,
+            ),
+          ),
+        ),
+      );
+      expect(poorGradient.colors, expectedColors);
+    },
+  );
+
+  testWidgets(
     'a real pull-to-refresh drag on the Home screen re-triggers the marine '
     'fetch without tearing down the scroll view while it is pending',
     (WidgetTester tester) async {
