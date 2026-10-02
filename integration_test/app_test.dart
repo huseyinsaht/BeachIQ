@@ -7,6 +7,7 @@ import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:flutter/material.dart';
