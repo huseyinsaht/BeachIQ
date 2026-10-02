@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.5] - 2026-10-02
+
 ### Added
 
 - Hourly marine forecast series (wave height/direction/period, sea surface
