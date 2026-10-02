@@ -14,6 +14,7 @@ import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart'
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
+import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +24,9 @@ import 'package:integration_test/integration_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../test/helpers/pump_app.dart' show aLoadedWeatherProvider;
+import '../test/helpers/builders.dart' show aSeaCondition;
+import '../test/helpers/pump_app.dart'
+    show aLoadedMarineProvider, aLoadedWeatherProvider;
 
 // Minimal valid 1x1 transparent PNG so map tiles resolve without network.
 final _transparentPixelPng = base64Decode(
@@ -298,4 +301,35 @@ void main() {
       expect(nearbyBeachesProvider.beaches.single.name, 'Fixture Beach');
     },
   );
+
+  testWidgets('Sea section flow: Home renders wave height, water temp, wave '
+      'direction, current speed and current direction from a real-looking '
+      'MarineProvider (#163)', (WidgetTester tester) async {
+    final marineProvider = await aLoadedMarineProvider(
+      aSeaCondition(
+        waveHeight: 0.9,
+        seaSurfaceTemperature: 23.5,
+        waveDirection: 315,
+        currentVelocity: 4.0,
+        currentDirection: 135,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          marineProvider: marineProvider,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SeaConditionsRow), findsOneWidget);
+    expect(find.text('0.9 m'), findsOneWidget);
+    expect(find.text('24°C'), findsOneWidget);
+    expect(find.text('from NW'), findsOneWidget);
+    expect(find.text('4 km/h'), findsOneWidget);
+    expect(find.text('toward SE'), findsOneWidget);
+  });
 }

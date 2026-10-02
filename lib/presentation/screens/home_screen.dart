@@ -17,6 +17,7 @@ import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
+import '../widgets/sea_conditions_row.dart';
 import '../widgets/search_field.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
@@ -141,9 +142,9 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 /// [HourlyForecastItem]s.
 ///
 /// The header, stat grid and hourly row are bound to [WeatherProvider]'s
-/// data, fetched for the fixed Çeşme coordinates. [MarineProvider] is only
-/// consumed for the loading/error states (#69) — it is not yet a source for
-/// any stat tile.
+/// data, fetched for the fixed Çeşme coordinates. [MarineProvider] drives
+/// the loading/error states (#69) and, once loaded, the [SeaConditionsRow]
+/// under the smart suggestion pill (#163).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -457,6 +458,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 16),
                   SwimSuggestionPill(verdict: swimVerdict),
+                  if (marineProvider?.currentData != null) ...[
+                    const SizedBox(height: 20),
+                    SeaConditionsRow(
+                      data: marineProvider?.currentData,
+                      unitSystem: unitSystem,
+                    ),
+                  ],
                   const SizedBox(height: 20),
                   GridView.count(
                     crossAxisCount: 2,

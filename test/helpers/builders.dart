@@ -54,16 +54,20 @@ BeachAmenity anAmenity({
 }
 
 SeaCondition aSeaCondition({
-  double waveHeight = 0.8,
-  double waveDirection = 180,
-  double wavePeriod = 5,
-  double seaSurfaceTemperature = 24.0,
+  double? waveHeight = 0.8,
+  double? waveDirection = 180,
+  double? wavePeriod = 5,
+  double? seaSurfaceTemperature = 24.0,
+  double? currentVelocity = 6.0,
+  double? currentDirection = 135,
 }) {
   return SeaCondition(
     waveHeight: waveHeight,
     waveDirection: waveDirection,
     wavePeriod: wavePeriod,
     seaSurfaceTemperature: seaSurfaceTemperature,
+    currentVelocity: currentVelocity,
+    currentDirection: currentDirection,
   );
 }
 
