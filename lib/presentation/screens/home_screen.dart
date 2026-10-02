@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/providers/favorites_provider.dart';
@@ -24,6 +25,26 @@ import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
 
 const String _noData = 'No data';
+
+const Distance _distance = Distance();
+
+/// The entry of [beaches] whose `(latitude, longitude)` is closest to
+/// [point] by real distance, or null when [beaches] is empty.
+/// `NearbyBeachesProvider.beaches` carries no distance ordering of its own
+/// (Overpass returns elements in element-id order, not by distance), so
+/// this must be computed explicitly rather than assumed from list order.
+Beach? _nearestBeachTo(List<Beach> beaches, LatLng point) {
+  Beach? nearest;
+  var nearestMeters = double.infinity;
+  for (final beach in beaches) {
+    final meters = _distance(point, LatLng(beach.latitude, beach.longitude));
+    if (meters < nearestMeters) {
+      nearestMeters = meters;
+      nearest = beach;
+    }
+  }
+  return nearest;
+}
 
 /// Formats a temperature per [unitSystem]. Metric keeps today's exact
 /// bare-degree style (no unit letter); imperial converts via
@@ -323,16 +344,16 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
-    // nearbyBeachesProvider.beaches is already nearest-first for the picked
-    // location (see location_map_card.dart's clustering comment), so the
-    // first entry is the closest beach to _placeCenter — reusing that
-    // existing ordering instead of inventing a new distance threshold here.
-    // Null whenever there's no provider or no beach was found, in which
-    // case SeaConditionsRow falls back to its cardinal-only display.
-    final nearestBeach =
-        widget.nearbyBeachesProvider?.beaches.isNotEmpty ?? false
-        ? widget.nearbyBeachesProvider!.beaches.first
-        : null;
+    // `NearbyBeachesProvider.beaches` is NOT sorted by distance anywhere
+    // (Overpass returns elements in element-id order) - the nearest beach
+    // must be found explicitly, by actual distance to _placeCenter, rather
+    // than assumed to be the first list entry. Null whenever there's no
+    // provider or no beach was found, in which case SeaConditionsRow falls
+    // back to its cardinal-only display.
+    final nearestBeach = _nearestBeachTo(
+      widget.nearbyBeachesProvider?.beaches ?? const [],
+      _placeCenter,
+    );
     final seawardBearingDegrees = nearestBeach == null
         ? null
         : seawardBearingFromGeometry(nearestBeach);

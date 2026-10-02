@@ -158,6 +158,90 @@ class _FixtureNetworkClientWithAmenity extends http.BaseClient {
   }
 }
 
+/// Like [_FixtureNetworkClientWithAmenity], but the Overpass response lists
+/// TWO beaches, each with its own amenity: a far one (listed FIRST, ~100 km
+/// from `_placeCenter`) and the real fixture beach at `_placeCenter` (listed
+/// SECOND). `NearbyBeachesProvider.beaches` carries no distance ordering
+/// (Overpass returns elements in element-id order), so this proves
+/// HomeScreen picks the nearest beach by actual distance rather than
+/// assuming the first list entry is closest.
+class _FixtureNetworkClientTwoBeaches extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.8,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 25.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 10,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Far Beach',
+            'addr:city': 'Elsewhere',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 39.00, 'lon': 27.00},
+            {'lat': 39.01, 'lon': 27.00},
+            {'lat': 39.01, 'lon': 27.01},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 11,
+          'lat': 38.99995,
+          'lon': 27.005,
+          'tags': {'amenity': 'parking', 'name': 'Far Car Park'},
+        },
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          'lat': 38.32195,
+          'lon': 26.3265,
+          'tags': {'amenity': 'parking', 'name': 'Fixture Car Park'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
 NearbyBeachesProvider _fixtureNearbyBeachesProviderWithAmenity() {
   final client = _FixtureNetworkClientWithAmenity();
   return NearbyBeachesProvider(
@@ -1210,6 +1294,53 @@ void main() {
         final expectedBearing = seawardBearingFromGeometry(
           nearbyBeachesProvider.beaches.first,
         );
+        expect(expectedBearing, isNotNull);
+
+        final row = tester.widget<SeaConditionsRow>(
+          find.byType(SeaConditionsRow),
+        );
+        expect(row.seawardBearingDegrees, expectedBearing);
+      },
+    );
+
+    testWidgets(
+      'given several nearby beaches where the nearest one is NOT first in '
+      'the list, HomeScreen still derives the bearing from the actually '
+      'nearest beach (not list order)',
+      (WidgetTester tester) async {
+        final client = _FixtureNetworkClientTwoBeaches();
+        final nearbyBeachesProvider = NearbyBeachesProvider(
+          OverpassService(client),
+          BeachCache(_mockPrefs!),
+          MarineBatchService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(nearbyBeachesProvider.dispose);
+        final marineProvider = await aLoadedMarineProvider(
+          SeaCondition(currentDirection: 90),
+        );
+        addTearDown(marineProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(nearbyBeachesProvider.beaches, hasLength(2));
+        // "Far Beach" is listed first in the fixture response but is ~100
+        // km from _placeCenter; "Fixture Beach" is listed second but sits
+        // right at _placeCenter, so it is the real nearest beach.
+        expect(nearbyBeachesProvider.beaches.first.name, 'Far Beach');
+        final nearestBeach = nearbyBeachesProvider.beaches.firstWhere(
+          (b) => b.name == 'Fixture Beach',
+        );
+        final expectedBearing = seawardBearingFromGeometry(nearestBeach);
         expect(expectedBearing, isNotNull);
 
         final row = tester.widget<SeaConditionsRow>(
