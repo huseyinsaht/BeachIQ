@@ -87,6 +87,26 @@ void main() {
 
         expect(alerts, isEmpty);
       });
+
+      test('given wind rising >= ${windRiseThresholdKmh}km/h gradually over 2 '
+          'hours with no single hour-to-hour step reaching the threshold, '
+          'buildForecastAlerts -> one wind alert', () {
+        final alerts = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: 5),
+            aWeatherHourly(time: h(10), windSpeed: 11), // +6, under alone
+            aWeatherHourly(time: h(11), windSpeed: 17), // +6, under alone
+            // but hour 11 vs hour 9 (two back) is +12, over the threshold
+          ],
+          sea: const [],
+          now: now,
+        );
+
+        expect(alerts, hasLength(1));
+        expect(alerts.single.type, ForecastAlertType.wind);
+        expect(alerts.single.severity, ForecastAlertSeverity.moderate);
+        expect(alerts.single.end, h(11));
+      });
     });
 
     group('waves rule', () {
@@ -235,7 +255,9 @@ void main() {
             aWeatherHourly(time: h(9), windSpeed: 5),
             aWeatherHourly(time: h(10), windSpeed: 16), // rise, triggers
             aWeatherHourly(time: h(11), windSpeed: 27), // crosses 20, triggers
-            aWeatherHourly(time: h(12), windSpeed: 27), // flat, no trigger
+            // +0 vs hour 11 and +9 vs hour 10 (two back): neither reaches
+            // the rise threshold, so this hour does not extend the window.
+            aWeatherHourly(time: h(12), windSpeed: 25),
           ],
           sea: const [],
           now: now,

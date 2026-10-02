@@ -60,8 +60,9 @@ class ForecastAlert {
 // equivalent in `swim_suitability.dart`, which only ever looks at a single
 // snapshot, never a trend) and so are defined once, here.
 
-/// Wind rise rule: alert when wind speed climbs by at least this much from
-/// one hourly reading to the next.
+/// Wind rise rule: alert when wind speed climbs by at least this much within
+/// a 2-hour window (the current hour vs. either the previous hour or the one
+/// before that), not just a single-hour jump.
 const windRiseThresholdKmh = 10.0;
 
 /// Wave rise rule: alert when wave height climbs by at least this much from
@@ -106,14 +107,15 @@ List<ForecastAlert> buildForecastAlerts({
       timeOf: (h) => h.time,
       type: ForecastAlertType.wind,
       now: effectiveNow,
-      evaluate: (prev, curr) => _evaluateWind(prev.windSpeed, curr.windSpeed),
+      evaluate: (twoBack, prev, curr) =>
+          _evaluateWind(twoBack?.windSpeed, prev.windSpeed, curr.windSpeed),
     ),
     ..._collectAlerts<WeatherHourly>(
       hourly: weather,
       timeOf: (h) => h.time,
       type: ForecastAlertType.clouds,
       now: effectiveNow,
-      evaluate: (prev, curr) =>
+      evaluate: (twoBack, prev, curr) =>
           _evaluateClouds(prev.weatherCode, curr.weatherCode),
     ),
     ..._collectAlerts<WeatherHourly>(
@@ -121,7 +123,7 @@ List<ForecastAlert> buildForecastAlerts({
       timeOf: (h) => h.time,
       type: ForecastAlertType.rain,
       now: effectiveNow,
-      evaluate: (prev, curr) =>
+      evaluate: (twoBack, prev, curr) =>
           _evaluateRain(prev.rainChancePercent, curr.rainChancePercent),
     ),
     ..._collectAlerts<SeaHourly>(
@@ -129,7 +131,7 @@ List<ForecastAlert> buildForecastAlerts({
       timeOf: (h) => h.time,
       type: ForecastAlertType.waves,
       now: effectiveNow,
-      evaluate: (prev, curr) =>
+      evaluate: (twoBack, prev, curr) =>
           _evaluateWaves(prev.waveHeight, curr.waveHeight),
     ),
   ];
@@ -158,11 +160,14 @@ enum _Reason {
 
 typedef _Trigger = ({ForecastAlertSeverity severity, _Reason reason});
 
-/// Wind rule: a rise of >= [windRiseThresholdKmh] from the previous hour to
-/// this one, OR crossing [moderateWindSpeedKmh]/[highWindSpeedKmh] (reused
-/// from `swim_suitability.dart`). A `null` reading on either side means
-/// "no data to compare", not "0 km/h", so it is skipped.
-_Trigger? _evaluateWind(double? prev, double? curr) {
+/// Wind rule: a rise of >= [windRiseThresholdKmh] within a 2-hour window
+/// (checked against the previous hour AND, if available, the hour before
+/// that — so a gradual climb like 5 -> 11 -> 17 km/h still fires even though
+/// neither single hour-to-hour step reaches the threshold on its own), OR
+/// crossing [moderateWindSpeedKmh]/[highWindSpeedKmh] (reused from
+/// `swim_suitability.dart`). A `null` reading means "no data to compare",
+/// not "0 km/h", so that comparison is skipped.
+_Trigger? _evaluateWind(double? twoBack, double? prev, double? curr) {
   if (prev == null || curr == null) return null;
 
   if (prev < highWindSpeedKmh && curr >= highWindSpeedKmh) {
@@ -178,6 +183,9 @@ _Trigger? _evaluateWind(double? prev, double? curr) {
     );
   }
   if (curr - prev >= windRiseThresholdKmh) {
+    return (severity: ForecastAlertSeverity.moderate, reason: _Reason.windRise);
+  }
+  if (twoBack != null && curr - twoBack >= windRiseThresholdKmh) {
     return (severity: ForecastAlertSeverity.moderate, reason: _Reason.windRise);
   }
   return null;
@@ -281,12 +289,13 @@ List<ForecastAlert> _collectAlerts<T>({
   required DateTime Function(T) timeOf,
   required ForecastAlertType type,
   required DateTime now,
-  required _Trigger? Function(T previous, T current) evaluate,
+  required _Trigger? Function(T? twoBack, T previous, T current) evaluate,
 }) {
   final triggeredAt = <int, _Trigger>{};
   for (var i = 1; i < hourly.length; i++) {
     if (!timeOf(hourly[i]).isAfter(now)) continue;
-    final trigger = evaluate(hourly[i - 1], hourly[i]);
+    final twoBack = i >= 2 ? hourly[i - 2] : null;
+    final trigger = evaluate(twoBack, hourly[i - 1], hourly[i]);
     if (trigger != null) triggeredAt[i] = trigger;
   }
 
