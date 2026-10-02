@@ -89,11 +89,26 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
-5. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
+5. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
+   extends it. Sits under the smart suggestion pill and above the stat grid: a "Sea" section label
+   (small wave icon, matching the "Hourly forecast" label's styling) over a horizontally scrollable
+   row of five tiles — wave height, water temperature, wave direction, current speed, current
+   direction — in the stat grid's icon/label/value style but with no trend row (none of these values
+   have a meaningful delta the rest of the app already surfaces). Only rendered once
+   `MarineProvider.currentData` is loaded; any null field inside it shows "No data", never `0`.
+   Direction tiles pair a rotated arrow (clockwise from "up", by compass bearing) with a cardinal
+   label, and the two direction fields use **different conventions** — do not render them the same
+   way: wave/wind direction is meteorological "coming from" (bearing is where the wave originates, so
+   the tile reads e.g. "from NW" and its arrow is rotated to the *opposite* bearing, i.e. where the
+   wave is actually heading), while ocean current direction is oceanographic "flowing toward" (bearing
+   already is where the current is heading, so the tile reads e.g. "toward SE" and its arrow is
+   rotated straight to that bearing). See the doc comments on `SeaCondition.waveDirection` /
+   `.currentDirection` for the authoritative explanation.
+6. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
    tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
    trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
    (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
-6. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
+7. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
    rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
@@ -161,6 +176,9 @@ the marine group.
 Reusable widgets worth extracting rather than rebuilding per-screen:
 
 - `StatTile` — icon + label + value + trend, used 4× in the stat grid.
+- `SeaConditionsRow` — the Sea section's horizontally scrollable row of 5 tiles (wave height, water
+  temperature, wave direction, current speed, current direction), in `StatTile`'s visual style but
+  without its trend row.
 - `HourlyForecastItem` — time + icon + temperature, used in the scrollable hourly row.
 - `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
   beach overlay (gold polygons/lines).

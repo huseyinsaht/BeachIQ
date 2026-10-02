@@ -1,0 +1,218 @@
+import 'dart:math' as math;
+
+import 'package:beachiq/data/models/sea_condition.dart';
+import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import '../../helpers/builders.dart';
+
+void main() {
+  Widget wrap(Widget child) {
+    return MaterialApp(home: Scaffold(body: child));
+  }
+
+  /// Reads the clockwise-from-north rotation (in degrees) a `Transform`
+  /// found under [key] is applying, by decoding its rotation matrix rather
+  /// than assuming any particular internal representation.
+  double rotationDegreesUnder(WidgetTester tester, Key key) {
+    final transform = tester.widget<Transform>(
+      find.descendant(of: find.byKey(key), matching: find.byType(Transform)),
+    );
+    final m = transform.transform;
+    final radians = math.atan2(m.entry(1, 0), m.entry(0, 0));
+    return radians * 180 / math.pi;
+  }
+
+  /// Normalizes [degrees] the same way `atan2` normalizes an angle decoded
+  /// from a rotation matrix (into `(-180, 180]`), so a manually-computed
+  /// expected rotation can be compared against [rotationDegreesUnder]
+  /// without a representation mismatch (e.g. 180° vs -180°).
+  double normalizedDegrees(double degrees) {
+    final radians = degrees * math.pi / 180;
+    return math.atan2(math.sin(radians), math.cos(radians)) * 180 / math.pi;
+  }
+
+  group('SeaConditionsRow', () {
+    testWidgets('given no data (not loaded yet), build -> renders nothing', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(const SeaConditionsRow(data: null, unitSystem: UnitSystem.metric)),
+      );
+
+      expect(find.text('Sea'), findsNothing);
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+    });
+
+    testWidgets(
+      'given all fields present, build -> shows wave height, water temp, '
+      'wave direction, current speed and current direction',
+      (tester) async {
+        final data = aSeaCondition(
+          waveHeight: 1.2,
+          seaSurfaceTemperature: 24.0,
+          waveDirection: 315,
+          currentVelocity: 8.0,
+          currentDirection: 135,
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.text('1.2 m'), findsOneWidget);
+        expect(find.text('24°C'), findsOneWidget);
+        expect(find.text('from NW'), findsOneWidget);
+        expect(find.text('8 km/h'), findsOneWidget);
+        expect(find.text('toward SE'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given every field null, build -> shows "No data" for every tile, '
+      'never a fabricated 0',
+      (tester) async {
+        final data = SeaCondition(
+          waveHeight: null,
+          waveDirection: null,
+          seaSurfaceTemperature: null,
+          currentVelocity: null,
+          currentDirection: null,
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.text('No data'), findsNWidgets(5));
+        expect(find.textContaining('0'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a partial-null sea condition, build -> missing fields show '
+      '"No data", present fields keep their value',
+      (tester) async {
+        final data = SeaCondition(
+          waveHeight: 0.6,
+          waveDirection: null,
+          seaSurfaceTemperature: 23.0,
+          currentVelocity: null,
+          currentDirection: 200,
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.text('0.6 m'), findsOneWidget);
+        expect(find.text('23°C'), findsOneWidget);
+        expect(find.text('toward S'), findsOneWidget);
+        // Wave direction and current speed are null here.
+        expect(find.text('No data'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'given imperial units, build -> formats wave height, water temp and '
+      'current speed via the imperial formatters',
+      (tester) async {
+        final data = aSeaCondition(
+          waveHeight: 1.0,
+          seaSurfaceTemperature: 20.0,
+          currentVelocity: 10.0,
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.imperial)),
+        );
+
+        expect(
+          find.text(formatWaveHeight(1.0, UnitSystem.imperial)),
+          findsOneWidget,
+        );
+        expect(
+          find.text(formatTemperature(20.0, UnitSystem.imperial)),
+          findsOneWidget,
+        );
+        expect(
+          find.text(formatWindSpeed(10.0, UnitSystem.imperial)),
+          findsOneWidget,
+        );
+      },
+    );
+
+    group('direction conventions', () {
+      final cases = {
+        0.0: 'N',
+        90.0: 'E',
+        180.0: 'S',
+        270.0: 'W',
+        350.0: 'N', // wrap-around
+      };
+
+      for (final entry in cases.entries) {
+        final bearing = entry.key;
+        final cardinal = entry.value;
+
+        testWidgets(
+          'wave direction $bearing° -> "from $cardinal", arrow points '
+          'opposite the "coming from" bearing',
+          (tester) async {
+            final data = SeaCondition(waveDirection: bearing);
+
+            await tester.pumpWidget(
+              wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+            );
+
+            expect(find.text('from $cardinal'), findsOneWidget);
+            final rotation = rotationDegreesUnder(
+              tester,
+              const Key('wave-direction-tile'),
+            );
+            expect(rotation, closeTo(normalizedDegrees(bearing + 180), 0.01));
+          },
+        );
+
+        testWidgets(
+          'current direction $bearing° -> "toward $cardinal", arrow points '
+          'straight at the "flowing toward" bearing',
+          (tester) async {
+            final data = SeaCondition(currentDirection: bearing);
+
+            await tester.pumpWidget(
+              wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+            );
+
+            expect(find.text('toward $cardinal'), findsOneWidget);
+            final rotation = rotationDegreesUnder(
+              tester,
+              const Key('current-direction-tile'),
+            );
+            expect(rotation, closeTo(normalizedDegrees(bearing), 0.01));
+          },
+        );
+      }
+    });
+
+    testWidgets('given a null direction, build -> shows "No data" and does not '
+        'rotate the arrow', (tester) async {
+      final data = SeaCondition(waveDirection: null, currentDirection: null);
+
+      await tester.pumpWidget(
+        wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+      );
+
+      expect(
+        rotationDegreesUnder(tester, const Key('wave-direction-tile')),
+        closeTo(0, 0.01),
+      );
+      expect(
+        rotationDegreesUnder(tester, const Key('current-direction-tile')),
+        closeTo(0, 0.01),
+      );
+    });
+  });
+}
