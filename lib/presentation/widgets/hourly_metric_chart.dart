@@ -28,10 +28,37 @@ class HourlyChartThreshold {
   final String? label;
 }
 
+/// A colored background band covering a fixed range of *values* (not an
+/// x-axis range), e.g. the UV index detail screen's low/moderate/high/very
+/// high/extreme bands (issue #178). Unlike [bandColor] (which fills the
+/// area under the data line, shaped by the data itself), a value band
+/// always covers the same horizontal strip of the chart regardless of
+/// where the line goes — it represents a fixed classification range.
+///
+/// Generic/value-range-keyed rather than UV-specific so later metrics can
+/// reuse it for their own bands (e.g. a wind-speed scale).
+///
+/// [max] of `null` means "and above" — the topmost band extends to the top
+/// of the chart's visible value range (e.g. UV 11+).
+class HourlyChartValueBand {
+  const HourlyChartValueBand({
+    required this.min,
+    this.max,
+    required this.color,
+    this.label,
+  });
+
+  final double min;
+  final double? max;
+  final Color color;
+  final String? label;
+}
+
 /// A reusable hourly line/area chart for the metric detail screens (shared
 /// foundation for issue #165 and the metric-specific PRs that follow it):
-/// a "Now" marker at [nowIndex], optional threshold lines, and an optional
-/// colored area band under the line. `null` hours in [points] are gaps —
+/// a "Now" marker at [nowIndex], optional threshold lines, an optional
+/// colored area band under the line, and optional fixed-range [valueBands]
+/// (e.g. UV index's colored bands). `null` hours in [points] are gaps —
 /// the line breaks there instead of dipping to zero.
 ///
 /// Implemented with [CustomPaint] (no charting package dependency). The
@@ -43,6 +70,7 @@ class HourlyMetricChart extends StatelessWidget {
     required this.points,
     this.nowIndex,
     this.thresholds = const [],
+    this.valueBands = const [],
     this.lineColor = Colors.white,
     this.bandColor,
     this.height = 160,
@@ -58,6 +86,12 @@ class HourlyMetricChart extends StatelessWidget {
   final int? nowIndex;
 
   final List<HourlyChartThreshold> thresholds;
+
+  /// Fixed value-range bands (e.g. UV index's low/moderate/.../extreme),
+  /// painted first as full-width background strips so the threshold lines,
+  /// data line/area and "Now" marker all render on top of them.
+  final List<HourlyChartValueBand> valueBands;
+
   final Color lineColor;
 
   /// Fills the area between the line and the chart's bottom edge when set.
@@ -111,6 +145,7 @@ class HourlyMetricChart extends StatelessWidget {
             lineColor: lineColor,
             bandColor: bandColor,
             thresholds: thresholds,
+            valueBands: valueBands,
           );
           final marker = _nowMarkerPosition(size, minValue, maxValue);
           return Stack(
@@ -201,6 +236,7 @@ class HourlyMetricChartPainter extends CustomPainter {
     required this.lineColor,
     required this.bandColor,
     required this.thresholds,
+    this.valueBands = const [],
   });
 
   final List<HourlyChartPoint> points;
@@ -209,6 +245,7 @@ class HourlyMetricChartPainter extends CustomPainter {
   final Color lineColor;
   final Color? bandColor;
   final List<HourlyChartThreshold> thresholds;
+  final List<HourlyChartValueBand> valueBands;
 
   double get _range {
     final range = maxValue - minValue;
@@ -228,6 +265,10 @@ class HourlyMetricChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (points.isEmpty) return;
+
+    for (final band in valueBands) {
+      _paintValueBand(canvas, size, band);
+    }
 
     final thresholdPaint = Paint()..strokeWidth = 1;
     for (final threshold in thresholds) {
@@ -272,6 +313,29 @@ class HourlyMetricChartPainter extends CustomPainter {
     if (current != null) {
       canvas.drawPath(current, linePaint);
     }
+  }
+
+  /// Paints [band] as a full-width horizontal strip covering its value
+  /// range, clipped to the chart's visible `[minValue, maxValue]` range.
+  /// Skipped entirely when the band doesn't overlap that visible range at
+  /// all (e.g. a 11+ band when every reading is in the single digits).
+  void _paintValueBand(Canvas canvas, Size size, HourlyChartValueBand band) {
+    if (band.min > maxValue) return;
+    if (band.max != null && band.max! < minValue) return;
+
+    final clampedMin = band.min < minValue ? minValue : band.min;
+    final bandMax = band.max;
+    final clampedMax = (bandMax == null || bandMax > maxValue)
+        ? maxValue
+        : bandMax;
+    if (clampedMax <= clampedMin) return;
+
+    final topY = size.height * (1 - (clampedMax - minValue) / _range);
+    final bottomY = size.height * (1 - (clampedMin - minValue) / _range);
+    canvas.drawRect(
+      Rect.fromLTRB(0, topY, size.width, bottomY),
+      Paint()..color = band.color,
+    );
   }
 
   void _paintBand(Canvas canvas, Size size, Color color) {
@@ -320,6 +384,7 @@ class HourlyMetricChartPainter extends CustomPainter {
         oldDelegate.maxValue != maxValue ||
         oldDelegate.lineColor != lineColor ||
         oldDelegate.bandColor != bandColor ||
-        oldDelegate.thresholds != thresholds;
+        oldDelegate.thresholds != thresholds ||
+        oldDelegate.valueBands != valueBands;
   }
 }

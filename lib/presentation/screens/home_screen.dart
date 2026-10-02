@@ -561,6 +561,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         value: _formatUvIndex(weatherData?.uvIndex),
                         trendDirection: StatTrendDirection.up,
                         trendDelta: '0.5',
+                        onTap: () => Navigator.of(context).push(
+                          buildDetailRoute(
+                            DetailMetric.uvIndex,
+                            hourly: weatherData?.hourly ?? const [],
+                            currentValue: weatherData?.uvIndex,
+                            now: widget.now,
+                          ),
+                        ),
                       ),
                     ],
                   ),

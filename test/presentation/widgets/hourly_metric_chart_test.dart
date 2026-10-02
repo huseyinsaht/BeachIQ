@@ -138,5 +138,73 @@ void main() {
       final painter = painterOf(tester);
       expect(painter.thresholds, [threshold]);
     });
+
+    testWidgets('forwards configured value bands to the painter', (
+      tester,
+    ) async {
+      const bands = [
+        HourlyChartValueBand(min: 0, max: 3, color: Colors.green),
+        HourlyChartValueBand(min: 3, color: Colors.purple),
+      ];
+
+      await tester.pumpWidget(
+        wrap(HourlyMetricChart(points: somePoints(), valueBands: bands)),
+      );
+
+      final painter = painterOf(tester);
+      expect(painter.valueBands, bands);
+    });
+
+    testWidgets('defaults to no value bands when none are given', (
+      tester,
+    ) async {
+      await tester.pumpWidget(wrap(HourlyMetricChart(points: somePoints())));
+
+      final painter = painterOf(tester);
+      expect(painter.valueBands, isEmpty);
+    });
+
+    group('shouldRepaint', () {
+      // A single shared points list: shouldRepaint OR-combines several
+      // field comparisons, so two painters built from *different* points
+      // lists would already report a repaint regardless of valueBands,
+      // defeating these tests' whole point.
+      final sharedPoints = somePoints();
+
+      HourlyMetricChartPainter painterWith({
+        List<HourlyChartValueBand> valueBands = const [],
+      }) {
+        return HourlyMetricChartPainter(
+          points: sharedPoints,
+          minValue: 1010,
+          maxValue: 1014,
+          lineColor: Colors.white,
+          bandColor: null,
+          thresholds: const [],
+          valueBands: valueBands,
+        );
+      }
+
+      test('given different value bands, shouldRepaint -> true', () {
+        final a = painterWith(
+          valueBands: const [
+            HourlyChartValueBand(min: 0, max: 3, color: Colors.green),
+          ],
+        );
+        final b = painterWith();
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given the same value bands, shouldRepaint -> false', () {
+        const bands = [
+          HourlyChartValueBand(min: 0, max: 3, color: Colors.green),
+        ];
+        final a = painterWith(valueBands: bands);
+        final b = painterWith(valueBands: bands);
+
+        expect(a.shouldRepaint(b), isFalse);
+      });
+    });
   });
 }

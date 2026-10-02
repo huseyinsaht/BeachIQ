@@ -24,6 +24,13 @@ class WeatherHourly {
   // extended hourly fields above.
   final double? pressureHpa;
 
+  // Issue #178: UV index per hour, for the UV index detail screen's hourly
+  // chart. Open-Meteo's `uv_index` hourly array was already being fetched
+  // and parsed for [WeatherCondition.uvIndex] (the "current" value) but
+  // discarded per-hour; this exposes the same array per entry, the same
+  // way #165 added [pressureHpa] above.
+  final double? uvIndex;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
@@ -33,6 +40,7 @@ class WeatherHourly {
     this.cloudCoverPercent,
     this.rainChancePercent,
     this.pressureHpa,
+    this.uvIndex,
   });
 }
 
@@ -119,6 +127,9 @@ class WeatherCondition {
                   : null,
               pressureHpa: (pressures is List && i < pressures.length)
                   ? _asDouble(pressures[i])
+                  : null,
+              uvIndex: (uvIndices is List && i < uvIndices.length)
+                  ? _asDouble(uvIndices[i])
                   : null,
             ),
           );

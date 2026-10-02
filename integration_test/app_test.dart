@@ -11,6 +11,7 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
@@ -303,6 +304,60 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(PressureDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'UV index detail flow: tapping the UV index stat tile on Home opens '
+    'UvIndexDetailScreen with the real WeatherProvider data, and the back '
+    "button returns to Home (no real network: WeatherProvider's repository "
+    'is faked via test/helpers/pump_app.dart)',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 12,
+          weatherCode: 1,
+          uvIndex: 4.5,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 12),
+              temperature: 26,
+              weatherCode: 1,
+              uvIndex: 4.5,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UvIndexDetailScreen), findsNothing);
+
+      // The UV index tile sits below the fold on the test surface's fixed
+      // size, so it needs scrolling into view before it can be hit.
+      await tester.ensureVisible(find.text('4.5'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('4.5'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(UvIndexDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(UvIndexDetailScreen), findsNothing);
     },
   );
 
