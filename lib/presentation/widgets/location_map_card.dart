@@ -119,6 +119,19 @@ class _LocationMapCardState extends State<LocationMapCard> {
     widget.nearbyBeachesProvider?.pickLocation(point);
   }
 
+  void _handlePositionChanged(MapCamera camera, bool hasGesture) {
+    // Only shouldShowAmenityMarkers's result actually changes this widget's
+    // output, so only rebuild when that flips — otherwise every pan/zoom
+    // frame would rebuild the whole map subtree (every polygon, polyline
+    // and marker) for no visible difference.
+    if (shouldShowAmenityMarkers(camera.zoom) !=
+        shouldShowAmenityMarkers(_currentZoom)) {
+      setState(() => _currentZoom = camera.zoom);
+    } else {
+      _currentZoom = camera.zoom;
+    }
+  }
+
   void _toggleAmenityKind(AmenityKind kind) {
     setState(() {
       if (!_hiddenAmenityKinds.remove(kind)) {
@@ -222,7 +235,16 @@ class _LocationMapCardState extends State<LocationMapCard> {
         .where((a) => !_hiddenAmenityKinds.contains(a.kind))
         .toList();
     final showMarkers = shouldShowAmenityMarkers(_currentZoom);
-    final selected = _selectedAmenity;
+    // A selection goes stale (and must not keep its card/highlight on
+    // screen) once its amenity is no longer actually drawn: its kind got
+    // hidden via the legend, the zoom dropped below the marker threshold,
+    // or a new pick replaced the beach list entirely (new BeachAmenity
+    // instances, so identical() no longer matches any of them).
+    final selected =
+        showMarkers &&
+            visibleAmenities.any((a) => identical(a, _selectedAmenity))
+        ? _selectedAmenity
+        : null;
 
     return Stack(
       children: [
@@ -232,8 +254,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
             initialZoom: _initialZoom,
             minZoom: kLocationMapMinZoom,
             onTap: _handleTap,
-            onPositionChanged: (camera, hasGesture) =>
-                setState(() => _currentZoom = camera.zoom),
+            onPositionChanged: _handlePositionChanged,
           ),
           children: [
             TileLayer(

@@ -124,5 +124,28 @@ void main() {
         expect(find.text('Parking'), findsOneWidget);
       },
     );
+
+    testWidgets('given selected and showLabel together, fits within '
+        'amenityMarkerLabeledWidth x amenityMarkerLabeledHeight without '
+        'overflowing (the box location_map_card.dart actually constrains it '
+        'to)', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          SizedBox(
+            width: amenityMarkerLabeledWidth,
+            height: amenityMarkerLabeledHeight,
+            child: const AmenityMarker(
+              kind: AmenityKind.beachResort,
+              name: 'Fixture Beach Club',
+              selected: true,
+              showLabel: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
   });
 }

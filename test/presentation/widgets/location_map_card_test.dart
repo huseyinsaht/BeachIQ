@@ -302,6 +302,44 @@ void main() {
       expect(find.byType(AmenityMarker), findsNWidgets(2));
     });
 
+    testWidgets(
+      'hiding a selected amenity\'s kind via the legend clears the stale '
+      'selection card (it no longer describes a drawn marker)',
+      (tester) async {
+        // A single-amenity fixture, so tapping the one marker is
+        // unambiguous (no risk of two close-together markers overlapping
+        // on screen and the tap landing on the wrong one).
+        final provider = buildSingleAmenityFixtureProvider();
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+              ),
+            ),
+          ),
+        );
+        provider.pickLocation(center);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(AmenityMarker));
+        await tester.pump();
+        expect(find.text('Fixture Cafe · Cafe'), findsOneWidget);
+
+        // Hide the cafe kind via its legend chip - the selected card must
+        // not keep describing a marker that is no longer drawn.
+        await tester.tap(find.text('Cafe'));
+        await tester.pump();
+
+        expect(find.text('Fixture Cafe · Cafe'), findsNothing);
+      },
+    );
+
     testWidgets('tapping a marker shows a label with its name and kind', (
       tester,
     ) async {

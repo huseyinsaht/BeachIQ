@@ -70,7 +70,12 @@ String amenityLabel(AmenityKind kind) {
 /// showLabel] is true, so callers (the map's `Marker`) can size and anchor
 /// it correctly — see [AmenityMarker.pointAlignment].
 const double amenityMarkerLabeledWidth = 64;
-const double amenityMarkerLabeledHeight = 48;
+
+/// Tall enough for the WORST case — the selected circle (36px, see
+/// [AmenityMarker._selectedSize]) plus the gap plus one label line —
+/// not just the unselected (28px) circle, so a selected labeled marker
+/// never overflows its box.
+const double amenityMarkerLabeledHeight = 58;
 
 /// A single amenity pin on the map: a filled colored circle (per
 /// [amenityColor]) with a white glyph (per [amenityIcon]) and a soft drop
@@ -122,6 +127,12 @@ class AmenityMarker extends StatelessWidget {
       button: true,
       child: GestureDetector(
         onTap: onTap,
+        // Opaque, not the default deferToChild: makes the whole pin —
+        // circle, label and the gap between them — tappable, not just the
+        // painted pixels of the circle/label themselves. This also widens
+        // the tap target past the 28px circle alone, which a non-blocking
+        // review note on #172 asked for.
+        behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
