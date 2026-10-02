@@ -87,7 +87,8 @@ void main() {
         );
         expect(
           uri.queryParameters['hourly'],
-          'temperature_2m,weather_code,uv_index,precipitation_probability,pressure_msl',
+          'temperature_2m,weather_code,uv_index,precipitation_probability,'
+          'pressure_msl,wind_speed_10m,wind_gusts_10m,cloud_cover',
         );
         expect(
           uri.queryParameters['daily'],
