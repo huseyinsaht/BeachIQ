@@ -4,6 +4,7 @@ import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/builders.dart';
@@ -252,6 +253,36 @@ void main() {
 
           expect(find.text('toward E'), findsOneWidget);
           expect(find.text('(away from shore — stay close!)'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given the away-from-shore label (the longest, and the one safety '
+        'warning this row shows), build -> it wraps instead of being '
+        'truncated at the tile width',
+        (tester) async {
+          final data = SeaCondition(currentDirection: 90);
+
+          await tester.pumpWidget(
+            wrap(
+              SeaConditionsRow(
+                data: data,
+                unitSystem: UnitSystem.metric,
+                seawardBearingDegrees: 90,
+              ),
+            ),
+          );
+
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.text('(away from shore — stay close!)'),
+          );
+          expect(
+            paragraph.didExceedMaxLines,
+            isFalse,
+            reason:
+                'the away-from-shore safety warning must fully render, not '
+                'be clipped by TextOverflow.ellipsis',
+          );
         },
       );
 

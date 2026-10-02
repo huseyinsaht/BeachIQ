@@ -20,16 +20,20 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/logic/wave_shore_relation.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
+import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'helpers/pump_app.dart';
 
 /// A fake [http.Client] that never touches the real network: it answers an
 /// Overpass query with a single fixture beach and a marine-batch request
@@ -84,6 +88,78 @@ class _FixtureNetworkClient extends http.BaseClient {
 
 NearbyBeachesProvider _fixtureNearbyBeachesProvider() {
   final client = _FixtureNetworkClient();
+  return NearbyBeachesProvider(
+    OverpassService(client),
+    BeachCache(_mockPrefs!),
+    MarineBatchService(client),
+    debounceDuration: const Duration(milliseconds: 1),
+  );
+}
+
+/// Like [_FixtureNetworkClient], but the Overpass response also includes a
+/// parking amenity node near the fixture beach, so the mapped [Beach] has a
+/// non-empty `amenities` list — needed to exercise
+/// `seawardBearingFromGeometry`'s real (non-null) path, not just its
+/// no-amenities -> null fallback.
+class _FixtureNetworkClientWithAmenity extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.8,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 25.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          // Just south of the beach's geometry, within the 150m attach
+          // radius, so it gets attached as a land-side amenity.
+          'lat': 38.32195,
+          'lon': 26.3265,
+          'tags': {'amenity': 'parking', 'name': 'Fixture Car Park'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+NearbyBeachesProvider _fixtureNearbyBeachesProviderWithAmenity() {
+  final client = _FixtureNetworkClientWithAmenity();
   return NearbyBeachesProvider(
     OverpassService(client),
     BeachCache(_mockPrefs!),
@@ -1079,5 +1155,68 @@ void main() {
       expect(notifications, greaterThanOrEqualTo(2));
       expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
     });
+
+    testWidgets('given no nearby beaches, HomeScreen passes a null '
+        'seawardBearingDegrees to SeaConditionsRow (never a fabricated one)', (
+      WidgetTester tester,
+    ) async {
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(currentDirection: 90),
+      );
+      addTearDown(marineProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+            // No nearbyBeachesProvider at all -> no beach to derive a
+            // bearing from.
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = tester.widget<SeaConditionsRow>(
+        find.byType(SeaConditionsRow),
+      );
+      expect(row.seawardBearingDegrees, isNull);
+    });
+
+    testWidgets(
+      'given a nearby beach with geometry and amenities, HomeScreen derives '
+      'its seaward bearing and passes it to SeaConditionsRow',
+      (WidgetTester tester) async {
+        final nearbyBeachesProvider =
+            _fixtureNearbyBeachesProviderWithAmenity();
+        addTearDown(nearbyBeachesProvider.dispose);
+        final marineProvider = await aLoadedMarineProvider(
+          SeaCondition(currentDirection: 90),
+        );
+        addTearDown(marineProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(nearbyBeachesProvider.beaches, isNotEmpty);
+        final expectedBearing = seawardBearingFromGeometry(
+          nearbyBeachesProvider.beaches.first,
+        );
+        expect(expectedBearing, isNotNull);
+
+        final row = tester.widget<SeaConditionsRow>(
+          find.byType(SeaConditionsRow),
+        );
+        expect(row.seawardBearingDegrees, expectedBearing);
+      },
+    );
   });
 }

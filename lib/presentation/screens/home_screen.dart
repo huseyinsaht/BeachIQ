@@ -215,6 +215,12 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.marineProvider?.addListener(_onProviderChanged);
     widget.weatherProvider?.addListener(_onProviderChanged);
     widget.unitPreferencesProvider?.addListener(_onProviderChanged);
+    // Needed so the Sea section's shore-relation bearing (derived from
+    // nearbyBeachesProvider.beaches, see seawardBearingDegrees below)
+    // actually appears once the beaches list resolves — without this,
+    // HomeScreen never rebuilds after the async pickLocation() call below
+    // completes.
+    widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
     // Deferred to after the first frame: HomeScreen is built inside the
     // Consumer2<MarineProvider, WeatherProvider> that also listens to
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
@@ -245,6 +251,10 @@ class _HomeScreenState extends State<HomeScreen> {
       oldWidget.unitPreferencesProvider?.removeListener(_onProviderChanged);
       widget.unitPreferencesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.nearbyBeachesProvider != widget.nearbyBeachesProvider) {
+      oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+      widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
@@ -252,6 +262,7 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.marineProvider?.removeListener(_onProviderChanged);
     widget.weatherProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
+    widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
     super.dispose();
   }
 

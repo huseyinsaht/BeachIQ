@@ -149,9 +149,11 @@ class SeaConditionsRow extends StatelessWidget {
         const SizedBox(height: 12),
         SizedBox(
           // Taller once a shore-relation line can appear under a direction
-          // tile's value (only when seawardBearingDegrees is known), so that
-          // extra line never overflows the row.
-          height: seaward == null ? 78 : 94,
+          // tile's value (only when seawardBearingDegrees is known). The
+          // longest label ("away from shore — stay close!") wraps onto a
+          // second line at the tile's width (see _SeaDirectionStatTile's
+          // widened tile below), so this allows for two lines, not one.
+          height: seaward == null ? 78 : 124,
           child: ListView(
             scrollDirection: Axis.horizontal,
             children: [
@@ -315,7 +317,12 @@ class _SeaDirectionStatTile extends StatelessWidget {
           : '$label, $value $relationLabel',
       excludeSemantics: true,
       child: SizedBox(
-        width: 120,
+        // Wider than the other tiles' 120px: the shore-relation label (e.g.
+        // "(away from shore — stay close!)") needs the extra room to wrap
+        // onto two lines instead of being clipped (see relationLabel below)
+        // — clipping the one safety-relevant warning this row shows is
+        // worse than a slightly wider tile.
+        width: relationLabel == null ? 120 : 170,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -350,7 +357,7 @@ class _SeaDirectionStatTile extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 relationLabel,
-                maxLines: 1,
+                maxLines: 3,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: relation == ShoreRelation.awayFromShore
