@@ -60,6 +60,7 @@ SeaCondition aSeaCondition({
   double? seaSurfaceTemperature = 24.0,
   double? currentVelocity = 6.0,
   double? currentDirection = 135,
+  List<SeaHourly> hourly = const [],
 }) {
   return SeaCondition(
     waveHeight: waveHeight,
@@ -68,6 +69,7 @@ SeaCondition aSeaCondition({
     seaSurfaceTemperature: seaSurfaceTemperature,
     currentVelocity: currentVelocity,
     currentDirection: currentDirection,
+    hourly: hourly,
   );
 }
 

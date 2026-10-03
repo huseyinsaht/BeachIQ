@@ -1,6 +1,8 @@
+import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -66,15 +68,49 @@ void main() {
       },
     );
 
-    // Every metric besides `pressure`/`uvIndex` has no screen yet (issues
-    // #179, #166, #167, #180, #181). This both documents today's state and
-    // makes sure a future PR that wires one up notices this test (it will
-    // start throwing `TestFailure` instead of the expected
+    testWidgets(
+      'given DetailMetric.waveHeight, builds a named MaterialPageRoute to '
+      'WaveHeightDetailScreen carrying the marine hourly series, current '
+      'value and unit system',
+      (tester) async {
+        final seaHourly = [
+          aSeaHourly(time: DateTime(2026, 1, 1, 12), waveHeight: 0.9),
+        ];
+
+        final route = buildDetailRoute(
+          DetailMetric.waveHeight,
+          hourly: const [],
+          seaHourly: seaHourly,
+          currentValue: 0.9,
+          unitSystem: UnitSystem.imperial,
+        );
+
+        expect(route, isA<MaterialPageRoute<void>>());
+        expect(route.settings.name, '/detail/wave-height');
+
+        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaveHeightDetailScreen), findsOneWidget);
+        final screen = tester.widget<WaveHeightDetailScreen>(
+          find.byType(WaveHeightDetailScreen),
+        );
+        expect(screen.currentWaveHeightMeters, 0.9);
+        expect(screen.hourly, hasLength(1));
+        expect(screen.unitSystem, UnitSystem.imperial);
+      },
+    );
+
+    // Every metric besides `pressure`/`uvIndex`/`waveHeight` has no screen
+    // yet (issues #179, #166, #180, #181). This both documents today's
+    // state and makes sure a future PR that wires one up notices this test
+    // (it will start throwing `TestFailure` instead of the expected
     // `UnimplementedError`) rather than silently leaving stale coverage,
     // since it loops over every DetailMetric value rather than naming them.
     for (final metric in DetailMetric.values) {
       if (metric == DetailMetric.pressure) continue;
       if (metric == DetailMetric.uvIndex) continue;
+      if (metric == DetailMetric.waveHeight) continue;
 
       test('given DetailMetric.$metric (not yet implemented), buildDetailRoute '
           '-> throws UnimplementedError', () {

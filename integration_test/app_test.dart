@@ -12,6 +12,7 @@ import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
@@ -27,7 +28,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../test/helpers/builders.dart' show aSeaCondition;
+import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
 import '../test/helpers/pump_app.dart'
     show aLoadedMarineProvider, aLoadedWeatherProvider;
 
@@ -449,6 +450,54 @@ void main() {
     expect(find.text('4 km/h'), findsOneWidget);
     expect(find.text('toward SE'), findsOneWidget);
   });
+
+  testWidgets(
+    'Wave height detail flow (#167): tapping the wave height tile in the '
+    'Sea section opens WaveHeightDetailScreen (its own page) with the real '
+    'MarineProvider hourly series, and the back button returns to Home',
+    (WidgetTester tester) async {
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          waveHeight: 0.9,
+          hourly: [
+            aSeaHourly(
+              time: DateTime(2026, 1, 1, 12),
+              waveHeight: 0.9,
+              waveDirection: 315,
+              wavePeriod: 5.5,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaveHeightDetailScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('wave-height-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaveHeightDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The real hourly series carried through to the chart's period/
+      // direction row underneath it.
+      expect(find.text('5.5s'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WaveHeightDetailScreen), findsNothing);
+    },
+  );
 
   testWidgets(
     'Amenity markers flow (#172): once beaches load, their real amenities '
