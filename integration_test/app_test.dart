@@ -19,6 +19,7 @@ import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
@@ -348,6 +349,59 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(PressureDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Wind detail flow: tapping the wind speed stat tile on Home opens '
+    'WindDetailScreen with the real WeatherProvider data, and the back '
+    "button returns to Home (no real network: WeatherProvider's repository "
+    'is faked via test/helpers/pump_app.dart)',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 18,
+          weatherCode: 1,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 12),
+              temperature: 26,
+              weatherCode: 1,
+              windSpeed: 18,
+              windGusts: 28,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('18 km/h'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('18 km/h'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      expect(find.text('Gusts'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WindDetailScreen), findsNothing);
     },
   );
 

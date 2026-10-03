@@ -640,6 +640,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           trendDelta: unitSystem == UnitSystem.imperial
                               ? '1 mph'
                               : '2 km/h',
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.wind,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.windSpeed,
+                              unitSystem: unitSystem,
+                              now: widget.now,
+                            ),
+                          ),
                         ),
                         StatTile(
                           icon: Icons.water_drop_outlined,
