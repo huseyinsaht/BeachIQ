@@ -3,12 +3,14 @@ import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/static_beaches.dart';
 import 'package:beachiq/logic/beach_gear_advisor.dart';
 import 'package:beachiq/logic/providers/favorites_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
+import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
@@ -19,6 +21,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../helpers/fake_http_client.dart';
 
 /// A fake [http.Client] that never touches the real network: it answers an
 /// Overpass query with a single fixture beach (with a `surface=pebbles` tag
@@ -265,10 +269,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(BeachResultCard), findsNothing);
-    expect(
-      find.textContaining('No beaches match'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('No beaches match'), findsOneWidget);
   });
 
   testWidgets('clearing the query back to empty restores the full list', (
@@ -503,9 +504,298 @@ void main() {
         // Resolves the pending fetch so no future is left dangling past the
         // test, matching NearbyBeachesProvider's own test conventions.
         client.overpassCompleter.complete(
-          http.StreamedResponse(Stream.value(utf8.encode('{"elements":[]}')), 200),
+          http.StreamedResponse(
+            Stream.value(utf8.encode('{"elements":[]}')),
+            200,
+          ),
         );
         await tester.pump(const Duration(milliseconds: 10));
+      },
+    );
+  });
+
+  group('placeSearchProvider', () {
+    testWidgets(
+      'given no placeSearchProvider, typing a query -> no Places section appears',
+      (tester) async {
+        await tester.pumpWidget(wrap(const SearchScreen()));
+
+        await tester.enterText(find.byType(TextField), 'istanbul');
+        await tester.pump();
+
+        expect(find.text('Places'), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a search in flight, typing a query -> shows a loading indicator',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {'name': 'Istanbul', 'latitude': 41.0, 'longitude': 28.9},
+              ],
+            },
+            delay: const Duration(milliseconds: 50),
+          );
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(placeSearchProvider: provider)),
+        );
+        await tester.enterText(find.byType(TextField), 'istanbul');
+        await tester.pump(const Duration(milliseconds: 2));
+
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        await tester.pump(const Duration(milliseconds: 60));
+      },
+    );
+
+    testWidgets(
+      'given results beyond the static list, typing a query -> shows them in a Places section',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {
+                  'name': 'Bodrum',
+                  'latitude': 37.03,
+                  'longitude': 27.43,
+                  'admin1': 'Mugla',
+                  'country': 'Turkey',
+                },
+              ],
+            },
+          );
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(placeSearchProvider: provider)),
+        );
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(find.text('Bodrum'), findsOneWidget);
+        expect(find.text('Mugla, Turkey'), findsOneWidget);
+        // Bodrum is not in the static placeholder list, proving this came
+        // from the geocoding search rather than the local name/city filter.
+        expect(
+          staticBeaches.any((b) => b.name == 'Bodrum' || b.city == 'Bodrum'),
+          isFalse,
+        );
+      },
+    );
+
+    testWidgets(
+      'given no matching places, typing a query -> shows an empty message',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {'results': <Object?>[]},
+          );
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(placeSearchProvider: provider)),
+        );
+        await tester.enterText(find.byType(TextField), 'zzzzzz');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(find.text('No places match "zzzzzz".'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a failed search, typing a query -> shows an error message',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueResponse(
+            host: 'geocoding-api.open-meteo.com',
+            body: 'Service Unavailable',
+            statusCode: 503,
+          );
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(placeSearchProvider: provider)),
+        );
+        await tester.enterText(find.byType(TextField), 'istanbul');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(
+          find.text('Could not search for places. Please try again.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('given a loaded place result, selecting it -> picks its exact '
+        'location for nearbyBeachesProvider and clears the search field', (
+      tester,
+    ) async {
+      final geocodingClient = FakeHttpClient()
+        ..queueJson(
+          host: 'geocoding-api.open-meteo.com',
+          json: {
+            'results': [
+              {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+            ],
+          },
+        );
+      final placeSearchProvider = PlaceSearchProvider(
+        GeocodingService(geocodingClient),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+      addTearDown(placeSearchProvider.dispose);
+
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = FakeHttpClient()
+        ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+        ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          SearchScreen(
+            placeSearchProvider: placeSearchProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
+          ),
+        ),
+      );
+      await tester.enterText(find.byType(TextField), 'bodrum');
+      await tester.pump(const Duration(milliseconds: 2));
+      await tester.pump();
+
+      expect(find.text('Bodrum'), findsOneWidget);
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.idle);
+
+      await tester.tap(find.byKey(const ValueKey('place-result-0-Bodrum')));
+      await tester.pump();
+
+      expect(find.text('Bodrum'), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        '',
+      );
+
+      // Lets the debounced pickLocation fetch settle, then proves it was
+      // called with Bodrum's own coordinates (not some other place's) by
+      // inspecting the Overpass POST body the fetch actually sent: a
+      // coordinate mix-up would send the wrong lat/lon here even though
+      // the fixture response (and thus the final "loaded" status) looks
+      // the same regardless of which point was requested.
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+
+      // The fixture Overpass response has no beaches, so this resolves
+      // to the explicit "empty" status rather than "loaded" — what
+      // matters for this test is which coordinates were requested.
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.empty);
+      final overpassRequest = nearbyClient.requests.single as http.Request;
+      expect(overpassRequest.body, contains('37.03'));
+      expect(overpassRequest.body, contains('27.43'));
+    });
+
+    testWidgets(
+      'given two places with the same name, selecting the second -> picks '
+      'its own (different) location, not the first',
+      (tester) async {
+        final geocodingClient = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {'name': 'Springfield', 'latitude': 39.78, 'longitude': -89.65},
+                {'name': 'Springfield', 'latitude': 42.1, 'longitude': -72.59},
+              ],
+            },
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(geocodingClient),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        SharedPreferences.setMockInitialValues({});
+        final nearbyClient = FakeHttpClient()
+          ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+          ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
+        final nearbyBeachesProvider = NearbyBeachesProvider(
+          OverpassService(nearbyClient),
+          BeachCache(await SharedPreferences.getInstance()),
+          MarineBatchService(nearbyClient),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(nearbyBeachesProvider.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            SearchScreen(
+              placeSearchProvider: placeSearchProvider,
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
+          ),
+        );
+        await tester.enterText(find.byType(TextField), 'springfield');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        // Both rows render without Flutter's duplicate-key assertion
+        // firing (it would throw during this pump), each under its own
+        // index-qualified key.
+        expect(find.text('Springfield'), findsNWidgets(2));
+        expect(
+          find.byKey(const ValueKey('place-result-0-Springfield')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey('place-result-1-Springfield')),
+          findsOneWidget,
+        );
+
+        await tester.tap(
+          find.byKey(const ValueKey('place-result-1-Springfield')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 10));
+        await tester.pump(const Duration(milliseconds: 10));
+
+        final overpassRequest = nearbyClient.requests.single as http.Request;
+        expect(overpassRequest.body, contains('42.1'));
+        expect(overpassRequest.body, contains('-72.59'));
+        expect(overpassRequest.body, isNot(contains('39.78')));
       },
     );
   });

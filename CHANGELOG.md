@@ -5,6 +5,59 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.5] - 2026-10-02
+
+### Added
+
+- Hourly marine forecast series (wave height/direction/period, sea surface
+  temperature) and nullable ocean current speed/direction on `SeaCondition`/the new
+  `SeaHourly` (#190)
+- Hourly wind speed, wind gusts and cloud cover on `WeatherHourly` (#184)
+- `GeocodingService` (Open-Meteo's free geocoding API) and `PlaceSearchProvider`,
+  searching places by name (#185)
+- Search screen: a "Places" section searching real places by name via
+  `PlaceSearchProvider`; selecting one re-centers the map and beach list (#192)
+- Home screen: a "Sea" section under the suggestion pill showing wave height, water
+  temperature, and wave/current direction and speed from `MarineProvider` (#196)
+- `classifyDirection`/`seawardBearingFromGeometry`
+  (`lib/logic/wave_shore_relation.dart`), classifying a current's or wave's direction
+  relative to a beach's shore (toward/away/along); wired into the Home Sea section's
+  direction tiles with a "stay close!" warning when drifting away from shore (#197)
+- A detail-pages foundation (`lib/presentation/navigation/detail_routes.dart`,
+  `MetricDetailScaffold`, `HourlyMetricChart`) and the first metric screen, Pressure:
+  an hourly chart, min/max/now summary, and a rising/steady/falling trend, opened by
+  tapping the Home screen's pressure stat tile (#194)
+- `buildForecastAlerts` (`lib/logic/forecast_alerts.dart`): pure rules producing
+  wind/wave/cloud/rain/current heads-up alerts from the hourly forecast; not yet
+  surfaced anywhere in the UI (#195)
+- Amenity markers on the map (toilets, showers, changing rooms, parking, cafés, beach
+  clubs), a toggleable legend, and a short name/kind label shown at close zoom (#199)
+- A `functional-verify` CI workflow that runs each pull request's acceptance criteria
+  as an additional automated check (#173)
+- Shared test helpers (`FakeHttpClient`, model builders, `pumpApp`) and
+  `docs/testing.md` documenting this repo's test conventions (#189)
+
+### Changed
+
+- `HomeScreen` extracted from `main.dart` into its own file; no behavior change (#183)
+- `SwimSuggestionPill`'s color now follows the swim verdict (green/orange/
+  red-orange) instead of a single neutral grey (#186)
+- Hourly forecast icons are now colored and use each entry's own hour (not the device
+  clock) to decide day vs. night (#187)
+- A beach's nearby amenities (toilets, showers, cafés, parking, beach clubs,
+  lifeguards) now carry their real map position (`BeachAmenity`), not just a boolean
+  flag per kind (#188)
+- Refreshed `pubspec.lock` (`mgrs_dart`, `proj4dart`, `unicode` and other transitive
+  dependencies); no source or dependency-constraint changes (#182)
+
+### Fixed
+
+- The Release workflow now accepts a non-padded release month (`YYYY.M.N`, e.g.
+  `2026.10.5`) (#177)
+- `ocean_current_velocity` was being converted a second time (m/s → km/h) on top of
+  Open-Meteo's already-km/h value, inflating every reading; the extra conversion was
+  removed (#193)
+
 ## [2026.10.4] - 2026-10-01
 
 ### Added

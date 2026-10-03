@@ -1,6 +1,7 @@
 import 'package:latlong2/latlong.dart';
 
 import '../models/beach.dart';
+import '../models/beach_amenity.dart';
 
 /// Radius (in meters) within which an amenity is considered to belong to a
 /// beach. Must match the `around.b:150` radius used in the Overpass query
@@ -53,23 +54,21 @@ List<Beach> mapOverpassToBeaches(Map<String, dynamic> rawResponse) {
   return groups.map((g) => g.toBeach()).toList();
 }
 
-enum _AmenityKind { shower, toilets, changingRoom, parking, cafe, lifeguard, beachResort }
-
-_AmenityKind? _amenityKind(Map<String, dynamic> tags) {
+AmenityKind? _amenityKind(Map<String, dynamic> tags) {
   switch (tags['amenity']) {
     case 'shower':
-      return _AmenityKind.shower;
+      return AmenityKind.shower;
     case 'toilets':
-      return _AmenityKind.toilets;
+      return AmenityKind.toilets;
     case 'changing_room':
-      return _AmenityKind.changingRoom;
+      return AmenityKind.changingRoom;
     case 'parking':
-      return _AmenityKind.parking;
+      return AmenityKind.parking;
     case 'cafe':
-      return _AmenityKind.cafe;
+      return AmenityKind.cafe;
   }
-  if (tags['emergency'] == 'lifeguard') return _AmenityKind.lifeguard;
-  if (tags['leisure'] == 'beach_resort') return _AmenityKind.beachResort;
+  if (tags['emergency'] == 'lifeguard') return AmenityKind.lifeguard;
+  if (tags['leisure'] == 'beach_resort') return AmenityKind.beachResort;
   return null;
 }
 
@@ -190,6 +189,7 @@ class _BeachGroup {
   bool hasParking = false;
   bool hasCafe = false;
   bool hasBeachResort = false;
+  final List<BeachAmenity> amenities = [];
 
   factory _BeachGroup.fromMembers(List<_OsmElement> members) {
     final allPoints = <LatLng>[for (final m in members) ...m.referencePoints];
@@ -225,6 +225,7 @@ class _BeachGroup {
     hasCafe: hasCafe,
     hasBeachResort: hasBeachResort,
     geometry: geometry,
+    amenities: List.unmodifiable(amenities),
   );
 }
 
@@ -293,22 +294,33 @@ void _attachAmenityToNearestBeach(_OsmElement amenity, List<_BeachGroup> groups)
 
   if (nearest == null || nearestDistance > _amenityAttachRadiusMeters) return;
 
-  switch (_amenityKind(amenity.tags)) {
-    case _AmenityKind.shower:
+  final kind = _amenityKind(amenity.tags);
+  switch (kind) {
+    case AmenityKind.shower:
       nearest.hasShower = true;
-    case _AmenityKind.toilets:
+    case AmenityKind.toilets:
       nearest.hasToilets = true;
-    case _AmenityKind.changingRoom:
+    case AmenityKind.changingRoom:
       nearest.hasChangingRoom = true;
-    case _AmenityKind.parking:
+    case AmenityKind.parking:
       nearest.hasParking = true;
-    case _AmenityKind.cafe:
+    case AmenityKind.cafe:
       nearest.hasCafe = true;
-    case _AmenityKind.lifeguard:
+    case AmenityKind.lifeguard:
       nearest.hasLifeguard = true;
-    case _AmenityKind.beachResort:
+    case AmenityKind.beachResort:
       nearest.hasBeachResort = true;
     case null:
       break;
+  }
+  if (kind != null) {
+    final name = amenity.tags['name'];
+    nearest.amenities.add(
+      BeachAmenity(
+        kind: kind,
+        position: amenity.point,
+        name: name is String && name.isNotEmpty ? name : null,
+      ),
+    );
   }
 }

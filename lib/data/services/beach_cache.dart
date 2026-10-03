@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/beach_amenity.dart';
 import 'package:beachiq/data/static_beaches.dart';
 
 /// The outcome of a [BeachCache] lookup.
@@ -210,6 +211,14 @@ class BeachCache {
         'geometry': beach.geometry
             ?.map((point) => [point.latitude, point.longitude])
             .toList(),
+        'amenities': beach.amenities.map(_amenityToJson).toList(),
+      };
+
+  static Map<String, dynamic> _amenityToJson(BeachAmenity amenity) => {
+        'kind': amenity.kind.name,
+        'latitude': amenity.position.latitude,
+        'longitude': amenity.position.longitude,
+        'name': amenity.name,
       };
 
   static Beach _beachFromJson(Map<String, dynamic> json) => Beach(
@@ -238,7 +247,36 @@ class BeachCache {
               ),
             )
             .toList(),
+        // Absent in a cache entry written before this field existed: an
+        // old entry still loads, just with no amenities (empty list).
+        amenities: (json['amenities'] as List?)
+                ?.cast<Map<String, dynamic>>()
+                .map(_amenityFromJson)
+                .whereType<BeachAmenity>()
+                .toList() ??
+            const [],
       );
+
+  /// Returns `null` for an entry with an unrecognized `kind` instead of
+  /// throwing, so one corrupt amenity does not fail the whole cache read.
+  static BeachAmenity? _amenityFromJson(Map<String, dynamic> json) {
+    AmenityKind? kind;
+    for (final value in AmenityKind.values) {
+      if (value.name == json['kind']) {
+        kind = value;
+        break;
+      }
+    }
+    if (kind == null) return null;
+    final latitude = json['latitude'];
+    final longitude = json['longitude'];
+    if (latitude is! num || longitude is! num) return null;
+    return BeachAmenity(
+      kind: kind,
+      position: LatLng(latitude.toDouble(), longitude.toDouble()),
+      name: json['name'] as String?,
+    );
+  }
 
   static double _haversineKm(
     double lat1,

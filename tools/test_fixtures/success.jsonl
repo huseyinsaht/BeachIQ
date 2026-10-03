@@ -1,0 +1,11 @@
+{"protocolVersion":"0.1.1","runnerVersion":"1.25.15","pid":1000,"type":"start","time":0}
+{"suite":{"id":0,"platform":"vm","path":"/repo/test/data/models/beach_test.dart"},"type":"suite","time":0}
+{"test":{"id":1,"name":"loading /repo/test/data/models/beach_test.dart","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":null,"column":null,"url":null},"type":"testStart","time":1}
+{"count":1,"time":2,"type":"allSuites"}
+{"testID":1,"result":"success","skipped":false,"hidden":true,"type":"testDone","time":5}
+{"group":{"id":2,"suiteID":0,"parentID":null,"name":"","metadata":{"skip":false,"skipReason":null},"testCount":2,"line":null,"column":null,"url":null},"type":"group","time":6}
+{"test":{"id":3,"name":"Beach given a valid json map, fromJson -> builds a beach","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":10,"column":5,"url":"file:///repo/test/data/models/beach_test.dart"},"type":"testStart","time":7}
+{"testID":3,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":12}
+{"test":{"id":4,"name":"Beach given no name, fromJson -> falls back to Unnamed beach","suiteID":0,"groupIDs":[2],"metadata":{"skip":false,"skipReason":null},"line":20,"column":5,"url":"file:///repo/test/data/models/beach_test.dart"},"type":"testStart","time":13}
+{"testID":4,"result":"success","skipped":false,"hidden":false,"type":"testDone","time":16}
+{"success":true,"type":"done","time":20}

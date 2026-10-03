@@ -5,10 +5,42 @@ class WeatherHourly {
   final double temperature;
   final int weatherCode;
 
+  // Issue #155: nullable/absent by default so callers can distinguish
+  // "no data available" from "value is zero", matching the rest of this
+  // model's extended fields.
+  final double? windSpeed;
+  final double? windGusts;
+  final double? cloudCoverPercent;
+
+  // Issue #168: Open-Meteo's `precipitation_probability` was already being
+  // fetched and parsed for [WeatherCondition.rainChancePercent] (the
+  // "current" value) but discarded per-hour; exposing it here lets
+  // `lib/logic/forecast_alerts.dart`'s rain rule reuse the real forecast
+  // instead of guessing.
+  final double? rainChancePercent;
+
+  // Issue #165: sea-level pressure per hour, for the Pressure detail
+  // screen's hourly chart. Nullable/absent by default, matching the other
+  // extended hourly fields above.
+  final double? pressureHpa;
+
+  // Issue #178: UV index per hour, for the UV index detail screen's hourly
+  // chart. Open-Meteo's `uv_index` hourly array was already being fetched
+  // and parsed for [WeatherCondition.uvIndex] (the "current" value) but
+  // discarded per-hour; this exposes the same array per entry, the same
+  // way #165 added [pressureHpa] above.
+  final double? uvIndex;
+
   WeatherHourly({
     required this.time,
     required this.temperature,
     required this.weatherCode,
+    this.windSpeed,
+    this.windGusts,
+    this.cloudCoverPercent,
+    this.rainChancePercent,
+    this.pressureHpa,
+    this.uvIndex,
   });
 }
 
@@ -55,6 +87,9 @@ class WeatherCondition {
       final precipitationProbabilities =
           hourlyJson['precipitation_probability'];
       final pressures = hourlyJson['pressure_msl'];
+      final windSpeeds = hourlyJson['wind_speed_10m'];
+      final windGustsList = hourlyJson['wind_gusts_10m'];
+      final cloudCovers = hourlyJson['cloud_cover'];
 
       if (times is List) {
         final parsedTimes = <DateTime?>[];
@@ -62,15 +97,41 @@ class WeatherCondition {
           final time = DateTime.tryParse(times[i].toString());
           parsedTimes.add(time);
           if (time == null) continue;
-          final temperature =
-              (temps is List && i < temps.length) ? _asDouble(temps[i]) : null;
-          final code =
-              (codes is List && i < codes.length) ? _asInt(codes[i]) : null;
+          final temperature = (temps is List && i < temps.length)
+              ? _asDouble(temps[i])
+              : null;
+          final code = (codes is List && i < codes.length)
+              ? _asInt(codes[i])
+              : null;
           // Skip entries missing temperature or weather code rather than
           // fabricating a 0/"Clear" value, since both are valid real values.
           if (temperature == null || code == null) continue;
           hourlyList.add(
-            WeatherHourly(time: time, temperature: temperature, weatherCode: code),
+            WeatherHourly(
+              time: time,
+              temperature: temperature,
+              weatherCode: code,
+              windSpeed: (windSpeeds is List && i < windSpeeds.length)
+                  ? _asDouble(windSpeeds[i])
+                  : null,
+              windGusts: (windGustsList is List && i < windGustsList.length)
+                  ? _asDouble(windGustsList[i])
+                  : null,
+              cloudCoverPercent: (cloudCovers is List && i < cloudCovers.length)
+                  ? _asDouble(cloudCovers[i])
+                  : null,
+              rainChancePercent:
+                  (precipitationProbabilities is List &&
+                      i < precipitationProbabilities.length)
+                  ? _asDouble(precipitationProbabilities[i])
+                  : null,
+              pressureHpa: (pressures is List && i < pressures.length)
+                  ? _asDouble(pressures[i])
+                  : null,
+              uvIndex: (uvIndices is List && i < uvIndices.length)
+                  ? _asDouble(uvIndices[i])
+                  : null,
+            ),
           );
         }
 
@@ -101,7 +162,9 @@ class WeatherCondition {
         }
         if (precipitationProbabilities is List &&
             currentIndex < precipitationProbabilities.length) {
-          rainChancePercent = _asDouble(precipitationProbabilities[currentIndex]);
+          rainChancePercent = _asDouble(
+            precipitationProbabilities[currentIndex],
+          );
         }
         if (pressures is List && currentIndex < pressures.length) {
           pressureHpa = _asDouble(pressures[currentIndex]);

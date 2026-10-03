@@ -20,6 +20,7 @@ class StatTile extends StatelessWidget {
     required this.value,
     required this.trendDirection,
     required this.trendDelta,
+    this.onTap,
   });
 
   final IconData icon;
@@ -28,6 +29,11 @@ class StatTile extends StatelessWidget {
   final StatTrendDirection trendDirection;
   final String trendDelta;
 
+  /// Opens this metric's own detail screen (issue #165) when set. Null
+  /// (the default) keeps today's behavior exactly: no `InkWell`/ripple, no
+  /// tap target at all — every existing caller/test is unaffected.
+  final VoidCallback? onTap;
+
   static const _textSecondary = Color(0xFF8B93A6);
 
   @override
@@ -35,75 +41,78 @@ class StatTile extends StatelessWidget {
     final isUp = trendDirection == StatTrendDirection.up;
     final trendWord = isUp ? 'up' : 'down';
 
-    return Semantics(
-      label: '$label, $value, trend $trendWord $trendDelta',
-      excludeSemantics: true,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, size: 18, color: _textSecondary),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _textSecondary, fontSize: 12),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 18, color: _textSecondary),
-              const SizedBox(width: 8),
+              Icon(
+                isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
+                size: 16,
+                color: _textSecondary,
+              ),
               Flexible(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textSecondary,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  trendDelta,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _textSecondary, fontSize: 12),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  size: 16,
-                  color: _textSecondary,
-                ),
-                Flexible(
-                  child: Text(
-                    trendDelta,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: _textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
+        ),
+      ],
+    );
+
+    return Semantics(
+      label: '$label, $value, trend $trendWord $trendDelta',
+      excludeSemantics: true,
+      child: onTap == null
+          ? content
+          : InkWell(
+              key: const Key('stat-tile-tap-target'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: onTap,
+              child: content,
             ),
-          ),
-        ],
-      ),
     );
   }
 }

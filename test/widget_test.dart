@@ -20,15 +20,22 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
-import 'package:beachiq/main.dart';
+import 'package:beachiq/logic/wave_shore_relation.dart';
+import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
+import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
+import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'helpers/pump_app.dart';
 
 /// A fake [http.Client] that never touches the real network: it answers an
 /// Overpass query with a single fixture beach and a marine-batch request
@@ -83,6 +90,162 @@ class _FixtureNetworkClient extends http.BaseClient {
 
 NearbyBeachesProvider _fixtureNearbyBeachesProvider() {
   final client = _FixtureNetworkClient();
+  return NearbyBeachesProvider(
+    OverpassService(client),
+    BeachCache(_mockPrefs!),
+    MarineBatchService(client),
+    debounceDuration: const Duration(milliseconds: 1),
+  );
+}
+
+/// Like [_FixtureNetworkClient], but the Overpass response also includes a
+/// parking amenity node near the fixture beach, so the mapped [Beach] has a
+/// non-empty `amenities` list — needed to exercise
+/// `seawardBearingFromGeometry`'s real (non-null) path, not just its
+/// no-amenities -> null fallback.
+class _FixtureNetworkClientWithAmenity extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.8,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 25.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          // Just south of the beach's geometry, within the 150m attach
+          // radius, so it gets attached as a land-side amenity.
+          'lat': 38.32195,
+          'lon': 26.3265,
+          'tags': {'amenity': 'parking', 'name': 'Fixture Car Park'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+/// Like [_FixtureNetworkClientWithAmenity], but the Overpass response lists
+/// TWO beaches, each with its own amenity: a far one (listed FIRST, ~100 km
+/// from `_placeCenter`) and the real fixture beach at `_placeCenter` (listed
+/// SECOND). `NearbyBeachesProvider.beaches` carries no distance ordering
+/// (Overpass returns elements in element-id order), so this proves
+/// HomeScreen picks the nearest beach by actual distance rather than
+/// assuming the first list entry is closest.
+class _FixtureNetworkClientTwoBeaches extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {
+            'wave_height': 0.8,
+            'wave_direction': 180,
+            'wave_period': 5,
+            'sea_surface_temperature': 25.0,
+          },
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 10,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Far Beach',
+            'addr:city': 'Elsewhere',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 39.00, 'lon': 27.00},
+            {'lat': 39.01, 'lon': 27.00},
+            {'lat': 39.01, 'lon': 27.01},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 11,
+          'lat': 38.99995,
+          'lon': 27.005,
+          'tags': {'amenity': 'parking', 'name': 'Far Car Park'},
+        },
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Fixture Beach',
+            'addr:city': 'Cesme',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.3220, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3260},
+            {'lat': 38.3230, 'lon': 26.3270},
+          ],
+        },
+        {
+          'type': 'node',
+          'id': 2,
+          'lat': 38.32195,
+          'lon': 26.3265,
+          'tags': {'amenity': 'parking', 'name': 'Fixture Car Park'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+NearbyBeachesProvider _fixtureNearbyBeachesProviderWithAmenity() {
+  final client = _FixtureNetworkClientWithAmenity();
   return NearbyBeachesProvider(
     OverpassService(client),
     BeachCache(_mockPrefs!),
@@ -235,6 +398,55 @@ class _FixedWeatherRepository extends WeatherRepository {
   }
 }
 
+/// A [WeatherRepository] that records every (lat, lon) it's asked for, in
+/// call order, and resolves to [results] at the matching index (repeating
+/// the last entry if asked more times than [results] has) — so a test can
+/// prove a later call (e.g. one triggered by a map pick) was made with
+/// *different* coordinates than the first, and produced different data,
+/// rather than reusing the first fetch (#157).
+class _RecordingWeatherRepository extends WeatherRepository {
+  _RecordingWeatherRepository(this.results) : super(WeatherApiService());
+
+  final List<WeatherCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
+
+/// Like [_RecordingWeatherRepository], but for [MarineRepository].
+class _RecordingMarineRepository extends MarineRepository {
+  _RecordingMarineRepository(this.results) : super(MarineApiService());
+
+  final List<SeaCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
+
+/// Opens [SearchScreen] via the map card's overflow ("...") menu and its
+/// "Beaches" entry (#158) — the replacement for the old standalone
+/// `home-search-entry` tap target this issue removed from Home.
+Future<void> _openBeachesFromOverflow(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('More'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Beaches'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -376,6 +588,12 @@ void main() {
       await tester.tap(find.byTooltip('More'));
       await tester.pumpAndSettle();
 
+      expect(find.text('Units'), findsOneWidget);
+      expect(find.text('Beaches'), findsOneWidget);
+
+      await tester.tap(find.text('Units'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Imperial (ft, °F, mph)'), findsOneWidget);
 
       await tester.tap(find.text('Imperial (ft, °F, mph)'));
@@ -445,6 +663,51 @@ void main() {
       final delegate = listView.childrenDelegate as SliverChildBuilderDelegate;
       expect((delegate.childCount! + 1) ~/ 2, 24);
       expect(find.text('26°'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    "the hourly row's icons follow each entry's own hour, not the real "
+    'clock: a clear noon entry shows a sun and a clear 11PM entry shows a '
+    'moon side by side',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(
+        _FixedWeatherRepository(
+          WeatherCondition(
+            temperature: 20,
+            windSpeed: 5,
+            weatherCode: 1,
+            hourly: [
+              WeatherHourly(
+                time: DateTime(2026, 1, 1, 12),
+                temperature: 26,
+                weatherCode: 1,
+              ),
+              WeatherHourly(
+                time: DateTime(2026, 1, 1, 23),
+                temperature: 18,
+                weatherCode: 1,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            // Deliberately before both entries; the runner's own real
+            // clock time must not affect which icon shows for which hour.
+            now: () => DateTime(2026, 1, 1, 8),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
+      expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
     },
   );
 
@@ -643,36 +906,87 @@ void main() {
     },
   );
 
+  testWidgets('the suggestion pill downgrades to a poor verdict once real wave '
+      'height crosses the rough-conditions threshold', (
+    WidgetTester tester,
+  ) async {
+    final marineProvider = MarineProvider(
+      _FixedMarineRepository(
+        SeaCondition(
+          waveHeight: 1.5,
+          waveDirection: 90,
+          wavePeriod: 5,
+          seaSurfaceTemperature: 22,
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          tileProvider: _FakeTileProvider(),
+          marineProvider: marineProvider,
+        ),
+      ),
+    );
+    await marineProvider.fetchData(38.3, 26.3);
+    await tester.pump();
+
+    expect(
+      find.text('Rough conditions — best to skip swimming today.'),
+      findsOneWidget,
+    );
+  });
+
   testWidgets(
-    'the suggestion pill downgrades to a poor verdict once real wave '
-    'height crosses the rough-conditions threshold',
+    "the Home background gradient stays the navy bg.base/bg.gradientBottom "
+    'pair regardless of the swim verdict (only the suggestion pill colors '
+    'follow it)',
     (WidgetTester tester) async {
-      final marineProvider = MarineProvider(
-        _FixedMarineRepository(
-          SeaCondition(
-            waveHeight: 1.5,
-            waveDirection: 90,
-            wavePeriod: 5,
-            seaSurfaceTemperature: 22,
+      Future<LinearGradient> pumpAndGetBodyGradient(
+        MarineProvider provider,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: provider,
+            ),
+          ),
+        );
+        await provider.fetchData(38.3, 26.3);
+        await tester.pump();
+        // The background gradient now lives on the first `Container` inside
+        // the Home screen's body `Stack` (the cloud backdrop and real
+        // content are stacked above it, #162), rather than on the body
+        // widget itself.
+        final container = tester
+            .widgetList<Container>(find.byType(Container))
+            .first;
+        final decoration = container.decoration as BoxDecoration;
+        return decoration.gradient as LinearGradient;
+      }
+
+      const expectedColors = [Color(0xFF0D1220), Color(0xFF2A3145)];
+
+      final goodGradient = await pumpAndGetBodyGradient(
+        MarineProvider(_SucceedingMarineRepository()),
+      );
+      expect(goodGradient.colors, expectedColors);
+
+      final poorGradient = await pumpAndGetBodyGradient(
+        MarineProvider(
+          _FixedMarineRepository(
+            SeaCondition(
+              waveHeight: 1.5,
+              waveDirection: 90,
+              wavePeriod: 5,
+              seaSurfaceTemperature: 22,
+            ),
           ),
         ),
       );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            tileProvider: _FakeTileProvider(),
-            marineProvider: marineProvider,
-          ),
-        ),
-      );
-      await marineProvider.fetchData(38.3, 26.3);
-      await tester.pump();
-
-      expect(
-        find.text('Rough conditions — best to skip swimming today.'),
-        findsOneWidget,
-      );
+      expect(poorGradient.colors, expectedColors);
     },
   );
 
@@ -791,8 +1105,7 @@ void main() {
 
     expect(find.byType(SearchScreen), findsNothing);
 
-    await tester.tap(find.byKey(const Key('home-search-entry')));
-    await tester.pumpAndSettle();
+    await _openBeachesFromOverflow(tester);
 
     expect(find.byType(SearchScreen), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
@@ -813,11 +1126,121 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
-      await tester.pumpAndSettle();
+      await _openBeachesFromOverflow(tester);
 
       expect(find.byIcon(Icons.star_border), findsOneWidget);
       expect(find.byIcon(Icons.favorite_border), findsWidgets);
+    },
+  );
+
+  testWidgets(
+    'tapping the pressure stat tile opens PressureDetailScreen with the '
+    'real weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsNothing);
+
+      // The pressure tile sits below the fold on the test surface's fixed
+      // 800x600 size, so it needs scrolling into view before it can be hit.
+      await tester.ensureVisible(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('1013 hPa'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PressureDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The hero value carries over the real current pressure reading.
+      expect(find.text('1013'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(PressureDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tapping the wind speed stat tile opens WindDetailScreen with the real '
+    'weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('12 km/h'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('12 km/h'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The hero value carries over the real current wind speed reading.
+      expect(find.text('12'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WindDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tapping the rain chance stat tile opens RainChanceDetailScreen with '
+    'the real weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('10%'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('10%'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
     },
   );
 
@@ -888,8 +1311,7 @@ void main() {
         // is opened, so the real list is already loaded.
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('home-search-entry')));
-        await tester.pumpAndSettle();
+        await _openBeachesFromOverflow(tester);
 
         expect(find.byType(SearchScreen), findsOneWidget);
         expect(find.text('Fixture Beach'), findsOneWidget);
@@ -901,52 +1323,301 @@ void main() {
       },
     );
 
+    testWidgets("Search's pull-to-refresh calls onRefresh, which re-invokes "
+        'nearbyBeachesProvider.pickLocation for the fixed place center', (
+      WidgetTester tester,
+    ) async {
+      final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: nearbyBeachesProvider,
+          ),
+        ),
+      );
+      // Lets the postFrameCallback-triggered initial fetch resolve.
+      await tester.pumpAndSettle();
+
+      await _openBeachesFromOverflow(tester);
+
+      // A second pickLocation for the exact same spot still re-runs the
+      // whole fetch (MarineBatchService's own 1-hour cache means it may
+      // not necessarily re-hit the network), which always notifies
+      // listeners at least twice: once entering NearbyBeachesStatus.loading
+      // and once resolving back to loaded. Counting notifications (rather
+      // than network calls) is what actually distinguishes a real
+      // pickLocation call from onRefresh being a silent no-op.
+      var notifications = 0;
+      nearbyBeachesProvider.addListener(() => notifications++);
+
+      final refreshIndicator = tester.widget<RefreshIndicator>(
+        find.descendant(
+          of: find.byType(SearchScreen),
+          matching: find.byType(RefreshIndicator),
+        ),
+      );
+      // The onRefresh closure itself only calls pickLocation() (it does
+      // not await the debounced fetch), so it resolves immediately;
+      // pumpAndSettle afterwards is what lets the debounce timer fire
+      // and the resulting fetch actually run to completion.
+      await refreshIndicator.onRefresh();
+      await tester.pumpAndSettle();
+
+      expect(notifications, greaterThanOrEqualTo(2));
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+    });
+
+    testWidgets('given no nearby beaches, HomeScreen passes a null '
+        'seawardBearingDegrees to SeaConditionsRow (never a fabricated one)', (
+      WidgetTester tester,
+    ) async {
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(currentDirection: 90),
+      );
+      addTearDown(marineProvider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+            // No nearbyBeachesProvider at all -> no beach to derive a
+            // bearing from.
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final row = tester.widget<SeaConditionsRow>(
+        find.byType(SeaConditionsRow),
+      );
+      expect(row.seawardBearingDegrees, isNull);
+    });
+
     testWidgets(
-      "Search's pull-to-refresh calls onRefresh, which re-invokes "
-      'nearbyBeachesProvider.pickLocation for the fixed place center',
+      'given a nearby beach with geometry and amenities, HomeScreen derives '
+      'its seaward bearing and passes it to SeaConditionsRow',
       (WidgetTester tester) async {
-        final nearbyBeachesProvider = _fixtureNearbyBeachesProvider();
+        final nearbyBeachesProvider =
+            _fixtureNearbyBeachesProviderWithAmenity();
         addTearDown(nearbyBeachesProvider.dispose);
+        final marineProvider = await aLoadedMarineProvider(
+          SeaCondition(currentDirection: 90),
+        );
+        addTearDown(marineProvider.dispose);
 
         await tester.pumpWidget(
           MaterialApp(
             home: HomeScreen(
               tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
               nearbyBeachesProvider: nearbyBeachesProvider,
             ),
           ),
         );
-        // Lets the postFrameCallback-triggered initial fetch resolve.
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('home-search-entry')));
-        await tester.pumpAndSettle();
+        expect(nearbyBeachesProvider.beaches, isNotEmpty);
+        final expectedBearing = seawardBearingFromGeometry(
+          nearbyBeachesProvider.beaches.first,
+        );
+        expect(expectedBearing, isNotNull);
 
-        // A second pickLocation for the exact same spot still re-runs the
-        // whole fetch (MarineBatchService's own 1-hour cache means it may
-        // not necessarily re-hit the network), which always notifies
-        // listeners at least twice: once entering NearbyBeachesStatus.loading
-        // and once resolving back to loaded. Counting notifications (rather
-        // than network calls) is what actually distinguishes a real
-        // pickLocation call from onRefresh being a silent no-op.
-        var notifications = 0;
-        nearbyBeachesProvider.addListener(() => notifications++);
+        final row = tester.widget<SeaConditionsRow>(
+          find.byType(SeaConditionsRow),
+        );
+        expect(row.seawardBearingDegrees, expectedBearing);
+      },
+    );
 
-        final refreshIndicator = tester.widget<RefreshIndicator>(
-          find.descendant(
-            of: find.byType(SearchScreen),
-            matching: find.byType(RefreshIndicator),
+    testWidgets(
+      'given several nearby beaches where the nearest one is NOT first in '
+      'the list, HomeScreen still derives the bearing from the actually '
+      'nearest beach (not list order)',
+      (WidgetTester tester) async {
+        final client = _FixtureNetworkClientTwoBeaches();
+        final nearbyBeachesProvider = NearbyBeachesProvider(
+          OverpassService(client),
+          BeachCache(_mockPrefs!),
+          MarineBatchService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(nearbyBeachesProvider.dispose);
+        final marineProvider = await aLoadedMarineProvider(
+          SeaCondition(currentDirection: 90),
+        );
+        addTearDown(marineProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
+              nearbyBeachesProvider: nearbyBeachesProvider,
+            ),
           ),
         );
-        // The onRefresh closure itself only calls pickLocation() (it does
-        // not await the debounced fetch), so it resolves immediately;
-        // pumpAndSettle afterwards is what lets the debounce timer fire
-        // and the resulting fetch actually run to completion.
-        await refreshIndicator.onRefresh();
         await tester.pumpAndSettle();
 
-        expect(notifications, greaterThanOrEqualTo(2));
-        expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+        expect(nearbyBeachesProvider.beaches, hasLength(2));
+        // "Far Beach" is listed first in the fixture response but is ~100
+        // km from _placeCenter; "Fixture Beach" is listed second but sits
+        // right at _placeCenter, so it is the real nearest beach.
+        expect(nearbyBeachesProvider.beaches.first.name, 'Far Beach');
+        final nearestBeach = nearbyBeachesProvider.beaches.firstWhere(
+          (b) => b.name == 'Fixture Beach',
+        );
+        final expectedBearing = seawardBearingFromGeometry(nearestBeach);
+        expect(expectedBearing, isNotNull);
+
+        final row = tester.widget<SeaConditionsRow>(
+          find.byType(SeaConditionsRow),
+        );
+        expect(row.seawardBearingDegrees, expectedBearing);
+      },
+    );
+  });
+
+  group('selected-location data path (#157)', () {
+    testWidgets(
+      'given a user taps the map, HomeScreen re-fetches weather and marine '
+      'data for the tapped point (not the fixed Çeşme default) and updates '
+      'the header',
+      (WidgetTester tester) async {
+        final weatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+          WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+        ]);
+        final marineRepository = _RecordingMarineRepository([
+          SeaCondition(waveHeight: 0.2),
+          SeaCondition(waveHeight: 1.8),
+        ]);
+        final weatherProvider = WeatherProvider(weatherRepository);
+        final marineProvider = MarineProvider(marineRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: weatherProvider,
+              marineProvider: marineProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial load: weather fetched once, for the Çeşme first-run
+        // default. Marine data is never auto-fetched on the initial load
+        // (only an explicit refresh/pick triggers it — see
+        // HomeScreen._fetchWeatherAndMarine's call sites), so it starts
+        // empty. The place name shows twice (the header subtitle and the
+        // map card's own location bar both render the same selected name).
+        expect(weatherRepository.calls, hasLength(1));
+        expect(marineRepository.calls, isEmpty);
+        expect(find.text('27°'), findsOneWidget);
+        expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+
+        // Tapping the widget's own center taps the map's visual center
+        // (see location_map_card_picker_test.dart): flutter_map's own
+        // lat/lng <-> pixel projection round-trip introduces enough
+        // floating-point noise that the resulting point is a genuinely
+        // distinct double from the original, even though both describe
+        // "the same" spot — exactly what's needed to prove a *new* fetch
+        // happened, rather than the old data just being repainted.
+        await tester.tap(find.byType(FlutterMap));
+        // flutter_map delays a single tap by its double-tap-to-zoom window
+        // before firing onTap (see location_map_card_picker_test.dart).
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        // Weather was asked again, for a new (different) point — this is
+        // what actually proves the pick re-fetched real data rather than
+        // just repainting the same values. Marine data, never fetched
+        // before, is now fetched for that very same picked point too (the
+        // acceptance criterion's "waves" changing on a pick).
+        expect(weatherRepository.calls, hasLength(2));
+        expect(weatherRepository.calls[1], isNot(weatherRepository.calls[0]));
+        expect(marineRepository.calls, hasLength(1));
+        expect(marineRepository.calls.single, weatherRepository.calls[1]);
+
+        // The header now reflects the newly picked point's data, not the
+        // original Çeşme fetch's.
+        expect(find.text('31°'), findsOneWidget);
+        expect(find.text('27°'), findsNothing);
+        // No reverse geocode is available for a bare map tap, so the place
+        // name falls back to formatted coordinates instead of staying on
+        // the Çeşme default.
+        expect(find.text('Çeşme, İzmir'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a picked location is persisted and restored by a later HomeScreen '
+      'mount (app restart)',
+      (WidgetTester tester) async {
+        final firstWeatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+          _fakeWeatherCondition(uvIndex: 9.9),
+        ]);
+        final firstWeatherProvider = WeatherProvider(firstWeatherRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: firstWeatherProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(FlutterMap));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(firstWeatherRepository.calls, hasLength(2));
+        final pickedPoint = firstWeatherRepository.calls[1];
+
+        // "Restart": a brand new HomeScreen/WeatherProvider mounted against
+        // the same (mocked) SharedPreferences backing store the first one
+        // just wrote to.
+        final secondWeatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+        ]);
+        final secondWeatherProvider = WeatherProvider(secondWeatherRepository);
+
+        // A distinct key forces Flutter to tear down the first HomeScreen's
+        // State (and its in-memory _selectedLocation) and mount a brand new
+        // one instead of just updating the existing element in place — the
+        // only way a widget test can simulate a real app restart, where
+        // SharedPreferences is the only thing that survives.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              key: const ValueKey('restarted-home-screen'),
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: secondWeatherProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(secondWeatherRepository.calls, hasLength(1));
+        expect(
+          secondWeatherRepository.calls.single.$1,
+          closeTo(pickedPoint.$1, 0.0001),
+        );
+        expect(
+          secondWeatherRepository.calls.single.$2,
+          closeTo(pickedPoint.$2, 0.0001),
+        );
+        // The restored pick's place name (formatted coordinates) survives
+        // too, not just its raw lat/lon — the Çeşme default never reappears
+        // once a pick has been made and persisted.
+        expect(find.text('Çeşme, İzmir'), findsNothing);
       },
     );
   });

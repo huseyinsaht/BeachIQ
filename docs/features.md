@@ -7,12 +7,22 @@
 - Current temperature, condition description and daily high/low, from the Open-Meteo
   Forecast API.
 - An interactive map card: tap anywhere to search that location, a 20km search-radius
-  circle, and nearby beaches drawn as gold outlines (from live OpenStreetMap data).
-- A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor) from
-  wave height, wind speed and rain chance — though the wave-height input is only
-  filled in after a pull-to-refresh (see `docs/architecture.md` § State flow).
+  circle, nearby beaches drawn as gold outlines (from live OpenStreetMap data), and —
+  once zoomed in — colored pins for nearby toilets, showers, changing rooms, parking,
+  cafés and beach clubs, with a toggleable legend and a tap-for-details card.
+- A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
+  green/orange/red-orange to match, from wave height, wind speed and rain chance —
+  though the wave-height input is only filled in after a pull-to-refresh (see
+  `docs/architecture.md` § State flow).
+- A "Sea" section (once marine data has loaded) showing wave height, water
+  temperature, wave direction and current speed/direction — when the nearest beach's
+  shoreline can be derived from OpenStreetMap data, the direction readings also say
+  whether the water is moving toward, away from, or along the shore, with a visible
+  warning when it's moving away (drift-out/rip-current risk).
 - A 2×2 stat grid (wind speed, rain chance, pressure, UV index) and a scrollable hourly
-  forecast row, both bound to real data.
+  forecast row (with colored, time-of-day-aware weather icons), both bound to real
+  data. Tapping the pressure tile opens a Pressure detail screen: an hourly chart,
+  min/max/now summary, and a rising/steady/falling trend.
 - A tappable search entry that opens the Search screen; pull-to-refresh re-fetches
   weather and marine data.
 - A metric/imperial unit toggle (via the map card's overflow menu), persisted across
@@ -25,7 +35,10 @@
   (free/paid/unknown), shoes/slippers advice, and nearby car park/beach club/café —
   any field the data source has no answer for is shown as "No data"/"Unknown" rather
   than invented.
-- A name/city text filter over the results.
+- A "Places" section: typing searches real places by name anywhere (via Open-Meteo's
+  geocoding API), not just the current results; picking one re-centers the map and
+  beach list on it.
+- A name/city text filter over the beach results.
 - Favorite beaches: a heart toggle on each result and a header star button to show
   favorites only, persisted across restarts.
 - The same metric/imperial toggle as Home, and pull-to-refresh.
@@ -43,6 +56,14 @@
   should fire (on a caution/poor/unknown → good transition), but nothing in the app
   schedules a background check or shows an actual notification yet — there is no
   alerts feature a user can turn on.
+- `buildForecastAlerts` can produce wind/wave/cloud/rain/current heads-up alerts
+  ("wind picks up between 10:00 and 11:00", etc.) from the hourly forecast, but
+  nothing in the app shows these to the user yet — no screen or notification surfaces
+  them.
+- The per-metric detail screen pattern (`MetricDetailScaffold`/`HourlyMetricChart`)
+  only has one real screen so far (Pressure, from the Home stat grid); UV index, rain
+  chance, wind, wave height, water temperature and current each still throw
+  "not implemented" if reached, pending their own screens.
 - `BeachRepository`/`staticBeaches` (10 hardcoded Turkish beaches) still exist as the
   Search screen's fallback when no live provider is supplied (e.g. tests), but the
   shipped app always supplies one.
