@@ -215,11 +215,27 @@ class SeaConditionsRow extends StatelessWidget {
               ),
               const SizedBox(width: 20),
               _SeaStatTile(
+                key: const Key('current-speed-tile'),
                 icon: Icons.speed,
                 label: 'Current speed',
                 value: _formatCurrentSpeed(
                   condition.currentVelocity,
                   unitSystem,
+                ),
+                // Opens the ocean current detail screen (issue #181): its
+                // own page/route, with the day's marine hourly series,
+                // current speed/direction and the beach's shore-normal
+                // bearing (for the drift-out warning).
+                onTap: () => Navigator.of(context).push(
+                  buildDetailRoute(
+                    DetailMetric.current,
+                    hourly: const [],
+                    seaHourly: condition.hourly,
+                    currentValue: condition.currentVelocity,
+                    currentDirectionValue: condition.currentDirection,
+                    seawardBearingDegrees: seawardBearingDegrees,
+                    unitSystem: unitSystem,
+                  ),
                 ),
               ),
               const SizedBox(width: 20),
@@ -234,6 +250,20 @@ class SeaConditionsRow extends StatelessWidget {
                 arrowRotationDegrees: condition.currentDirection,
                 value: _currentDirectionLabel(condition.currentDirection),
                 shoreRelation: currentShoreRelation,
+                // Opens the same ocean current detail screen as the speed
+                // tile above (issue #181) — direction and speed are two
+                // views of the same underlying reading.
+                onTap: () => Navigator.of(context).push(
+                  buildDetailRoute(
+                    DetailMetric.current,
+                    hourly: const [],
+                    seaHourly: condition.hourly,
+                    currentValue: condition.currentVelocity,
+                    currentDirectionValue: condition.currentDirection,
+                    seawardBearingDegrees: seawardBearingDegrees,
+                    unitSystem: unitSystem,
+                  ),
+                ),
               ),
             ],
           ),
@@ -338,12 +368,19 @@ class _SeaDirectionStatTile extends StatelessWidget {
     required this.arrowRotationDegrees,
     required this.value,
     this.shoreRelation,
+    this.onTap,
   });
 
   final String label;
   final double? arrowRotationDegrees;
   final String value;
   final ShoreRelation? shoreRelation;
+
+  /// Opens this metric's own detail screen (issue #181's current-direction
+  /// tile is the first to use it) when set. Null (the default) keeps the
+  /// wave-direction tile's existing behavior exactly: no `InkWell`/ripple,
+  /// no tap target at all.
+  final VoidCallback? onTap;
 
   static const _textSecondary = Color(0xFF8B93A6);
   static const _warning = Color(0xFFEF5350);
@@ -355,68 +392,77 @@ class _SeaDirectionStatTile extends StatelessWidget {
     final relationLabel = relation == null
         ? null
         : _shoreRelationLabel(relation);
+    final content = SizedBox(
+      // Wider than the other tiles' 120px: the shore-relation label (e.g.
+      // "(away from shore — stay close!)") needs the extra room to wrap
+      // onto two lines instead of being clipped (see relationLabel below)
+      // — clipping the one safety-relevant warning this row shows is
+      // worse than a slightly wider tile.
+      width: relationLabel == null ? 120 : 170,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Transform.rotate(
+            angle: degrees == null ? 0 : degrees * math.pi / 180,
+            child: const Icon(
+              Icons.navigation,
+              size: 18,
+              color: _textSecondary,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (relationLabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              relationLabel,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: relation == ShoreRelation.awayFromShore
+                    ? _warning
+                    : _textSecondary,
+                fontSize: 11,
+                fontWeight: relation == ShoreRelation.awayFromShore
+                    ? FontWeight.bold
+                    : FontWeight.normal,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
     return Semantics(
       label: relationLabel == null
           ? '$label, $value'
           : '$label, $value $relationLabel',
       excludeSemantics: true,
-      child: SizedBox(
-        // Wider than the other tiles' 120px: the shore-relation label (e.g.
-        // "(away from shore — stay close!)") needs the extra room to wrap
-        // onto two lines instead of being clipped (see relationLabel below)
-        // — clipping the one safety-relevant warning this row shows is
-        // worse than a slightly wider tile.
-        width: relationLabel == null ? 120 : 170,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Transform.rotate(
-              angle: degrees == null ? 0 : degrees * math.pi / 180,
-              child: const Icon(
-                Icons.navigation,
-                size: 18,
-                color: _textSecondary,
-              ),
+      child: onTap == null
+          ? content
+          : InkWell(
+              key: const Key('sea-direction-tile-tap-target'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: onTap,
+              child: content,
             ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _textSecondary, fontSize: 12),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            if (relationLabel != null) ...[
-              const SizedBox(height: 2),
-              Text(
-                relationLabel,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: relation == ShoreRelation.awayFromShore
-                      ? _warning
-                      : _textSecondary,
-                  fontSize: 11,
-                  fontWeight: relation == ShoreRelation.awayFromShore
-                      ? FontWeight.bold
-                      : FontWeight.normal,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
     );
   }
 }

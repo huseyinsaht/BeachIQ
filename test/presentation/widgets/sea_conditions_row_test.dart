@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
@@ -181,42 +182,114 @@ void main() {
       },
     );
 
+    testWidgets('tapping the water temperature tile opens '
+        'WaterTemperatureDetailScreen with the marine hourly series and '
+        'current value, and back returns to the previous screen', (
+      tester,
+    ) async {
+      final data = aSeaCondition(
+        seaSurfaceTemperature: 22.0,
+        hourly: [
+          aSeaHourly(
+            time: DateTime(2026, 1, 1, 12),
+            seaSurfaceTemperature: 22.0,
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+      );
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('water-temperature-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsOneWidget);
+      final screen = tester.widget<WaterTemperatureDetailScreen>(
+        find.byType(WaterTemperatureDetailScreen),
+      );
+      expect(screen.currentWaterTemperatureCelsius, 22.0);
+      expect(screen.hourly, hasLength(1));
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+    });
+
     testWidgets(
-      'tapping the water temperature tile opens '
-      'WaterTemperatureDetailScreen with the marine hourly series and '
-      'current value, and back returns to the previous screen',
+      'tapping the current speed tile opens CurrentDetailScreen with the '
+      'marine hourly series, current speed/direction and seaward bearing, '
+      'and back returns to the previous screen',
       (tester) async {
         final data = aSeaCondition(
-          seaSurfaceTemperature: 22.0,
+          currentVelocity: 7.0,
+          currentDirection: 90,
           hourly: [
             aSeaHourly(
               time: DateTime(2026, 1, 1, 12),
-              seaSurfaceTemperature: 22.0,
+              currentVelocity: 7.0,
+              currentDirection: 90,
             ),
           ],
         );
 
         await tester.pumpWidget(
-          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+          wrap(
+            SeaConditionsRow(
+              data: data,
+              unitSystem: UnitSystem.metric,
+              seawardBearingDegrees: 90,
+            ),
+          ),
         );
 
-        expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+        expect(find.byType(CurrentDetailScreen), findsNothing);
 
-        await tester.tap(find.byKey(const Key('water-temperature-tile')));
+        await tester.tap(find.byKey(const Key('current-speed-tile')));
         await tester.pumpAndSettle();
 
-        expect(find.byType(WaterTemperatureDetailScreen), findsOneWidget);
-        final screen = tester.widget<WaterTemperatureDetailScreen>(
-          find.byType(WaterTemperatureDetailScreen),
+        expect(find.byType(CurrentDetailScreen), findsOneWidget);
+        final screen = tester.widget<CurrentDetailScreen>(
+          find.byType(CurrentDetailScreen),
         );
-        expect(screen.currentWaterTemperatureCelsius, 22.0);
+        expect(screen.currentSpeedKmh, 7.0);
+        expect(screen.currentDirectionDegrees, 90);
+        expect(screen.seawardBearingDegrees, 90);
         expect(screen.hourly, hasLength(1));
 
         await tester.tap(find.byTooltip('Back'));
         await tester.pumpAndSettle();
 
-        expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+        expect(find.byType(CurrentDetailScreen), findsNothing);
         expect(find.byType(SeaConditionsRow), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping the current direction tile opens the same CurrentDetailScreen '
+      'as the current speed tile',
+      (tester) async {
+        final data = aSeaCondition(currentVelocity: 3.0, currentDirection: 45);
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.byType(CurrentDetailScreen), findsNothing);
+
+        await tester.tap(find.byKey(const Key('current-direction-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CurrentDetailScreen), findsOneWidget);
+        final screen = tester.widget<CurrentDetailScreen>(
+          find.byType(CurrentDetailScreen),
+        );
+        expect(screen.currentSpeedKmh, 3.0);
+        expect(screen.currentDirectionDegrees, 45);
       },
     );
 

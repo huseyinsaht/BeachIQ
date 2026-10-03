@@ -16,6 +16,7 @@ import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
+import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -705,6 +706,55 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Ocean current detail flow (#181): tapping the current speed tile in '
+    'the Sea section opens CurrentDetailScreen (its own page) with the '
+    'real MarineProvider hourly series and direction, and the back button '
+    'returns to Home',
+    (WidgetTester tester) async {
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          currentVelocity: 8.0,
+          currentDirection: 135,
+          hourly: [
+            aSeaHourly(
+              time: DateTime(2026, 1, 1, 12),
+              currentVelocity: 8.0,
+              currentDirection: 135,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CurrentDetailScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('current-speed-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CurrentDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The real hourly series carried through to the direction strip.
+      expect(find.byKey(const Key('current-direction-strip')), findsOneWidget);
+      expect(find.text('SE'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(CurrentDetailScreen), findsNothing);
     },
   );
 

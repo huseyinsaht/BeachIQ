@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/unit_preferences.dart';
+import '../screens/detail/current_detail_screen.dart';
 import '../screens/detail/pressure_detail_screen.dart';
 import '../screens/detail/rain_chance_detail_screen.dart';
 import '../screens/detail/uv_index_detail_screen.dart';
@@ -13,8 +14,8 @@ import '../screens/detail/wind_detail_screen.dart';
 /// Every Home-screen stat tile that opens its own detail screen (issue
 /// #165 builds the shared foundation and [pressure]; issue #178 adds
 /// [uvIndex]; issue #167 adds [waveHeight]; issue #166 adds [wind]; issue
-/// #179 adds [rainChance]; issue #180 adds [waterTemperature]; current
-/// #181 is the only one left.
+/// #179 adds [rainChance]; issue #180 adds [waterTemperature]; issue #181
+/// adds [current], the last one).
 enum DetailMetric {
   pressure,
   uvIndex,
@@ -29,14 +30,10 @@ enum DetailMetric {
 ///
 /// One `MaterialPageRoute` per metric, each given a [RouteSettings.name]
 /// (`/detail/<metric>`) so tests/navigation observers can find it by name
-/// instead of by widget type alone. Only [DetailMetric.pressure],
-/// [DetailMetric.uvIndex], [DetailMetric.waveHeight], [DetailMetric.wind],
-/// [DetailMetric.rainChance] and [DetailMetric.waterTemperature] are wired
-/// up so far — every other case falls through to the `default` branch
-/// below and throws
-/// [UnimplementedError]; each later PR removes its metric from that
-/// fallthrough list and adds its own `case` above it, without touching
-/// this function's existing cases.
+/// instead of by widget type alone. Every [DetailMetric] now has its own
+/// screen, so each case below builds a route; a metric added to the enum
+/// later must get its own `case` (the switch is exhaustive), without
+/// touching this function's existing cases.
 ///
 /// [hourly] and [currentValue] carry whatever per-hour series and "right
 /// now" reading that metric's screen needs (e.g. hourly sea-level pressure
@@ -51,11 +48,20 @@ enum DetailMetric {
 /// its meters/feet conversion; metrics with no unit of their own (pressure,
 /// UV index) ignore it. [now] is the overridable "current time" source
 /// threaded through to the screen for widget tests.
+///
+/// [DetailMetric.current] also reads [seaHourly] (for the speed chart and
+/// direction strip) and [currentValue] (the current speed), plus the two
+/// parameters no other metric needs: [currentDirectionValue] (the current's
+/// "flowing toward" bearing) and [seawardBearingDegrees] (the selected
+/// beach's shore-normal bearing, from `wave_shore_relation.dart`, null when
+/// no beach geometry is available) for its drift-out warning.
 Route<void> buildDetailRoute(
   DetailMetric metric, {
   required List<WeatherHourly> hourly,
   List<SeaHourly> seaHourly = const [],
   double? currentValue,
+  double? currentDirectionValue,
+  double? seawardBearingDegrees,
   UnitSystem unitSystem = UnitSystem.metric,
   DateTime Function()? now,
 }) {
@@ -118,8 +124,16 @@ Route<void> buildDetailRoute(
         ),
       );
     case DetailMetric.current:
-      throw UnimplementedError(
-        'No detail screen for $metric yet — see its tracking issue.',
+      return MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/detail/current'),
+        builder: (_) => CurrentDetailScreen(
+          hourly: seaHourly,
+          currentSpeedKmh: currentValue,
+          currentDirectionDegrees: currentDirectionValue,
+          seawardBearingDegrees: seawardBearingDegrees,
+          unitSystem: unitSystem,
+          now: now,
+        ),
       );
   }
 }
