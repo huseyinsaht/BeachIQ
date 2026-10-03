@@ -1,14 +1,20 @@
 import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
+import 'package:beachiq/data/repositories/marine_repository.dart';
+import 'package:beachiq/data/repositories/weather_repository.dart';
+import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
+import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
+import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -31,6 +37,43 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
 import '../test/helpers/pump_app.dart'
     show aLoadedMarineProvider, aLoadedWeatherProvider;
+
+/// Records every (lat, lon) [WeatherRepository.getWeatherData] is asked
+/// for, resolving to [results] at the matching call index (repeating the
+/// last one if asked more times than [results] has entries) — so a map
+/// pick's re-fetch can be told apart from the initial load's (#157).
+class _RecordingWeatherRepository extends WeatherRepository {
+  _RecordingWeatherRepository(this.results) : super(WeatherApiService());
+
+  final List<WeatherCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
+
+/// Like [_RecordingWeatherRepository], but for [MarineRepository].
+class _RecordingMarineRepository extends MarineRepository {
+  _RecordingMarineRepository(this.results) : super(MarineApiService());
+
+  final List<SeaCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
 
 // Minimal valid 1x1 transparent PNG so map tiles resolve without network.
 final _transparentPixelPng = base64Decode(
@@ -543,6 +586,109 @@ void main() {
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'Pick-a-location flow (#157): tapping the map re-fetches weather, '
+    'marine and nearby-beaches data for the tapped point and updates the '
+    'header, and the pick survives a restart',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = _FixtureNetworkClient();
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      final weatherRepository = _RecordingWeatherRepository([
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+        WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+      ]);
+      final marineRepository = _RecordingMarineRepository([
+        SeaCondition(waveHeight: 0.3),
+        SeaCondition(waveHeight: 1.6),
+      ]);
+      final weatherProvider = WeatherProvider(weatherRepository);
+      final marineProvider = MarineProvider(marineRepository);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Initial load: the Çeşme first-run default — one weather fetch, no
+      // marine fetch yet (marine is only fetched on an explicit
+      // refresh/pick, never automatically on first load).
+      expect(weatherRepository.calls, hasLength(1));
+      expect(marineRepository.calls, isEmpty);
+      expect(find.text('27°'), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+
+      // Tap the map's own center: flutter_map's lat/lng <-> pixel
+      // projection round-trip introduces enough floating-point noise that
+      // the resulting point is a genuinely distinct double from the
+      // original, which is what actually proves a *new* fetch happened.
+      await tester.tap(find.byType(FlutterMap));
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pumpAndSettle();
+
+      // The whole data path moved to the newly picked point: weather,
+      // marine and the nearby-beaches overlay all re-fetched, and the
+      // header/place name reflect it instead of the original Çeşme fetch.
+      expect(weatherRepository.calls, hasLength(2));
+      expect(weatherRepository.calls[1], isNot(weatherRepository.calls[0]));
+      expect(marineRepository.calls, hasLength(1));
+      expect(marineRepository.calls.single, weatherRepository.calls[1]);
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+      expect(find.text('31°'), findsOneWidget);
+      expect(find.text('27°'), findsNothing);
+      expect(find.text('Çeşme, İzmir'), findsNothing);
+
+      final pickedPoint = weatherRepository.calls[1];
+
+      // "Restart": a brand new HomeScreen (forced via a distinct key, so a
+      // fresh State actually gets created instead of just updating the
+      // existing one in place) reads the pick back from the same
+      // (mocked) SharedPreferences backing store.
+      final restartedWeatherRepository = _RecordingWeatherRepository([
+        WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+      ]);
+      final restartedWeatherProvider = WeatherProvider(
+        restartedWeatherRepository,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            key: const ValueKey('restarted-home-screen'),
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: restartedWeatherProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(restartedWeatherRepository.calls, hasLength(1));
+      expect(
+        restartedWeatherRepository.calls.single.$1,
+        closeTo(pickedPoint.$1, 0.0001),
+      );
+      expect(
+        restartedWeatherRepository.calls.single.$2,
+        closeTo(pickedPoint.$2, 0.0001),
+      );
+      expect(find.text('Çeşme, İzmir'), findsNothing);
     },
   );
 }

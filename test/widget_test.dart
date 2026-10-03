@@ -396,6 +396,45 @@ class _FixedWeatherRepository extends WeatherRepository {
   }
 }
 
+/// A [WeatherRepository] that records every (lat, lon) it's asked for, in
+/// call order, and resolves to [results] at the matching index (repeating
+/// the last entry if asked more times than [results] has) — so a test can
+/// prove a later call (e.g. one triggered by a map pick) was made with
+/// *different* coordinates than the first, and produced different data,
+/// rather than reusing the first fetch (#157).
+class _RecordingWeatherRepository extends WeatherRepository {
+  _RecordingWeatherRepository(this.results) : super(WeatherApiService());
+
+  final List<WeatherCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
+
+/// Like [_RecordingWeatherRepository], but for [MarineRepository].
+class _RecordingMarineRepository extends MarineRepository {
+  _RecordingMarineRepository(this.results) : super(MarineApiService());
+
+  final List<SeaCondition> results;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async {
+    calls.add((lat, lon));
+    final index = calls.length - 1 < results.length
+        ? calls.length - 1
+        : results.length - 1;
+    return results[index];
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -1347,6 +1386,149 @@ void main() {
           find.byType(SeaConditionsRow),
         );
         expect(row.seawardBearingDegrees, expectedBearing);
+      },
+    );
+  });
+
+  group('selected-location data path (#157)', () {
+    testWidgets(
+      'given a user taps the map, HomeScreen re-fetches weather and marine '
+      'data for the tapped point (not the fixed Çeşme default) and updates '
+      'the header',
+      (WidgetTester tester) async {
+        final weatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+          WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+        ]);
+        final marineRepository = _RecordingMarineRepository([
+          SeaCondition(waveHeight: 0.2),
+          SeaCondition(waveHeight: 1.8),
+        ]);
+        final weatherProvider = WeatherProvider(weatherRepository);
+        final marineProvider = MarineProvider(marineRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: weatherProvider,
+              marineProvider: marineProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Initial load: weather fetched once, for the Çeşme first-run
+        // default. Marine data is never auto-fetched on the initial load
+        // (only an explicit refresh/pick triggers it — see
+        // HomeScreen._fetchWeatherAndMarine's call sites), so it starts
+        // empty. The place name shows twice (the header subtitle and the
+        // map card's own location bar both render the same selected name).
+        expect(weatherRepository.calls, hasLength(1));
+        expect(marineRepository.calls, isEmpty);
+        expect(find.text('27°'), findsOneWidget);
+        expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+
+        // Tapping the widget's own center taps the map's visual center
+        // (see location_map_card_picker_test.dart): flutter_map's own
+        // lat/lng <-> pixel projection round-trip introduces enough
+        // floating-point noise that the resulting point is a genuinely
+        // distinct double from the original, even though both describe
+        // "the same" spot — exactly what's needed to prove a *new* fetch
+        // happened, rather than the old data just being repainted.
+        await tester.tap(find.byType(FlutterMap));
+        // flutter_map delays a single tap by its double-tap-to-zoom window
+        // before firing onTap (see location_map_card_picker_test.dart).
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        // Weather was asked again, for a new (different) point — this is
+        // what actually proves the pick re-fetched real data rather than
+        // just repainting the same values. Marine data, never fetched
+        // before, is now fetched for that very same picked point too (the
+        // acceptance criterion's "waves" changing on a pick).
+        expect(weatherRepository.calls, hasLength(2));
+        expect(weatherRepository.calls[1], isNot(weatherRepository.calls[0]));
+        expect(marineRepository.calls, hasLength(1));
+        expect(marineRepository.calls.single, weatherRepository.calls[1]);
+
+        // The header now reflects the newly picked point's data, not the
+        // original Çeşme fetch's.
+        expect(find.text('31°'), findsOneWidget);
+        expect(find.text('27°'), findsNothing);
+        // No reverse geocode is available for a bare map tap, so the place
+        // name falls back to formatted coordinates instead of staying on
+        // the Çeşme default.
+        expect(find.text('Çeşme, İzmir'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'a picked location is persisted and restored by a later HomeScreen '
+      'mount (app restart)',
+      (WidgetTester tester) async {
+        final firstWeatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+          _fakeWeatherCondition(uvIndex: 9.9),
+        ]);
+        final firstWeatherProvider = WeatherProvider(firstWeatherRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: firstWeatherProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(FlutterMap));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(firstWeatherRepository.calls, hasLength(2));
+        final pickedPoint = firstWeatherRepository.calls[1];
+
+        // "Restart": a brand new HomeScreen/WeatherProvider mounted against
+        // the same (mocked) SharedPreferences backing store the first one
+        // just wrote to.
+        final secondWeatherRepository = _RecordingWeatherRepository([
+          _fakeWeatherCondition(),
+        ]);
+        final secondWeatherProvider = WeatherProvider(
+          secondWeatherRepository,
+        );
+
+        // A distinct key forces Flutter to tear down the first HomeScreen's
+        // State (and its in-memory _selectedLocation) and mount a brand new
+        // one instead of just updating the existing element in place — the
+        // only way a widget test can simulate a real app restart, where
+        // SharedPreferences is the only thing that survives.
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              key: const ValueKey('restarted-home-screen'),
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: secondWeatherProvider,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(secondWeatherRepository.calls, hasLength(1));
+        expect(
+          secondWeatherRepository.calls.single.$1,
+          closeTo(pickedPoint.$1, 0.0001),
+        );
+        expect(
+          secondWeatherRepository.calls.single.$2,
+          closeTo(pickedPoint.$2, 0.0001),
+        );
+        // The restored pick's place name (formatted coordinates) survives
+        // too, not just its raw lat/lon — the Çeşme default never reappears
+        // once a pick has been made and persisted.
+        expect(find.text('Çeşme, İzmir'), findsNothing);
       },
     );
   });

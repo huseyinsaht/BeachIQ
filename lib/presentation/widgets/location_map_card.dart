@@ -49,6 +49,20 @@ const double kAmenityMarkersMinZoom = 12.0;
 /// Pure so it's directly unit-testable without a widget/map in play.
 bool shouldShowAmenityMarkers(double zoom) => zoom >= kAmenityMarkersMinZoom;
 
+/// Formats [point] as a short "lat°N/S, lon°E/W" label, e.g.
+/// `"38.3220°N, 26.3260°E"` — the display name reported by a map tap when
+/// no real place name is known. `GeocodingService` (#156) only supports
+/// forward name search, not reverse geocoding, so a tapped point (as
+/// opposed to one chosen from a name search) can never resolve to a real
+/// place name and always falls back to this format instead.
+String formatCoordinates(LatLng point) {
+  final latLabel =
+      '${point.latitude.abs().toStringAsFixed(4)}°${point.latitude >= 0 ? 'N' : 'S'}';
+  final lonLabel =
+      '${point.longitude.abs().toStringAsFixed(4)}°${point.longitude >= 0 ? 'E' : 'W'}';
+  return '$latLabel, $lonLabel';
+}
+
 /// The light ("paper"), rounded map card with a coastline highlight and a
 /// docked location bar (pin icon + place name + overflow menu) at its
 /// bottom edge, per docs/design.md § "Screen: Home / location detail".
@@ -58,6 +72,8 @@ bool shouldShowAmenityMarkers(double zoom) => zoom >= kAmenityMarkersMinZoom;
 /// point, and the provider's resulting beaches are drawn as gold polygons
 /// (or lines, for open geometry) inside a 20 km radius circle around the
 /// pick. Without a provider the map stays purely presentational, as before.
+/// [onLocationPicked], when supplied, is also called on every tap (see
+/// #157) so a parent can re-fetch its own location-bound data.
 class LocationMapCard extends StatefulWidget {
   const LocationMapCard({
     super.key,
@@ -66,6 +82,7 @@ class LocationMapCard extends StatefulWidget {
     this.tileProvider,
     this.onOverflowPressed,
     this.nearbyBeachesProvider,
+    this.onLocationPicked,
   });
 
   final LatLng center;
@@ -80,6 +97,17 @@ class LocationMapCard extends StatefulWidget {
   /// contexts with no beach-picking behaviour). When provided, it drives
   /// tap-to-pick and the beach overlay.
   final NearbyBeachesProvider? nearbyBeachesProvider;
+
+  /// Reports a tap-to-pick upward: the tapped [LatLng] together with a
+  /// formatted-coordinates display name ([formatCoordinates]), so a parent
+  /// (e.g. `HomeScreen`, #157) can re-fetch its own data and update its
+  /// header for the new point. This widget has no access to a real reverse
+  /// geocode for the tapped point (`GeocodingService` only supports forward
+  /// name search), so the reported name is always formatted coordinates,
+  /// never a looked-up place name. Optional: when null (the default), a tap
+  /// still forwards to [nearbyBeachesProvider] as before, it just doesn't
+  /// notify a parent of the new point.
+  final void Function(LatLng point, String displayName)? onLocationPicked;
 
   @override
   State<LocationMapCard> createState() => _LocationMapCardState();
@@ -117,6 +145,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
       _selectedAmenity = null;
     });
     widget.nearbyBeachesProvider?.pickLocation(point);
+    widget.onLocationPicked?.call(point, formatCoordinates(point));
   }
 
   void _toggleAmenityKind(AmenityKind kind) {

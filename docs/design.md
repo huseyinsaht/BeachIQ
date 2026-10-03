@@ -69,6 +69,17 @@ hourly row have **no card background at all** — they sit directly on the gradi
 
 ## Screen: Home / location detail
 
+Every value on this screen — the header subtitle, hero temperature, condition row, map card, smart
+suggestion pill, Sea section, stat grid and hourly row — belongs to one **selected location** (issue
+#157), never a fixed city: whatever point the user last tapped on the map, restored from
+`SharedPreferences` on app start. Çeşme (38.3220, 26.3260) is only the **first-run default**, shown
+until the user has ever picked a point; after that, the selected location (and its persisted copy)
+always wins. Tapping a new point on the map card re-fetches weather, marine data and nearby beaches for
+it and updates the header/place name immediately — there is no separate "confirm" step. The place name
+shown is a real name when the location came from a search result, otherwise (a bare map tap)
+formatted coordinates (`"38.3220°N, 26.3260°E"`), since reverse geocoding isn't available
+(`GeocodingService`, #156, only supports forward name search).
+
 Top to bottom:
 
 1. **Header row** — location label stack on the left ("My Location" bold + city/district subtitle in
