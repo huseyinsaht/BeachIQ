@@ -656,6 +656,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           value: _formatPercent(weatherData?.rainChancePercent),
                           trendDirection: StatTrendDirection.down,
                           trendDelta: '3%',
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.rainChance,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.rainChancePercent,
+                              now: widget.now,
+                            ),
+                          ),
                         ),
                         StatTile(
                           icon: Icons.speed,
