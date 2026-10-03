@@ -456,8 +456,11 @@ void main() {
 
       expect(find.byType(RainChanceDetailScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
+      // now (12:30) falls inside the 12:00 hour's own bucket, so that
+      // entry (55%) still counts as current/upcoming and merges with the
+      // contiguous 13:00 hour into one window, not just "13:00 and 14:00".
       expect(
-        find.text('Rain likely between 13:00 and 14:00.'),
+        find.text('Rain likely between 12:00 and 14:00.'),
         findsOneWidget,
       );
 

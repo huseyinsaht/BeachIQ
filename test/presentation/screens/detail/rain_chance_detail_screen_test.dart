@@ -128,6 +128,36 @@ void main() {
     );
 
     testWidgets(
+      'includes the current hour\'s own qualifying reading in the summary '
+      'even when "now" is mid-hour (not dropped just because its '
+      'timestamp is before "now")',
+      (tester) async {
+        // now (14:30) falls inside the 14:00 hour's bucket (14:00-15:00),
+        // so that entry is still "now", not "the past" - the same entry
+        // nowHourIndex/the hero value already treat as current.
+        final now = DateTime(2026, 1, 1, 14, 30);
+        await tester.pumpWidget(
+          wrap(
+            RainChanceDetailScreen(
+              hourly: [
+                aWeatherHourly(
+                  time: DateTime(2026, 1, 1, 14),
+                  rainChancePercent: 80,
+                ),
+              ],
+              now: () => now,
+            ),
+          ),
+        );
+
+        expect(
+          find.text('Rain likely between 14:00 and 15:00.'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'ignores a qualifying window that is entirely before now',
       (tester) async {
         final now = DateTime(2026, 1, 1, 15);

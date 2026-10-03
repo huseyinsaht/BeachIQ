@@ -56,9 +56,9 @@ class RainChanceDetailScreen extends StatelessWidget {
   /// The day's hourly weather series, oldest first (as the API returns
   /// it) — not pre-sliced to "upcoming only" like Home's hourly row, since
   /// this screen also shows the hours before "now" for the day's min/max.
-  /// The rain-window summary only considers hours at/after [now] (see
-  /// [rainChanceWindows]'s own future-only callers elsewhere in the app
-  /// for the same convention) by filtering here before calling it.
+  /// The rain-window summary only considers hours whose hour-long bucket
+  /// has not fully elapsed yet (see [build]'s `upcoming` filter) before
+  /// calling [rainChanceWindows].
   final List<WeatherHourly> hourly;
 
   /// `WeatherProvider.currentData`'s "current" rain chance reading (in
@@ -91,12 +91,17 @@ class RainChanceDetailScreen extends StatelessWidget {
         ? null
         : presentValues.reduce((a, b) => a > b ? a : b);
 
-    // Only upcoming hours can start/extend a reported window — a rain
-    // window that was only ever in the past isn't something to warn about
-    // "today" from here on.
+    // Only hours whose hour-long bucket hasn't fully elapsed yet can
+    // start/extend a reported window — a rain window that was only ever
+    // in the past isn't something to warn about "today" from here on.
+    // Compared against the bucket's END (start + 1h), not its start, so
+    // the current hour's own entry (the same one nowHourIndex/the hero
+    // value treat as "now") is never dropped just because its timestamp
+    // is a little before `now` — a mid-hour `now` (e.g. 14:30) must still
+    // include the 14:00 entry describing the present hour.
     final upcoming = [
       for (final entry in hourly)
-        if (!entry.time.isBefore(nowTime)) entry,
+        if (entry.time.add(const Duration(hours: 1)).isAfter(nowTime)) entry,
     ];
     final windows = rainChanceWindows(upcoming);
     final summary = rainChanceSummary(windows);
