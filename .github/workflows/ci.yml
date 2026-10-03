@@ -21,7 +21,27 @@ jobs:
 
       - run: flutter analyze
 
-      - run: flutter test
+      - name: Run tests (per-module summary, JUnit XML, coverage)
+        run: bash tools/run_tests.sh
+
+      - name: Check coverage against baseline
+        run: bash tools/check_coverage.sh
+
+      - name: Upload test reports and coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/reports/
+            coverage/lcov.info
+
+      - name: Append test summary to job summary
+        if: always()
+        run: |
+          if [ -f build/reports/summary.md ]; then
+            cat build/reports/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   build-apk:
     runs-on: ubuntu-latest
