@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/unit_preferences.dart';
+import '../screens/detail/current_detail_screen.dart';
 import '../screens/detail/pressure_detail_screen.dart';
 import '../screens/detail/uv_index_detail_screen.dart';
 import '../screens/detail/water_temperature_detail_screen.dart';
@@ -12,8 +13,8 @@ import '../screens/detail/wind_detail_screen.dart';
 /// Every Home-screen stat tile that opens its own detail screen (issue
 /// #165 builds the shared foundation and [pressure]; issue #178 adds
 /// [uvIndex]; issue #167 adds [waveHeight]; issue #166 adds [wind]; issue
-/// #180 adds [waterTemperature]; the rest follow in their own issues/PRs:
-/// rain chance #179, current #181).
+/// #180 adds [waterTemperature]; issue #181 adds [current]; the rest follow
+/// in their own issues/PRs: rain chance #179).
 enum DetailMetric {
   pressure,
   uvIndex,
@@ -49,11 +50,20 @@ enum DetailMetric {
 /// its meters/feet conversion; metrics with no unit of their own (pressure,
 /// UV index) ignore it. [now] is the overridable "current time" source
 /// threaded through to the screen for widget tests.
+///
+/// [DetailMetric.current] also reads [seaHourly] (for the speed chart and
+/// direction strip) and [currentValue] (the current speed), plus the two
+/// parameters no other metric needs: [currentDirectionValue] (the current's
+/// "flowing toward" bearing) and [seawardBearingDegrees] (the selected
+/// beach's shore-normal bearing, from `wave_shore_relation.dart`, null when
+/// no beach geometry is available) for its drift-out warning.
 Route<void> buildDetailRoute(
   DetailMetric metric, {
   required List<WeatherHourly> hourly,
   List<SeaHourly> seaHourly = const [],
   double? currentValue,
+  double? currentDirectionValue,
+  double? seawardBearingDegrees,
   UnitSystem unitSystem = UnitSystem.metric,
   DateTime Function()? now,
 }) {
@@ -106,8 +116,19 @@ Route<void> buildDetailRoute(
           now: now,
         ),
       );
-    case DetailMetric.rainChance:
     case DetailMetric.current:
+      return MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/detail/current'),
+        builder: (_) => CurrentDetailScreen(
+          hourly: seaHourly,
+          currentSpeedKmh: currentValue,
+          currentDirectionDegrees: currentDirectionValue,
+          seawardBearingDegrees: seawardBearingDegrees,
+          unitSystem: unitSystem,
+          now: now,
+        ),
+      );
+    case DetailMetric.rainChance:
       throw UnimplementedError(
         'No detail screen for $metric yet — see its tracking issue.',
       );

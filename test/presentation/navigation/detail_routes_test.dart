@@ -1,5 +1,6 @@
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
+import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
@@ -103,37 +104,34 @@ void main() {
       },
     );
 
-    testWidgets(
-      'given DetailMetric.wind, builds a named MaterialPageRoute to '
-      'WindDetailScreen carrying the hourly series, current value and unit '
-      'system',
-      (tester) async {
-        final hourly = [
-          aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 18),
-        ];
+    testWidgets('given DetailMetric.wind, builds a named MaterialPageRoute to '
+        'WindDetailScreen carrying the hourly series, current value and unit '
+        'system', (tester) async {
+      final hourly = [
+        aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 18),
+      ];
 
-        final route = buildDetailRoute(
-          DetailMetric.wind,
-          hourly: hourly,
-          currentValue: 18,
-          unitSystem: UnitSystem.imperial,
-        );
+      final route = buildDetailRoute(
+        DetailMetric.wind,
+        hourly: hourly,
+        currentValue: 18,
+        unitSystem: UnitSystem.imperial,
+      );
 
-        expect(route, isA<MaterialPageRoute<void>>());
-        expect(route.settings.name, '/detail/wind');
+      expect(route, isA<MaterialPageRoute<void>>());
+      expect(route.settings.name, '/detail/wind');
 
-        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+      await tester.pumpAndSettle();
 
-        expect(find.byType(WindDetailScreen), findsOneWidget);
-        final screen = tester.widget<WindDetailScreen>(
-          find.byType(WindDetailScreen),
-        );
-        expect(screen.currentWindSpeedKmh, 18);
-        expect(screen.hourly, hasLength(1));
-        expect(screen.unitSystem, UnitSystem.imperial);
-      },
-    );
+      expect(find.byType(WindDetailScreen), findsOneWidget);
+      final screen = tester.widget<WindDetailScreen>(
+        find.byType(WindDetailScreen),
+      );
+      expect(screen.currentWindSpeedKmh, 18);
+      expect(screen.hourly, hasLength(1));
+      expect(screen.unitSystem, UnitSystem.imperial);
+    });
 
     testWidgets(
       'given DetailMetric.waterTemperature, builds a named MaterialPageRoute '
@@ -141,10 +139,7 @@ void main() {
       'current value and unit system',
       (tester) async {
         final seaHourly = [
-          aSeaHourly(
-            time: DateTime(2026, 1, 1, 12),
-            seaSurfaceTemperature: 22,
-          ),
+          aSeaHourly(time: DateTime(2026, 1, 1, 12), seaSurfaceTemperature: 22),
         ];
 
         final route = buildDetailRoute(
@@ -171,19 +166,61 @@ void main() {
       },
     );
 
+    testWidgets(
+      'given DetailMetric.current, builds a named MaterialPageRoute to '
+      'CurrentDetailScreen carrying the marine hourly series, current '
+      'speed/direction, seaward bearing and unit system',
+      (tester) async {
+        final seaHourly = [
+          aSeaHourly(
+            time: DateTime(2026, 1, 1, 12),
+            currentVelocity: 6,
+            currentDirection: 135,
+          ),
+        ];
+
+        final route = buildDetailRoute(
+          DetailMetric.current,
+          hourly: const [],
+          seaHourly: seaHourly,
+          currentValue: 6,
+          currentDirectionValue: 135,
+          seawardBearingDegrees: 90,
+          unitSystem: UnitSystem.imperial,
+        );
+
+        expect(route, isA<MaterialPageRoute<void>>());
+        expect(route.settings.name, '/detail/current');
+
+        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CurrentDetailScreen), findsOneWidget);
+        final screen = tester.widget<CurrentDetailScreen>(
+          find.byType(CurrentDetailScreen),
+        );
+        expect(screen.currentSpeedKmh, 6);
+        expect(screen.currentDirectionDegrees, 135);
+        expect(screen.seawardBearingDegrees, 90);
+        expect(screen.hourly, hasLength(1));
+        expect(screen.unitSystem, UnitSystem.imperial);
+      },
+    );
+
     // Every metric besides `pressure`/`uvIndex`/`waveHeight`/`wind`/
-    // `waterTemperature` has no screen yet (issues #179, #181). This both
-    // documents today's state and makes sure a future PR that wires one up
-    // notices this test (it will start throwing `TestFailure` instead of
-    // the expected `UnimplementedError`) rather than silently leaving
-    // stale coverage, since it loops over every DetailMetric value rather
-    // than naming them.
+    // `waterTemperature`/`current` has no screen yet (issue #179). This
+    // both documents today's state and makes sure a future PR that wires
+    // one up notices this test (it will start throwing `TestFailure`
+    // instead of the expected `UnimplementedError`) rather than silently
+    // leaving stale coverage, since it loops over every DetailMetric value
+    // rather than naming them.
     for (final metric in DetailMetric.values) {
       if (metric == DetailMetric.pressure) continue;
       if (metric == DetailMetric.uvIndex) continue;
       if (metric == DetailMetric.waveHeight) continue;
       if (metric == DetailMetric.wind) continue;
       if (metric == DetailMetric.waterTemperature) continue;
+      if (metric == DetailMetric.current) continue;
 
       test('given DetailMetric.$metric (not yet implemented), buildDetailRoute '
           '-> throws UnimplementedError', () {
