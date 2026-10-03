@@ -18,6 +18,7 @@ import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
@@ -404,6 +405,71 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(WindDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Rain chance detail flow: tapping the rain chance stat tile on Home '
+    'opens RainChanceDetailScreen with the real WeatherProvider data, and '
+    "the back button returns to Home (no real network: WeatherProvider's "
+    'repository is faked via test/helpers/pump_app.dart)',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 12,
+          weatherCode: 1,
+          rainChancePercent: 55,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 12),
+              temperature: 26,
+              weatherCode: 1,
+              rainChancePercent: 55,
+            ),
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 13),
+              temperature: 26,
+              weatherCode: 1,
+              rainChancePercent: 60,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('55%'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('55%'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // now (12:30) falls inside the 12:00 hour's own bucket, so that
+      // entry (55%) still counts as current/upcoming and merges with the
+      // contiguous 13:00 hour into one window, not just "13:00 and 14:00".
+      expect(
+        find.text('Rain likely between 12:00 and 14:00.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
     },
   );
 

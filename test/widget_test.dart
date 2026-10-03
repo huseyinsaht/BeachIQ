@@ -22,6 +22,7 @@ import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/wave_shore_relation.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
@@ -1191,6 +1192,41 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(WindDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tapping the rain chance stat tile opens RainChanceDetailScreen with '
+    'the real weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('10%'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('10%'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RainChanceDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(RainChanceDetailScreen), findsNothing);
     },
   );
 

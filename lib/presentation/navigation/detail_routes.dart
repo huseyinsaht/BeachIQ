@@ -5,6 +5,7 @@ import '../../data/models/weather_condition.dart';
 import '../../logic/unit_preferences.dart';
 import '../screens/detail/current_detail_screen.dart';
 import '../screens/detail/pressure_detail_screen.dart';
+import '../screens/detail/rain_chance_detail_screen.dart';
 import '../screens/detail/uv_index_detail_screen.dart';
 import '../screens/detail/water_temperature_detail_screen.dart';
 import '../screens/detail/wave_height_detail_screen.dart';
@@ -13,8 +14,8 @@ import '../screens/detail/wind_detail_screen.dart';
 /// Every Home-screen stat tile that opens its own detail screen (issue
 /// #165 builds the shared foundation and [pressure]; issue #178 adds
 /// [uvIndex]; issue #167 adds [waveHeight]; issue #166 adds [wind]; issue
-/// #180 adds [waterTemperature]; issue #181 adds [current]; the rest follow
-/// in their own issues/PRs: rain chance #179).
+/// #179 adds [rainChance]; issue #180 adds [waterTemperature]; issue #181
+/// adds [current], the last one).
 enum DetailMetric {
   pressure,
   uvIndex,
@@ -29,13 +30,10 @@ enum DetailMetric {
 ///
 /// One `MaterialPageRoute` per metric, each given a [RouteSettings.name]
 /// (`/detail/<metric>`) so tests/navigation observers can find it by name
-/// instead of by widget type alone. Only [DetailMetric.pressure],
-/// [DetailMetric.uvIndex], [DetailMetric.waveHeight], [DetailMetric.wind]
-/// and [DetailMetric.waterTemperature] are wired up so far — every other
-/// case falls through to the `default` branch below and throws
-/// [UnimplementedError]; each later PR removes its metric from that
-/// fallthrough list and adds its own `case` above it, without touching
-/// this function's existing cases.
+/// instead of by widget type alone. Every [DetailMetric] now has its own
+/// screen, so each case below builds a route; a metric added to the enum
+/// later must get its own `case` (the switch is exhaustive), without
+/// touching this function's existing cases.
 ///
 /// [hourly] and [currentValue] carry whatever per-hour series and "right
 /// now" reading that metric's screen needs (e.g. hourly sea-level pressure
@@ -106,6 +104,15 @@ Route<void> buildDetailRoute(
           now: now,
         ),
       );
+    case DetailMetric.rainChance:
+      return MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/detail/rain-chance'),
+        builder: (_) => RainChanceDetailScreen(
+          hourly: hourly,
+          currentRainChancePercent: currentValue,
+          now: now,
+        ),
+      );
     case DetailMetric.waterTemperature:
       return MaterialPageRoute<void>(
         settings: const RouteSettings(name: '/detail/water-temperature'),
@@ -127,10 +134,6 @@ Route<void> buildDetailRoute(
           unitSystem: unitSystem,
           now: now,
         ),
-      );
-    case DetailMetric.rainChance:
-      throw UnimplementedError(
-        'No detail screen for $metric yet — see its tracking issue.',
       );
   }
 }

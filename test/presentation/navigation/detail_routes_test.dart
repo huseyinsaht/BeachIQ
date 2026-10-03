@@ -2,6 +2,7 @@ import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
@@ -134,6 +135,35 @@ void main() {
     });
 
     testWidgets(
+      'given DetailMetric.rainChance, builds a named MaterialPageRoute to '
+      'RainChanceDetailScreen carrying the hourly series and current value',
+      (tester) async {
+        final hourly = [
+          aWeatherHourly(time: DateTime(2026, 1, 1, 12), rainChancePercent: 55),
+        ];
+
+        final route = buildDetailRoute(
+          DetailMetric.rainChance,
+          hourly: hourly,
+          currentValue: 55,
+        );
+
+        expect(route, isA<MaterialPageRoute<void>>());
+        expect(route.settings.name, '/detail/rain-chance');
+
+        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(RainChanceDetailScreen), findsOneWidget);
+        final screen = tester.widget<RainChanceDetailScreen>(
+          find.byType(RainChanceDetailScreen),
+        );
+        expect(screen.currentRainChancePercent, 55);
+        expect(screen.hourly, hasLength(1));
+      },
+    );
+
+    testWidgets(
       'given DetailMetric.waterTemperature, builds a named MaterialPageRoute '
       'to WaterTemperatureDetailScreen carrying the marine hourly series, '
       'current value and unit system',
@@ -207,18 +237,17 @@ void main() {
       },
     );
 
-    // Every metric besides `pressure`/`uvIndex`/`waveHeight`/`wind`/
-    // `waterTemperature`/`current` has no screen yet (issue #179). This
-    // both documents today's state and makes sure a future PR that wires
-    // one up notices this test (it will start throwing `TestFailure`
-    // instead of the expected `UnimplementedError`) rather than silently
-    // leaving stale coverage, since it loops over every DetailMetric value
-    // rather than naming them.
+    // Today every metric has a screen (issue #181 wired up the last one),
+    // so the loop below skips all of them and registers no test. It stays
+    // so that a metric added to the enum later but left unimplemented is
+    // covered here: it loops over every DetailMetric value rather than
+    // naming them.
     for (final metric in DetailMetric.values) {
       if (metric == DetailMetric.pressure) continue;
       if (metric == DetailMetric.uvIndex) continue;
       if (metric == DetailMetric.waveHeight) continue;
       if (metric == DetailMetric.wind) continue;
+      if (metric == DetailMetric.rainChance) continue;
       if (metric == DetailMetric.waterTemperature) continue;
       if (metric == DetailMetric.current) continue;
 
