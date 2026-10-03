@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -25,6 +27,15 @@ import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
 
 const String _noData = 'No data';
+
+/// A location/display-name pair restored from `SharedPreferences` by
+/// [_HomeScreenState._restoreSelectedLocation].
+class _SavedLocation {
+  const _SavedLocation(this.point, this.displayName);
+
+  final LatLng point;
+  final String displayName;
+}
 
 const Distance _distance = Distance();
 
@@ -164,7 +175,10 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 /// [HourlyForecastItem]s.
 ///
 /// The header, stat grid and hourly row are bound to [WeatherProvider]'s
-/// data, fetched for the fixed Çeşme coordinates. [MarineProvider] drives
+/// data, fetched for the currently *selected* location (#157): a point the
+/// user picked on [LocationMapCard] or restored from a previous session via
+/// `SharedPreferences`, never a fixed city — Çeşme is only the first-run
+/// default before anything has ever been picked. [MarineProvider] drives
 /// the loading/error states (#69) and, once loaded, the [SeaConditionsRow]
 /// under the smart suggestion pill (#163).
 class HomeScreen extends StatefulWidget {
@@ -223,7 +237,24 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _textPrimary = Color(0xFFFFFFFF);
   static const _textSecondary = Color(0xFF8B93A6);
 
-  static final _placeCenter = LatLng(38.3220, 26.3260);
+  /// The first-run default, per docs/design.md — used only until the user
+  /// has ever picked a location (on the map or via search) or one was
+  /// restored from a previous session; see [_restoreSelectedLocation].
+  static final _cesmeDefault = LatLng(38.3220, 26.3260);
+  static const _cesmeDefaultName = 'Çeşme, İzmir';
+
+  static const _prefsLatKey = 'home_selected_location_lat';
+  static const _prefsLonKey = 'home_selected_location_lon';
+  static const _prefsNameKey = 'home_selected_location_name';
+
+  /// The location every fetch (weather, marine, nearby beaches) and the
+  /// header/map-card place name are bound to. Starts at [_cesmeDefault] and
+  /// is replaced either by a restored pick (see [_restoreSelectedLocation])
+  /// shortly after the first frame, or by the user tapping the map (see
+  /// [_handleLocationPicked]) — never read back to [_cesmeDefault] once
+  /// either of those has happened.
+  LatLng _selectedLocation = _cesmeDefault;
+  String _placeName = _cesmeDefaultName;
 
   /// Guards [_openSearch] against a fast double-tap pushing two
   /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
@@ -247,14 +278,79 @@ class _HomeScreenState extends State<HomeScreen> {
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
     // here would notify that ancestor while it is still building this very
     // subtree ("setState()/markNeedsBuild() called during build").
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      _SavedLocation? restored;
+      try {
+        restored = await _restoreSelectedLocation();
+      } catch (_) {
+        // A persisted pick is a nice-to-have, not essential: if
+        // SharedPreferences itself is unavailable, the screen must still
+        // load real data for the Çeşme default below rather than fail to
+        // fetch anything at all.
+        restored = null;
+      }
+      if (!mounted) return;
+      if (restored != null) {
+        setState(() {
+          _selectedLocation = restored!.point;
+          _placeName = restored.displayName;
+        });
+      }
       widget.weatherProvider?.fetchData(
-        _placeCenter.latitude,
-        _placeCenter.longitude,
+        _selectedLocation.latitude,
+        _selectedLocation.longitude,
       );
-      widget.nearbyBeachesProvider?.pickLocation(_placeCenter);
+      widget.nearbyBeachesProvider?.pickLocation(_selectedLocation);
     });
+  }
+
+  /// Reads back a location saved by [_persistSelectedLocation] in an
+  /// earlier session, or null on a first run (nothing saved yet) — in which
+  /// case [_cesmeDefault] stays as-is.
+  Future<_SavedLocation?> _restoreSelectedLocation() async {
+    final prefs = await SharedPreferences.getInstance();
+    final lat = prefs.getDouble(_prefsLatKey);
+    final lon = prefs.getDouble(_prefsLonKey);
+    if (lat == null || lon == null) return null;
+    final point = LatLng(lat, lon);
+    final name = prefs.getString(_prefsNameKey) ?? formatCoordinates(point);
+    return _SavedLocation(point, name);
+  }
+
+  /// Persists [point]/[displayName] so [_restoreSelectedLocation] brings
+  /// the same pick back on the next app start (acceptance criterion: "The
+  /// last picked location survives an app restart").
+  Future<void> _persistSelectedLocation(
+    LatLng point,
+    String displayName,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_prefsLatKey, point.latitude);
+      await prefs.setDouble(_prefsLonKey, point.longitude);
+      await prefs.setString(_prefsNameKey, displayName);
+    } catch (_) {
+      // Persisting the pick is a nice-to-have (the restart acceptance
+      // criterion) — a failure here must never affect the live pick
+      // itself, which has already updated and re-fetched above.
+    }
+  }
+
+  /// [LocationMapCard.onLocationPicked]: a user tap re-centers the whole
+  /// screen on the new point — the header, weather, marine data, hourly row
+  /// and nearby-beaches overlay all re-fetch for it instead of staying on
+  /// whatever was shown before (#157's main acceptance criterion).
+  void _handleLocationPicked(LatLng point, String displayName) {
+    setState(() {
+      _selectedLocation = point;
+      _placeName = displayName;
+    });
+    unawaited(_fetchWeatherAndMarine(point));
+    unawaited(_persistSelectedLocation(point, displayName));
+    // nearbyBeachesProvider.pickLocation(point) is already called directly
+    // by LocationMapCard's own tap handler (it holds the provider itself);
+    // calling it again here would just restart its debounce for no reason.
   }
 
   @override
@@ -294,24 +390,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() {});
   }
 
-  /// Re-triggers the marine and weather data fetches for a pull-to-refresh
-  /// gesture. A no-op for whichever provider wasn't supplied (matches the
-  /// existing optional-provider pattern from the loading/error states
-  /// above).
-  Future<void> _handleRefresh() async {
+  /// Re-triggers the marine and weather data fetches for [point]. A no-op
+  /// for whichever provider wasn't supplied (matches the existing
+  /// optional-provider pattern from the loading/error states above). Shared
+  /// by the pull-to-refresh gesture ([_handleRefresh], re-fetching the
+  /// current [_selectedLocation]) and a fresh map pick
+  /// ([_handleLocationPicked], fetching the newly picked point).
+  Future<void> _fetchWeatherAndMarine(LatLng point) async {
     await Future.wait([
-      widget.marineProvider?.fetchData(
-            _placeCenter.latitude,
-            _placeCenter.longitude,
-          ) ??
+      widget.marineProvider?.fetchData(point.latitude, point.longitude) ??
           Future.value(),
-      widget.weatherProvider?.fetchData(
-            _placeCenter.latitude,
-            _placeCenter.longitude,
-          ) ??
+      widget.weatherProvider?.fetchData(point.latitude, point.longitude) ??
           Future.value(),
     ]);
   }
+
+  /// Re-triggers the marine and weather data fetches for a pull-to-refresh
+  /// gesture, for the currently selected location.
+  Future<void> _handleRefresh() => _fetchWeatherAndMarine(_selectedLocation);
 
   /// Obtains a [FavoritesProvider] (async: it needs `SharedPreferences`)
   /// and pushes [SearchScreen] with it, so the favorite hearts and the
@@ -331,8 +427,9 @@ class _HomeScreenState extends State<HomeScreen> {
             placeSearchProvider: widget.placeSearchProvider,
             onRefresh: widget.nearbyBeachesProvider == null
                 ? null
-                : () async =>
-                      widget.nearbyBeachesProvider!.pickLocation(_placeCenter),
+                : () async => widget.nearbyBeachesProvider!.pickLocation(
+                    _selectedLocation,
+                  ),
           ),
         ),
       );
@@ -346,13 +443,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final marineProvider = widget.marineProvider;
     // `NearbyBeachesProvider.beaches` is NOT sorted by distance anywhere
     // (Overpass returns elements in element-id order) - the nearest beach
-    // must be found explicitly, by actual distance to _placeCenter, rather
-    // than assumed to be the first list entry. Null whenever there's no
-    // provider or no beach was found, in which case SeaConditionsRow falls
-    // back to its cardinal-only display.
+    // must be found explicitly, by actual distance to _selectedLocation,
+    // rather than assumed to be the first list entry. Null whenever there's
+    // no provider or no beach was found, in which case SeaConditionsRow
+    // falls back to its cardinal-only display.
     final nearestBeach = _nearestBeachTo(
       widget.nearbyBeachesProvider?.beaches ?? const [],
-      _placeCenter,
+      _selectedLocation,
     );
     final seawardBearingDegrees = nearestBeach == null
         ? null
@@ -419,11 +516,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Expanded(
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            const Text(
                               'My Location',
                               style: TextStyle(
                                 color: _textPrimary,
@@ -431,10 +528,10 @@ class _HomeScreenState extends State<HomeScreen> {
                                 fontSize: 20,
                               ),
                             ),
-                            SizedBox(height: 4),
+                            const SizedBox(height: 4),
                             Text(
-                              'Çeşme, İzmir',
-                              style: TextStyle(
+                              _placeName,
+                              style: const TextStyle(
                                 color: _textSecondary,
                                 fontSize: 13,
                               ),
@@ -480,10 +577,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 16),
                   LocationMapCard(
-                    center: _placeCenter,
-                    placeName: 'Çeşme, İzmir',
+                    center: _selectedLocation,
+                    placeName: _placeName,
                     tileProvider: widget.tileProvider,
                     nearbyBeachesProvider: widget.nearbyBeachesProvider,
+                    onLocationPicked: _handleLocationPicked,
                     onOverflowPressed: widget.unitPreferencesProvider == null
                         ? null
                         : () => _showUnitSystemSheet(
