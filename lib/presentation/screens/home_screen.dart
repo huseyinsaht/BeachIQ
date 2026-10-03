@@ -19,6 +19,7 @@ import '../../logic/unit_preferences.dart';
 import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
+import '../widgets/cloud_backdrop.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
 import '../widgets/sea_conditions_row.dart';
@@ -496,237 +497,256 @@ class _HomeScreenState extends State<HomeScreen> {
       (widget.now ?? DateTime.now)(),
     );
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [_bgBase, _bgGradientBottom],
-          ),
-        ),
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: _handleRefresh,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'My Location',
-                              style: TextStyle(
-                                color: _textPrimary,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 20,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _placeName,
-                              style: const TextStyle(
-                                color: _textSecondary,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Text(
-                        _formatTemperature(
-                          weatherData?.temperature,
-                          unitSystem,
-                        ),
-                        style: const TextStyle(
-                          color: _textPrimary,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 44,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        weatherData != null
-                            ? weatherCodeDescription(weatherData.weatherCode)
-                            : _noData,
-                        style: const TextStyle(
-                          color: _textSecondary,
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        'H:${_formatTemperature(weatherData?.highTemperature, unitSystem)} '
-                        'L:${_formatTemperature(weatherData?.lowTemperature, unitSystem)}',
-                        style: const TextStyle(
-                          color: _textSecondary,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  LocationMapCard(
-                    center: _selectedLocation,
-                    placeName: _placeName,
-                    tileProvider: widget.tileProvider,
-                    nearbyBeachesProvider: widget.nearbyBeachesProvider,
-                    onLocationPicked: _handleLocationPicked,
-                    onOverflowPressed: widget.unitPreferencesProvider == null
-                        ? null
-                        : () => _showUnitSystemSheet(
-                            context,
-                            widget.unitPreferencesProvider!,
-                          ),
-                  ),
-                  const SizedBox(height: 16),
-                  // A tappable, non-editable search entry point (per
-                  // docs/assets/mockup-home.png): it looks like the same
-                  // `SearchField` used on the Search screen, but tapping it
-                  // pushes `SearchScreen` instead of opening the keyboard in
-                  // place.
-                  GestureDetector(
-                    key: const Key('home-search-entry'),
-                    onTap: () => _openSearch(context),
-                    child: const AbsorbPointer(child: SearchField()),
-                  ),
-                  const SizedBox(height: 16),
-                  SwimSuggestionPill(verdict: swimVerdict),
-                  if (marineProvider?.currentData != null) ...[
-                    const SizedBox(height: 20),
-                    SeaConditionsRow(
-                      data: marineProvider?.currentData,
-                      unitSystem: unitSystem,
-                      seawardBearingDegrees: seawardBearingDegrees,
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  GridView.count(
-                    crossAxisCount: 2,
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    mainAxisSpacing: 16,
-                    crossAxisSpacing: 16,
-                    childAspectRatio: 2.6,
-                    children: [
-                      StatTile(
-                        icon: Icons.air,
-                        label: 'Wind speed',
-                        value: _formatWindSpeed(
-                          weatherData?.windSpeed,
-                          unitSystem,
-                        ),
-                        trendDirection: StatTrendDirection.up,
-                        trendDelta: unitSystem == UnitSystem.imperial
-                            ? '1 mph'
-                            : '2 km/h',
-                      ),
-                      StatTile(
-                        icon: Icons.water_drop_outlined,
-                        label: 'Rain chance',
-                        value: _formatPercent(weatherData?.rainChancePercent),
-                        trendDirection: StatTrendDirection.down,
-                        trendDelta: '3%',
-                      ),
-                      StatTile(
-                        icon: Icons.speed,
-                        label: 'Pressure',
-                        value: _formatPressure(weatherData?.pressureHpa),
-                        trendDirection: StatTrendDirection.up,
-                        trendDelta: '1 hPa',
-                        onTap: () => Navigator.of(context).push(
-                          buildDetailRoute(
-                            DetailMetric.pressure,
-                            hourly: weatherData?.hourly ?? const [],
-                            currentValue: weatherData?.pressureHpa,
-                            now: widget.now,
-                          ),
-                        ),
-                      ),
-                      StatTile(
-                        icon: Icons.wb_sunny_outlined,
-                        label: 'UV index',
-                        value: _formatUvIndex(weatherData?.uvIndex),
-                        trendDirection: StatTrendDirection.up,
-                        trendDelta: '0.5',
-                        onTap: () => Navigator.of(context).push(
-                          buildDetailRoute(
-                            DetailMetric.uvIndex,
-                            hourly: weatherData?.hourly ?? const [],
-                            currentValue: weatherData?.uvIndex,
-                            now: widget.now,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Row(
-                    children: [
-                      Icon(Icons.access_time, size: 14, color: _textSecondary),
-                      SizedBox(width: 6),
-                      Text(
-                        'Hourly forecast',
-                        style: TextStyle(color: _textSecondary, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 90,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: hourly.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 20),
-                      itemBuilder: (context, index) {
-                        final entry = hourly[index];
-                        return HourlyForecastItem(
-                          timeLabel: _hourLabel(
-                            entry.time,
-                            isFirst: index == 0,
-                          ),
-                          icon: _iconForWeatherCode(entry.weatherCode),
-                          temperature: _formatTemperature(
-                            entry.temperature,
-                            unitSystem,
-                          ),
-                          time: entry.time,
-                        );
-                      },
-                    ),
-                  ),
-                ],
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [_bgBase, _bgGradientBottom],
               ),
             ),
           ),
-        ),
+          // The faint cloud texture from docs/design.md, top-right behind
+          // the header. Positioned ahead of (i.e. visually under) the real
+          // content below, and `IgnorePointer`/`RepaintBoundary`-wrapped by
+          // `CloudBackdrop` itself, so it never intercepts taps on anything
+          // stacked above it and never repaints while that content scrolls.
+          const Positioned(top: 0, right: 0, child: CloudBackdrop()),
+          SafeArea(
+            child: RefreshIndicator(
+              onRefresh: _handleRefresh,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'My Location',
+                                style: TextStyle(
+                                  color: _textPrimary,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _placeName,
+                                style: const TextStyle(
+                                  color: _textSecondary,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          _formatTemperature(
+                            weatherData?.temperature,
+                            unitSystem,
+                          ),
+                          style: const TextStyle(
+                            color: _textPrimary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 44,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          weatherData != null
+                              ? weatherCodeDescription(weatherData.weatherCode)
+                              : _noData,
+                          style: const TextStyle(
+                            color: _textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          'H:${_formatTemperature(weatherData?.highTemperature, unitSystem)} '
+                          'L:${_formatTemperature(weatherData?.lowTemperature, unitSystem)}',
+                          style: const TextStyle(
+                            color: _textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    LocationMapCard(
+                      center: _selectedLocation,
+                      placeName: _placeName,
+                      tileProvider: widget.tileProvider,
+                      nearbyBeachesProvider: widget.nearbyBeachesProvider,
+                      onLocationPicked: _handleLocationPicked,
+                      onOverflowPressed: widget.unitPreferencesProvider == null
+                          ? null
+                          : () => _showUnitSystemSheet(
+                              context,
+                              widget.unitPreferencesProvider!,
+                            ),
+                    ),
+                    const SizedBox(height: 16),
+                    // A tappable, non-editable search entry point (per
+                    // docs/assets/mockup-home.png): it looks like the same
+                    // `SearchField` used on the Search screen, but tapping it
+                    // pushes `SearchScreen` instead of opening the keyboard in
+                    // place.
+                    GestureDetector(
+                      key: const Key('home-search-entry'),
+                      onTap: () => _openSearch(context),
+                      child: const AbsorbPointer(child: SearchField()),
+                    ),
+                    const SizedBox(height: 16),
+                    SwimSuggestionPill(verdict: swimVerdict),
+                    if (marineProvider?.currentData != null) ...[
+                      const SizedBox(height: 20),
+                      SeaConditionsRow(
+                        data: marineProvider?.currentData,
+                        unitSystem: unitSystem,
+                        seawardBearingDegrees: seawardBearingDegrees,
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      childAspectRatio: 2.6,
+                      children: [
+                        StatTile(
+                          icon: Icons.air,
+                          label: 'Wind speed',
+                          value: _formatWindSpeed(
+                            weatherData?.windSpeed,
+                            unitSystem,
+                          ),
+                          trendDirection: StatTrendDirection.up,
+                          trendDelta: unitSystem == UnitSystem.imperial
+                              ? '1 mph'
+                              : '2 km/h',
+                        ),
+                        StatTile(
+                          icon: Icons.water_drop_outlined,
+                          label: 'Rain chance',
+                          value: _formatPercent(weatherData?.rainChancePercent),
+                          trendDirection: StatTrendDirection.down,
+                          trendDelta: '3%',
+                        ),
+                        StatTile(
+                          icon: Icons.speed,
+                          label: 'Pressure',
+                          value: _formatPressure(weatherData?.pressureHpa),
+                          trendDirection: StatTrendDirection.up,
+                          trendDelta: '1 hPa',
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.pressure,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.pressureHpa,
+                              now: widget.now,
+                            ),
+                          ),
+                        ),
+                        StatTile(
+                          icon: Icons.wb_sunny_outlined,
+                          label: 'UV index',
+                          value: _formatUvIndex(weatherData?.uvIndex),
+                          trendDirection: StatTrendDirection.up,
+                          trendDelta: '0.5',
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.uvIndex,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.uvIndex,
+                              now: widget.now,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    const Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
+                          color: _textSecondary,
+                        ),
+                        SizedBox(width: 6),
+                        Text(
+                          'Hourly forecast',
+                          style: TextStyle(color: _textSecondary, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 90,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: hourly.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 20),
+                        itemBuilder: (context, index) {
+                          final entry = hourly[index];
+                          return HourlyForecastItem(
+                            timeLabel: _hourLabel(
+                              entry.time,
+                              isFirst: index == 0,
+                            ),
+                            icon: _iconForWeatherCode(entry.weatherCode),
+                            temperature: _formatTemperature(
+                              entry.temperature,
+                              unitSystem,
+                            ),
+                            time: entry.time,
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// Wraps [child] in the same background/[SafeArea] shell as the loaded
-  /// layout, for the loading and error states.
+  /// Wraps [child] in the same background/[SafeArea]/cloud-backdrop shell
+  /// as the loaded layout (see [build]), for the loading and error states.
   Widget _buildStatusShell(Widget child) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [_bgBase, _bgGradientBottom],
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [_bgBase, _bgGradientBottom],
+              ),
+            ),
           ),
-        ),
-        child: SafeArea(child: child),
+          const Positioned(top: 0, right: 0, child: CloudBackdrop()),
+          SafeArea(child: child),
+        ],
       ),
     );
   }

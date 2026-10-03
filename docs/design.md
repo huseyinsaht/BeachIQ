@@ -32,8 +32,11 @@ The mockup was built from a weather-app template. Do **not** copy these literall
 ## Visual direction
 
 Dark-mode weather/beach app. Deep navy vertical gradient background on both screens (darker at the
-top, slightly lighter and bluer toward the bottom) with a decorative photographic **cloud texture** in
-the top-right behind the status bar/header (a second, very faint cloud floats mid-screen on Search).
+top, slightly lighter and bluer toward the bottom) with a faint **cloud backdrop** in the top-right
+behind the status bar/header (a second, very faint cloud floats mid-screen on Search). On Home this is
+`CloudBackdrop` (`lib/presentation/widgets/cloud_backdrop.dart`): a few large, heavily blurred,
+low-opacity (~0.08-0.15) white ellipses painted procedurally with `CustomPainter` — see "Out of scope
+for this doc" below.
 White primary text, muted blue-gray secondary text, and light "paper" surfaces (map card, search field,
 result sheet) with navy-indigo text. Generous corner radii (~24px). No hard borders; the stat grid and
 hourly row have **no card background at all** — they sit directly on the gradient.
@@ -222,5 +225,7 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
 ## Out of scope for this doc
 
 Exact spacing/padding values, icon asset sourcing, and animation/transition behavior aren't captured
-here — measure them from the exported images in `docs/assets/`. The cloud texture is a photographic
-asset that is not in the repo; until it is supplied, use the gradient alone.
+here — measure them from the exported images in `docs/assets/`. The mockup's cloud texture is a
+photographic asset that is not in the repo; Home draws a procedural `CloudBackdrop` approximation
+instead (see "Visual direction" above) rather than shipping a new image asset. Search's mid-screen
+cloud is not yet implemented.

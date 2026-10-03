@@ -938,9 +938,14 @@ void main() {
         );
         await provider.fetchData(38.3, 26.3);
         await tester.pump();
-        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold).first);
-        final decoration =
-            (scaffold.body as Container).decoration as BoxDecoration;
+        // The background gradient now lives on the first `Container` inside
+        // the Home screen's body `Stack` (the cloud backdrop and real
+        // content are stacked above it, #162), rather than on the body
+        // widget itself.
+        final container = tester
+            .widgetList<Container>(find.byType(Container))
+            .first;
+        final decoration = container.decoration as BoxDecoration;
         return decoration.gradient as LinearGradient;
       }
 
