@@ -28,6 +28,7 @@ import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
+import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -234,16 +235,22 @@ void main() {
   });
 
   testWidgets(
-    'Home to Search navigation: tapping the search entry opens Search, '
-    'the back chevron returns to Home',
+    'Home to Search navigation: opening Search via the map card overflow '
+    "menu's \"Beaches\" entry (#158), the back chevron returns to Home",
     (WidgetTester tester) async {
       await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(SearchScreen), findsNothing);
+      // #158: the old standalone, non-editable "Enter cities" entry point
+      // is gone — the map card's own search icon is the only place-search
+      // entry left on Home.
+      expect(find.byType(SearchField), findsNothing);
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
       await tester.pumpAndSettle();
 
       expect(find.byType(SearchScreen), findsOneWidget);
@@ -284,7 +291,9 @@ void main() {
 
       expect(provider.status, NearbyBeachesStatus.loaded);
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
       await tester.pumpAndSettle();
 
       expect(find.byType(SearchScreen), findsOneWidget);
@@ -565,7 +574,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
       await tester.pumpAndSettle();
       expect(find.byType(SearchScreen), findsOneWidget);
 
@@ -581,6 +592,98 @@ void main() {
 
       expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
       expect(nearbyBeachesProvider.beaches.single.name, 'Fixture Beach');
+    },
+  );
+
+  testWidgets(
+    'Map card search flow (#158): typing in the map card\'s own search '
+    'icon finds a real place and selecting it recenters the map and '
+    "re-fetches nearbyBeachesProvider — Home's old standalone search "
+    'entry is gone',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = _FixtureNetworkClient();
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      final geocodingClient = MockClient((request) async {
+        return http.Response(
+          json.encode({
+            'results': [
+              {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+            ],
+          }),
+          200,
+        );
+      });
+      final placeSearchProvider = PlaceSearchProvider(
+        GeocodingService(geocodingClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(placeSearchProvider.dispose);
+
+      // Selecting a place goes through `onLocationPicked`
+      // (`HomeScreen._handleLocationPicked`), which also re-fetches
+      // weather/marine data for the new point — unlike `SearchScreen`'s
+      // own place search, which only re-centers `nearbyBeachesProvider`.
+      // Fixture repositories (instead of `MarineApp`'s real default
+      // providers) keep that re-fetch off the real network.
+      final weatherProvider = WeatherProvider(
+        _RecordingWeatherRepository([
+          WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+          WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+        ]),
+      );
+      final marineProvider = MarineProvider(
+        _RecordingMarineRepository([
+          SeaCondition(waveHeight: 0.3),
+          SeaCondition(waveHeight: 1.0),
+        ]),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
+            placeSearchProvider: placeSearchProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The map card's own icon is the only place-search entry on Home.
+      expect(find.byType(SearchField), findsNothing);
+      expect(find.byKey(const Key('map-search-toggle')), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('map-search-toggle')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextField), 'bodrum');
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Bodrum'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('map-search-result-0-Bodrum')),
+      );
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.pumpAndSettle();
+
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+      expect(nearbyBeachesProvider.beaches.single.name, 'Fixture Beach');
+      // Beaches is still reachable via the overflow menu.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('Beaches'), findsOneWidget);
     },
   );
 

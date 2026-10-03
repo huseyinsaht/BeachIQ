@@ -96,6 +96,12 @@ Top to bottom:
    app must draw beach geometry on the map. A location bar is docked to the card's bottom edge
    (same white surface): small grey "Location" label, place name bold in `text.onPaper`, and an
    overflow ("...") menu on the right. There is no pin glyph in the home version of the bar.
+   **Search icon** (issue #158) — a search icon sits in the bar, before the overflow menu; tapping it
+   expands the bar into a real `SearchField` with live geocoding results underneath (loading/empty/
+   error/loaded, the same states `SearchScreen`'s own "Places" section uses), replacing the mockup's
+   separate standalone search entry below the map card. Selecting a result recenters the map exactly
+   as a map tap would. The overflow menu itself now opens a small sheet with "Beaches" (→
+   `SearchScreen`, the beach list/favorites/filter) and, when available, "Units".
    **Amenity markers** (issue #172) — each beach's real toilets/showers/changing rooms/parking/cafes/
    beach clubs/lifeguard posts (`Beach.amenities`, from #171) are drawn as Google-Maps-style pins: a
    filled colored circle with a white glyph and a soft drop shadow (food & drink orange `#F57C00`;

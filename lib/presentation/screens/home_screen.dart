@@ -23,7 +23,6 @@ import '../widgets/cloud_backdrop.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
 import '../widgets/sea_conditions_row.dart';
-import '../widgets/search_field.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
 
@@ -75,12 +74,54 @@ String _formatWindSpeed(double? kmh, UnitSystem unitSystem) {
   return formatWindSpeed(kmh, unitSystem);
 }
 
+/// Opens the Home screen's map-card overflow ("...") menu (#158): a
+/// "Beaches" entry that always opens [SearchScreen] (the old standalone,
+/// non-editable "Enter cities" entry point this replaces), plus a "Units"
+/// entry when [unitPreferencesProvider] is supplied.
+Future<void> _showMapOverflowMenu(
+  BuildContext context, {
+  required VoidCallback onBeaches,
+  UnitPreferencesProvider? unitPreferencesProvider,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) {
+      return SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              key: const Key('map-overflow-beaches'),
+              leading: const Icon(Icons.beach_access),
+              title: const Text('Beaches'),
+              onTap: () {
+                Navigator.of(sheetContext).pop();
+                onBeaches();
+              },
+            ),
+            if (unitPreferencesProvider != null)
+              ListTile(
+                key: const Key('map-overflow-units'),
+                leading: const Icon(Icons.straighten),
+                title: const Text('Units'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  _showUnitSystemSheet(context, unitPreferencesProvider);
+                },
+              ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
 /// Opens a small bottom sheet to switch between metric and imperial units,
-/// the "small toggle entry point" added to the existing overflow ("...")
-/// menu on the Home screen's map card (an identical copy of this lives in
-/// `search_screen.dart` for its own header's overflow menu, matching this
-/// codebase's existing convention of small per-file duplication over a
-/// shared presentation/main.dart dependency).
+/// the "small toggle entry point" added to [_showMapOverflowMenu] above (an
+/// identical copy of this lives in `search_screen.dart` for its own
+/// header's overflow menu, matching this codebase's existing convention of
+/// small per-file duplication over a shared presentation/main.dart
+/// dependency).
 Future<void> _showUnitSystemSheet(
   BuildContext context,
   UnitPreferencesProvider provider,
@@ -591,24 +632,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       placeName: _placeName,
                       tileProvider: widget.tileProvider,
                       nearbyBeachesProvider: widget.nearbyBeachesProvider,
+                      placeSearchProvider: widget.placeSearchProvider,
                       onLocationPicked: _handleLocationPicked,
-                      onOverflowPressed: widget.unitPreferencesProvider == null
-                          ? null
-                          : () => _showUnitSystemSheet(
-                              context,
-                              widget.unitPreferencesProvider!,
-                            ),
-                    ),
-                    const SizedBox(height: 16),
-                    // A tappable, non-editable search entry point (per
-                    // docs/assets/mockup-home.png): it looks like the same
-                    // `SearchField` used on the Search screen, but tapping it
-                    // pushes `SearchScreen` instead of opening the keyboard in
-                    // place.
-                    GestureDetector(
-                      key: const Key('home-search-entry'),
-                      onTap: () => _openSearch(context),
-                      child: const AbsorbPointer(child: SearchField()),
+                      // #158: the standalone, non-editable "Enter cities"
+                      // entry point below the map card is gone — the map
+                      // card's own search icon is now the only place-search
+                      // entry on Home, and `SearchScreen` (beach list,
+                      // favorites, filter) stays reachable via "Beaches" in
+                      // this overflow menu instead.
+                      onOverflowPressed: () => _showMapOverflowMenu(
+                        context,
+                        onBeaches: () => _openSearch(context),
+                        unitPreferencesProvider: widget.unitPreferencesProvider,
+                      ),
                     ),
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),

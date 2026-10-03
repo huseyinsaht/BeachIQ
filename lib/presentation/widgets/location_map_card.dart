@@ -4,10 +4,13 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/models/beach.dart';
 import '../../data/models/beach_amenity.dart';
+import '../../data/models/place.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
+import '../../logic/providers/place_search_provider.dart';
 import 'amenity_legend.dart';
 import 'amenity_marker.dart';
 import 'osm_attribution.dart';
+import 'search_field.dart';
 
 /// Radius, in meters, of the "nearby beaches" search circle drawn around a
 /// picked map location. Matches the radius [NearbyBeachesProvider]'s
@@ -74,6 +77,13 @@ String formatCoordinates(LatLng point) {
 /// pick. Without a provider the map stays purely presentational, as before.
 /// [onLocationPicked], when supplied, is also called on every tap (see
 /// #157) so a parent can re-fetch its own location-bound data.
+///
+/// When [placeSearchProvider] is supplied, a search icon in the location
+/// bar (#158) expands it into a real place-name search (the same provider
+/// `SearchScreen` uses for its own "Places" section): typing shows live
+/// geocoding results, and selecting one recenters the map and calls
+/// [onLocationPicked] exactly as a map tap would, with the place's real
+/// name instead of formatted coordinates.
 class LocationMapCard extends StatefulWidget {
   const LocationMapCard({
     super.key,
@@ -83,6 +93,7 @@ class LocationMapCard extends StatefulWidget {
     this.onOverflowPressed,
     this.nearbyBeachesProvider,
     this.onLocationPicked,
+    this.placeSearchProvider,
   });
 
   final LatLng center;
@@ -97,6 +108,11 @@ class LocationMapCard extends StatefulWidget {
   /// contexts with no beach-picking behaviour). When provided, it drives
   /// tap-to-pick and the beach overlay.
   final NearbyBeachesProvider? nearbyBeachesProvider;
+
+  /// Drives the location bar's search icon (#158). Null (the default)
+  /// hides the icon entirely, matching every other optional-provider
+  /// pattern on this widget.
+  final PlaceSearchProvider? placeSearchProvider;
 
   /// Reports a tap-to-pick upward: the tapped [LatLng] together with a
   /// formatted-coordinates display name ([formatCoordinates]), so a parent
@@ -116,11 +132,22 @@ class LocationMapCard extends StatefulWidget {
 class _LocationMapCardState extends State<LocationMapCard> {
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
+  static const _textSecondary = Color(0xFF8B93A6);
 
   late LatLng _pickedPoint = widget.center;
   double _currentZoom = _initialZoom;
   final Set<AmenityKind> _hiddenAmenityKinds = {};
   BeachAmenity? _selectedAmenity;
+
+  bool _searchExpanded = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   /// The last non-empty beach list rendered, kept around so an offline or
   /// failed fetch after an earlier successful pick still shows that
@@ -148,6 +175,45 @@ class _LocationMapCardState extends State<LocationMapCard> {
     widget.onLocationPicked?.call(point, formatCoordinates(point));
   }
 
+  /// Expands/collapses the location bar's search field (#158). Collapsing
+  /// (including via [_selectPlace]) also clears the query and tells
+  /// [PlaceSearchProvider] to drop its results, so reopening the search
+  /// always starts blank rather than showing a stale previous search.
+  void _toggleSearch() {
+    final collapsing = _searchExpanded;
+    setState(() {
+      _searchExpanded = !_searchExpanded;
+      if (collapsing) _searchQuery = '';
+    });
+    if (collapsing) {
+      _searchController.clear();
+      widget.placeSearchProvider?.search('');
+    }
+  }
+
+  void _handleSearchChanged(String value) {
+    setState(() => _searchQuery = value);
+    widget.placeSearchProvider?.search(value);
+  }
+
+  /// Picks [place] exactly as a map tap would ([_handleTap]): recenters the
+  /// map, drives [NearbyBeachesProvider.pickLocation] and reports the new
+  /// point upward via [LocationMapCard.onLocationPicked] — but with the
+  /// place's real looked-up name, never [formatCoordinates]' fallback.
+  void _selectPlace(Place place) {
+    final point = LatLng(place.latitude, place.longitude);
+    setState(() {
+      _pickedPoint = point;
+      _selectedAmenity = null;
+      _searchExpanded = false;
+      _searchQuery = '';
+    });
+    _searchController.clear();
+    widget.placeSearchProvider?.search('');
+    widget.nearbyBeachesProvider?.pickLocation(point);
+    widget.onLocationPicked?.call(point, place.name);
+  }
+
   void _toggleAmenityKind(AmenityKind kind) {
     setState(() {
       if (!_hiddenAmenityKinds.remove(kind)) {
@@ -166,7 +232,15 @@ class _LocationMapCardState extends State<LocationMapCard> {
   Widget build(BuildContext context) {
     final provider = widget.nearbyBeachesProvider;
 
-    return ClipRRect(
+    // Identical to this widget's pre-#158 tree (ClipRRect -> Container ->
+    // Stack directly, no intervening Column) whenever the search isn't
+    // expanded — the common case, and the one every pre-existing test
+    // exercises. A `Column` wrapper here would give that inner `Stack`
+    // loose (rather than tight) width constraints, which changed how wide
+    // the map/legend actually render and broke their hit-testing; adding
+    // the results panel as a sibling *after* this unchanged card, instead
+    // of inside it, avoids that entirely.
+    final card = ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Container(
         color: _surfacePaper,
@@ -184,40 +258,191 @@ class _LocationMapCardState extends State<LocationMapCard> {
             ),
             Align(
               alignment: Alignment.bottomCenter,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                color: _surfacePaper,
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.location_on,
-                      size: 18,
+              child: _buildLocationBar(),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!_searchExpanded) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [card, _buildPlaceResults()],
+    );
+  }
+
+  /// The white bar docked to the map's bottom edge: the normal pin/name/
+  /// overflow row, or — once the search icon is tapped (#158) — a search
+  /// field with a collapse (back) button in its place.
+  Widget _buildLocationBar() {
+    if (_searchExpanded) {
+      return Container(
+        key: const Key('map-search-field-bar'),
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(8, 8, 16, 8),
+        color: _surfacePaper,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back, color: _textOnPaper),
+              onPressed: _toggleSearch,
+              tooltip: 'Close search',
+            ),
+            Expanded(
+              child: SearchField(
+                controller: _searchController,
+                onChanged: _handleSearchChanged,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: _surfacePaper,
+      child: Row(
+        children: [
+          const Icon(Icons.location_on, size: 18, color: _textOnPaper),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.placeName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: _textOnPaper,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          if (widget.placeSearchProvider != null)
+            IconButton(
+              key: const Key('map-search-toggle'),
+              icon: const Icon(Icons.search, color: _textOnPaper),
+              onPressed: _toggleSearch,
+              tooltip: 'Search for a place',
+            ),
+          IconButton(
+            icon: const Icon(Icons.more_horiz, color: _textOnPaper),
+            onPressed: widget.onOverflowPressed,
+            tooltip: 'More',
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The live place-search results, shown under the map while
+  /// [_searchExpanded] and [LocationMapCard.placeSearchProvider] is
+  /// supplied: a loading row while a search is in flight, an error/empty
+  /// message, or a tappable list of [Place] matches — the same states
+  /// `SearchScreen` shows for its own "Places" section.
+  Widget _buildPlaceResults() {
+    final provider = widget.placeSearchProvider;
+    if (provider == null) return const SizedBox.shrink();
+
+    return AnimatedBuilder(
+      animation: provider,
+      builder: (context, _) {
+        if (_searchQuery.trim().isEmpty) return const SizedBox.shrink();
+
+        Widget content;
+        switch (provider.status) {
+          case PlaceSearchStatus.idle:
+            return const SizedBox.shrink();
+          case PlaceSearchStatus.loading:
+            content = const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          case PlaceSearchStatus.error:
+            content = Text(
+              provider.error ?? 'Could not search for places.',
+              style: const TextStyle(color: _textOnPaper, fontSize: 13),
+            );
+          case PlaceSearchStatus.empty:
+            content = Text(
+              'No places match "${_searchQuery.trim()}".',
+              style: const TextStyle(color: _textSecondary, fontSize: 13),
+            );
+          case PlaceSearchStatus.loaded:
+            content = Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < provider.results.length; i++)
+                  _buildPlaceResultRow(i, provider.results[i]),
+              ],
+            );
+        }
+
+        return ClipRRect(
+          key: const Key('map-search-results'),
+          borderRadius: const BorderRadius.vertical(
+            bottom: Radius.circular(24),
+          ),
+          child: Container(
+            width: double.infinity,
+            color: _surfacePaper,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: content,
+          ),
+        );
+      },
+    );
+  }
+
+  /// One row of the loaded search results, keyed by [index] rather than
+  /// the place's name alone: geocoding results routinely share a name
+  /// (e.g. two different "Paris"es), and a name-only key would collide and
+  /// trip Flutter's duplicate-key assertion (the same reasoning
+  /// `search_screen.dart`'s own place-result rows document).
+  Widget _buildPlaceResultRow(int index, Place place) {
+    final subtitleParts = [
+      if (place.admin1 != null) place.admin1!,
+      if (place.country != null) place.country!,
+    ];
+    final subtitle = subtitleParts.isEmpty ? null : subtitleParts.join(', ');
+
+    return InkWell(
+      key: ValueKey('map-search-result-$index-${place.name}'),
+      onTap: () => _selectPlace(place),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.place_outlined, size: 18, color: _textOnPaper),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    place.name,
+                    style: const TextStyle(
                       color: _textOnPaper,
+                      fontWeight: FontWeight.w600,
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        widget.placeName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: _textOnPaper,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
                       ),
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.more_horiz, color: _textOnPaper),
-                      onPressed: widget.onOverflowPressed,
-                      tooltip: 'More',
-                    ),
-                  ],
-                ),
+                ],
               ),
             ),
           ],
