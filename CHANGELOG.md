@@ -5,6 +5,51 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- UV index detail screen (`UvIndexDetailScreen`): the day's hourly UV index as a
+  chart with the five WHO/EPA risk bands (low/moderate/high/very high/extreme) and
+  a one-line sun-protection hint for the current band; `HourlyMetricChart` gained a
+  generic `valueBands` feature (fixed colored value-range strips) to support it (#198)
+- Wave height detail screen (`WaveHeightDetailScreen`), opened from the Sea
+  section's wave height tile: hourly wave height with the 0.6 m/1.2 m swim
+  thresholds, plus wave period and direction per hour (#204)
+- Wind speed detail screen (`WindDetailScreen`): hourly wind speed and gusts with
+  the 20/40 km/h swim thresholds (#207)
+- Water temperature detail screen (`WaterTemperatureDetailScreen`), opened from the
+  Sea section: hourly sea surface temperature with four comfort bands (cold/cool/
+  pleasant/warm) and a comfort hint (#208)
+- Rain chance detail screen (`RainChanceDetailScreen`) and `lib/logic/rain_windows.dart`
+  (`rainChanceWindows`/`rainChanceSummary`): hourly rain probability with a
+  plain-language summary of the likely rain window(s) for the day (#209)
+- Ocean current detail screen (`CurrentDetailScreen`), opened from the Sea
+  section's current speed/direction tiles: hourly current speed, a per-hour
+  direction arrow strip, and a drift-out warning banner when the current flows
+  away from shore at or above 2.0 km/h (#210)
+- Every Home stat tile and Sea section tile now opens its own detail screen —
+  `DetailMetric` (`lib/presentation/navigation/detail_routes.dart`) covers all
+  seven metrics (pressure, UV index, rain chance, wind, wave height, water
+  temperature, current); none throw "not implemented" any more
+- A procedural `CloudBackdrop` widget: a faint, deterministic blurred-cloud
+  texture painted behind the Home header, replacing the missing photographic
+  mockup asset (#206)
+- A search icon in the map card's location bar (#211): expands into a live
+  place-name search (reusing `PlaceSearchProvider`); selecting a result recenters
+  the map exactly as a map tap would. The map card's overflow menu is now a small
+  sheet with "Beaches" (→ the Search screen) and, when available, "Units"
+- `tools/run_tests.sh`/`tools/test_summary.dart`: CI and local test runs now print
+  a per-module `Test summary: SUCCESS/FAILURE` line, write JUnit XML
+  (`build/reports/junit.xml`) and a Markdown summary; `tools/check_coverage.sh`
+  fails CI if total line coverage drops below a tracked baseline (#203)
+
+### Changed
+
+- The Home screen now follows a user-picked location instead of always showing
+  fixed Çeşme coordinates: tapping the map re-fetches weather/marine/nearby-beach
+  data for that point and updates the header immediately, and the pick is
+  persisted via `SharedPreferences` and restored on the next app start. Çeşme
+  remains only the first-run default (#205)
+
 ## [2026.10.5] - 2026-10-02
 
 ### Added
