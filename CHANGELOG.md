@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.6] - 2026-10-03
+
 ### Added
 
 - UV index detail screen (`UvIndexDetailScreen`): the day's hourly UV index as a
