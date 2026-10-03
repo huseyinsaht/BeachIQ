@@ -18,6 +18,7 @@ import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
@@ -593,6 +594,51 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(WaveHeightDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Water temperature detail flow (#180): tapping the water temperature '
+    'tile in the Sea section opens WaterTemperatureDetailScreen (its own '
+    'page) with the real MarineProvider hourly series, and the back '
+    'button returns to Home',
+    (WidgetTester tester) async {
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          seaSurfaceTemperature: 22.0,
+          hourly: [
+            aSeaHourly(
+              time: DateTime(2026, 1, 1, 12),
+              seaSurfaceTemperature: 22.0,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+
+      await tester.tap(find.byKey(const Key('water-temperature-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      expect(find.textContaining('Pleasant — '), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
     },
   );
 
