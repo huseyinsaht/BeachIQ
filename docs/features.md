@@ -2,18 +2,25 @@
 
 ## Today
 
-**Home screen** — a live dashboard for a fixed location (Çeşme, İzmir):
+**Home screen** — a live dashboard for a **selected location** (wherever the user last
+picked on the map or by search; Çeşme, İzmir is only the first-run default, and the
+pick survives an app restart):
 
 - Current temperature, condition description and daily high/low, from the Open-Meteo
   Forecast API.
-- An interactive map card: tap anywhere to search that location, a 20km search-radius
-  circle, nearby beaches drawn as gold outlines (from live OpenStreetMap data), and —
-  once zoomed in — colored pins for nearby toilets, showers, changing rooms, parking,
-  cafés and beach clubs, with a toggleable legend and a tap-for-details card.
+- An interactive map card: tap anywhere to re-center on that location, a 20km
+  search-radius circle, nearby beaches drawn as gold outlines (from live OpenStreetMap
+  data), and — once zoomed in — colored pins for nearby toilets, showers, changing
+  rooms, parking, cafés and beach clubs, with a toggleable legend and a
+  tap-for-details card. A search icon in the map card expands into a live place-name
+  search; picking a result re-centers everything exactly as a map tap would. The map
+  card's overflow menu opens "Beaches" (the Search screen) and, when available,
+  "Units".
+- A faint, decorative cloud texture behind the header.
 - A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
   green/orange/red-orange to match, from wave height, wind speed and rain chance —
-  though the wave-height input is only filled in after a pull-to-refresh (see
-  `docs/architecture.md` § State flow).
+  though the wave-height input is only filled in after a pull-to-refresh or a fresh
+  location pick (see `docs/architecture.md` § State flow).
 - A "Sea" section (once marine data has loaded) showing wave height, water
   temperature, wave direction and current speed/direction — when the nearest beach's
   shoreline can be derived from OpenStreetMap data, the direction readings also say
@@ -21,10 +28,17 @@
   warning when it's moving away (drift-out/rip-current risk).
 - A 2×2 stat grid (wind speed, rain chance, pressure, UV index) and a scrollable hourly
   forecast row (with colored, time-of-day-aware weather icons), both bound to real
-  data. Tapping the pressure tile opens a Pressure detail screen: an hourly chart,
-  min/max/now summary, and a rising/steady/falling trend.
-- A tappable search entry that opens the Search screen; pull-to-refresh re-fetches
-  weather and marine data.
+  data.
+- **Every stat tile and every Sea-section tile (except wave direction) opens its own
+  detail screen**: an hourly chart, a min/max/now summary, and metric-specific context
+  — Pressure's rising/steady/falling trend; UV index's five colored risk bands and a
+  protection hint; Wind's speed-and-gusts chart with calm/moderate/strong thresholds;
+  Rain chance's plain-language "likely between X and Y" summary; Wave height's period
+  and direction alongside the swim thresholds; Water temperature's four comfort bands
+  and hint; Ocean current's per-hour direction strip and a drift-out warning banner
+  when the current is heading out to sea.
+- Pull-to-refresh re-fetches weather and marine data for the currently selected
+  location.
 - A metric/imperial unit toggle (via the map card's overflow menu), persisted across
   restarts.
 
@@ -60,10 +74,6 @@
   ("wind picks up between 10:00 and 11:00", etc.) from the hourly forecast, but
   nothing in the app shows these to the user yet — no screen or notification surfaces
   them.
-- The per-metric detail screen pattern (`MetricDetailScaffold`/`HourlyMetricChart`)
-  only has one real screen so far (Pressure, from the Home stat grid); UV index, rain
-  chance, wind, wave height, water temperature and current each still throw
-  "not implemented" if reached, pending their own screens.
 - `BeachRepository`/`staticBeaches` (10 hardcoded Turkish beaches) still exist as the
   Search screen's fallback when no live provider is supplied (e.g. tests), but the
   shipped app always supplies one.
