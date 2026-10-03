@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -142,6 +143,40 @@ void main() {
           find.text(formatWindSpeed(10.0, UnitSystem.imperial)),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      'tapping the wave height tile opens WaveHeightDetailScreen with the '
+      'marine hourly series and current value, and back returns to the '
+      'previous screen',
+      (tester) async {
+        final data = aSeaCondition(
+          waveHeight: 0.9,
+          hourly: [aSeaHourly(time: DateTime(2026, 1, 1, 12), waveHeight: 0.9)],
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.byType(WaveHeightDetailScreen), findsNothing);
+
+        await tester.tap(find.byKey(const Key('wave-height-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaveHeightDetailScreen), findsOneWidget);
+        final screen = tester.widget<WaveHeightDetailScreen>(
+          find.byType(WaveHeightDetailScreen),
+        );
+        expect(screen.currentWaveHeightMeters, 0.9);
+        expect(screen.hourly, hasLength(1));
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaveHeightDetailScreen), findsNothing);
+        expect(find.byType(SeaConditionsRow), findsOneWidget);
       },
     );
 

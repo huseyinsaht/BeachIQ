@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/sea_condition.dart';
 import '../../logic/unit_preferences.dart';
 import '../../logic/wave_shore_relation.dart';
+import '../navigation/detail_routes.dart';
 
 /// Shown for any null field in [SeaConditionsRow]'s tiles, matching
 /// `home_screen.dart`'s `_noData` constant: "no data for this hour/point",
@@ -158,9 +159,22 @@ class SeaConditionsRow extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             children: [
               _SeaStatTile(
+                key: const Key('wave-height-tile'),
                 icon: Icons.waves,
                 label: 'Wave height',
                 value: _formatWaveHeight(condition.waveHeight, unitSystem),
+                // Opens the wave height detail screen (issue #167): its own
+                // page/route, with the day's marine hourly series for the
+                // chart and the current reading as the hero value.
+                onTap: () => Navigator.of(context).push(
+                  buildDetailRoute(
+                    DetailMetric.waveHeight,
+                    hourly: const [],
+                    seaHourly: condition.hourly,
+                    currentValue: condition.waveHeight,
+                    unitSystem: unitSystem,
+                  ),
+                ),
               ),
               const SizedBox(width: 20),
               _SeaStatTile(
@@ -222,50 +236,67 @@ class SeaConditionsRow extends StatelessWidget {
 /// doc comment for why).
 class _SeaStatTile extends StatelessWidget {
   const _SeaStatTile({
+    super.key,
     required this.icon,
     required this.label,
     required this.value,
+    this.onTap,
   });
 
   final IconData icon;
   final String label;
   final String value;
 
+  /// Opens this metric's own detail screen (issue #167's wave height tile
+  /// is the first to use it) when set. Null (the default) keeps every
+  /// other tile's existing behavior exactly: no `InkWell`/ripple, no tap
+  /// target at all — matching `StatTile`'s own `onTap` convention.
+  final VoidCallback? onTap;
+
   static const _textSecondary = Color(0xFF8B93A6);
 
   @override
   Widget build(BuildContext context) {
+    final content = SizedBox(
+      width: 120,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: _textSecondary),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: _textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+
     return Semantics(
       label: '$label, $value',
       excludeSemantics: true,
-      child: SizedBox(
-        width: 120,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 18, color: _textSecondary),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _textSecondary, fontSize: 12),
+      child: onTap == null
+          ? content
+          : InkWell(
+              key: const Key('sea-stat-tile-tap-target'),
+              borderRadius: BorderRadius.circular(12),
+              onTap: onTap,
+              child: content,
             ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
