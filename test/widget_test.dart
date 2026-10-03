@@ -22,6 +22,7 @@ import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/wave_shore_relation.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -1153,6 +1154,43 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(PressureDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'tapping the wind speed stat tile opens WindDetailScreen with the real '
+    'weather data, and the back button returns to HomeScreen',
+    (WidgetTester tester) async {
+      final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 12, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsNothing);
+
+      await tester.ensureVisible(find.text('12 km/h'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('12 km/h'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WindDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The hero value carries over the real current wind speed reading.
+      expect(find.text('12'), findsWidgets);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(WindDetailScreen), findsNothing);
     },
   );
 

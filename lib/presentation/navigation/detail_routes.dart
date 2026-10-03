@@ -6,12 +6,13 @@ import '../../logic/unit_preferences.dart';
 import '../screens/detail/pressure_detail_screen.dart';
 import '../screens/detail/uv_index_detail_screen.dart';
 import '../screens/detail/wave_height_detail_screen.dart';
+import '../screens/detail/wind_detail_screen.dart';
 
 /// Every Home-screen stat tile that opens its own detail screen (issue
 /// #165 builds the shared foundation and [pressure]; issue #178 adds
-/// [uvIndex]; issue #167 adds [waveHeight]; the rest follow in their own
-/// issues/PRs: rain chance #179, wind #166, water temperature #180,
-/// current #181).
+/// [uvIndex]; issue #167 adds [waveHeight]; issue #166 adds [wind]; the
+/// rest follow in their own issues/PRs: rain chance #179, water
+/// temperature #180, current #181).
 enum DetailMetric {
   pressure,
   uvIndex,
@@ -27,11 +28,11 @@ enum DetailMetric {
 /// One `MaterialPageRoute` per metric, each given a [RouteSettings.name]
 /// (`/detail/<metric>`) so tests/navigation observers can find it by name
 /// instead of by widget type alone. Only [DetailMetric.pressure],
-/// [DetailMetric.uvIndex] and [DetailMetric.waveHeight] are wired up so
-/// far — every other case falls through to the `default` branch below and
-/// throws [UnimplementedError]; each later PR removes its metric from that
-/// fallthrough list and adds its own `case` above it, without touching
-/// this function's existing cases.
+/// [DetailMetric.uvIndex], [DetailMetric.waveHeight] and [DetailMetric.wind]
+/// are wired up so far — every other case falls through to the `default`
+/// branch below and throws [UnimplementedError]; each later PR removes its
+/// metric from that fallthrough list and adds its own `case` above it,
+/// without touching this function's existing cases.
 ///
 /// [hourly] and [currentValue] carry whatever per-hour series and "right
 /// now" reading that metric's screen needs (e.g. hourly sea-level pressure
@@ -83,8 +84,17 @@ Route<void> buildDetailRoute(
           now: now,
         ),
       );
-    case DetailMetric.rainChance:
     case DetailMetric.wind:
+      return MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/detail/wind'),
+        builder: (_) => WindDetailScreen(
+          hourly: hourly,
+          currentWindSpeedKmh: currentValue,
+          unitSystem: unitSystem,
+          now: now,
+        ),
+      );
+    case DetailMetric.rainChance:
     case DetailMetric.waterTemperature:
     case DetailMetric.current:
       throw UnimplementedError(

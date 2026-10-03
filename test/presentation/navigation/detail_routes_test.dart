@@ -3,6 +3,7 @@ import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -101,8 +102,40 @@ void main() {
       },
     );
 
-    // Every metric besides `pressure`/`uvIndex`/`waveHeight` has no screen
-    // yet (issues #179, #166, #180, #181). This both documents today's
+    testWidgets(
+      'given DetailMetric.wind, builds a named MaterialPageRoute to '
+      'WindDetailScreen carrying the hourly series, current value and unit '
+      'system',
+      (tester) async {
+        final hourly = [
+          aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 18),
+        ];
+
+        final route = buildDetailRoute(
+          DetailMetric.wind,
+          hourly: hourly,
+          currentValue: 18,
+          unitSystem: UnitSystem.imperial,
+        );
+
+        expect(route, isA<MaterialPageRoute<void>>());
+        expect(route.settings.name, '/detail/wind');
+
+        await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WindDetailScreen), findsOneWidget);
+        final screen = tester.widget<WindDetailScreen>(
+          find.byType(WindDetailScreen),
+        );
+        expect(screen.currentWindSpeedKmh, 18);
+        expect(screen.hourly, hasLength(1));
+        expect(screen.unitSystem, UnitSystem.imperial);
+      },
+    );
+
+    // Every metric besides `pressure`/`uvIndex`/`waveHeight`/`wind` has no
+    // screen yet (issues #179, #180, #181). This both documents today's
     // state and makes sure a future PR that wires one up notices this test
     // (it will start throwing `TestFailure` instead of the expected
     // `UnimplementedError`) rather than silently leaving stale coverage,
@@ -111,6 +144,7 @@ void main() {
       if (metric == DetailMetric.pressure) continue;
       if (metric == DetailMetric.uvIndex) continue;
       if (metric == DetailMetric.waveHeight) continue;
+      if (metric == DetailMetric.wind) continue;
 
       test('given DetailMetric.$metric (not yet implemented), buildDetailRoute '
           '-> throws UnimplementedError', () {
