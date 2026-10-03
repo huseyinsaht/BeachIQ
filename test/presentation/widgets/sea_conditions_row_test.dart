@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
+import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:flutter/material.dart';
@@ -176,6 +177,45 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(WaveHeightDetailScreen), findsNothing);
+        expect(find.byType(SeaConditionsRow), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping the water temperature tile opens '
+      'WaterTemperatureDetailScreen with the marine hourly series and '
+      'current value, and back returns to the previous screen',
+      (tester) async {
+        final data = aSeaCondition(
+          seaSurfaceTemperature: 22.0,
+          hourly: [
+            aSeaHourly(
+              time: DateTime(2026, 1, 1, 12),
+              seaSurfaceTemperature: 22.0,
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          wrap(SeaConditionsRow(data: data, unitSystem: UnitSystem.metric)),
+        );
+
+        expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
+
+        await tester.tap(find.byKey(const Key('water-temperature-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaterTemperatureDetailScreen), findsOneWidget);
+        final screen = tester.widget<WaterTemperatureDetailScreen>(
+          find.byType(WaterTemperatureDetailScreen),
+        );
+        expect(screen.currentWaterTemperatureCelsius, 22.0);
+        expect(screen.hourly, hasLength(1));
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaterTemperatureDetailScreen), findsNothing);
         expect(find.byType(SeaConditionsRow), findsOneWidget);
       },
     );

@@ -178,11 +178,24 @@ class SeaConditionsRow extends StatelessWidget {
               ),
               const SizedBox(width: 20),
               _SeaStatTile(
+                key: const Key('water-temperature-tile'),
                 icon: Icons.thermostat,
                 label: 'Water temp',
                 value: _formatWaterTemperature(
                   condition.seaSurfaceTemperature,
                   unitSystem,
+                ),
+                // Opens the water temperature detail screen (issue #180):
+                // its own page/route, with the day's marine hourly series
+                // for the chart and the current reading as the hero value.
+                onTap: () => Navigator.of(context).push(
+                  buildDetailRoute(
+                    DetailMetric.waterTemperature,
+                    hourly: const [],
+                    seaHourly: condition.hourly,
+                    currentValue: condition.seaSurfaceTemperature,
+                    unitSystem: unitSystem,
+                  ),
                 ),
               ),
               const SizedBox(width: 20),
