@@ -437,6 +437,16 @@ class _RecordingMarineRepository extends MarineRepository {
   }
 }
 
+/// Opens [SearchScreen] via the map card's overflow ("...") menu and its
+/// "Beaches" entry (#158) — the replacement for the old standalone
+/// `home-search-entry` tap target this issue removed from Home.
+Future<void> _openBeachesFromOverflow(WidgetTester tester) async {
+  await tester.tap(find.byTooltip('More'));
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Beaches'));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -576,6 +586,12 @@ void main() {
       expect(find.text('Imperial (ft, °F, mph)'), findsNothing);
 
       await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Units'), findsOneWidget);
+      expect(find.text('Beaches'), findsOneWidget);
+
+      await tester.tap(find.text('Units'));
       await tester.pumpAndSettle();
 
       expect(find.text('Imperial (ft, °F, mph)'), findsOneWidget);
@@ -1089,8 +1105,7 @@ void main() {
 
     expect(find.byType(SearchScreen), findsNothing);
 
-    await tester.tap(find.byKey(const Key('home-search-entry')));
-    await tester.pumpAndSettle();
+    await _openBeachesFromOverflow(tester);
 
     expect(find.byType(SearchScreen), findsOneWidget);
     expect(find.byType(HomeScreen), findsNothing);
@@ -1111,8 +1126,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
-      await tester.pumpAndSettle();
+      await _openBeachesFromOverflow(tester);
 
       expect(find.byIcon(Icons.star_border), findsOneWidget);
       expect(find.byIcon(Icons.favorite_border), findsWidgets);
@@ -1297,8 +1311,7 @@ void main() {
         // is opened, so the real list is already loaded.
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byKey(const Key('home-search-entry')));
-        await tester.pumpAndSettle();
+        await _openBeachesFromOverflow(tester);
 
         expect(find.byType(SearchScreen), findsOneWidget);
         expect(find.text('Fixture Beach'), findsOneWidget);
@@ -1328,8 +1341,7 @@ void main() {
       // Lets the postFrameCallback-triggered initial fetch resolve.
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('home-search-entry')));
-      await tester.pumpAndSettle();
+      await _openBeachesFromOverflow(tester);
 
       // A second pickLocation for the exact same spot still re-runs the
       // whole fetch (MarineBatchService's own 1-hour cache means it may
@@ -1575,9 +1587,7 @@ void main() {
         final secondWeatherRepository = _RecordingWeatherRepository([
           _fakeWeatherCondition(),
         ]);
-        final secondWeatherProvider = WeatherProvider(
-          secondWeatherRepository,
-        );
+        final secondWeatherProvider = WeatherProvider(secondWeatherRepository);
 
         // A distinct key forces Flutter to tear down the first HomeScreen's
         // State (and its in-memory _selectedLocation) and mount a brand new

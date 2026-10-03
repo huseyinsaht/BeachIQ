@@ -34,14 +34,16 @@ void main() {
     });
 
     testWidgets(
-      'given the backdrop stacked over the screen, tapping the search '
-      'entry point still opens Search (hit-testing is not blocked '
-      'anywhere on the screen)',
+      'given the backdrop stacked over the screen, opening Search via the '
+      'map card overflow still works (hit-testing is not blocked anywhere '
+      'on the screen)',
       (tester) async {
         await pumpApp(tester, const HomeScreen());
         expect(find.byType(CloudBackdrop), findsOneWidget);
 
-        await tester.tap(find.byKey(const Key('home-search-entry')));
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Beaches'));
         await tester.pumpAndSettle();
 
         expect(find.byType(SearchScreen), findsOneWidget);
