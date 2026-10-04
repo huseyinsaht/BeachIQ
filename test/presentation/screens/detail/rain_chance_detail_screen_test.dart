@@ -243,6 +243,32 @@ void main() {
       },
     );
 
+    testWidgets(
+      'passes a y-axis value formatter and unit (%) to the chart (issue '
+      '#212)',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            RainChanceDetailScreen(
+              hourly: [
+                aWeatherHourly(
+                  time: DateTime(2026, 1, 1, 12),
+                  rainChancePercent: 40,
+                ),
+              ],
+              now: () => DateTime(2026, 1, 1, 12),
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '%');
+        expect(chart.valueFormatter!(40), '40');
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

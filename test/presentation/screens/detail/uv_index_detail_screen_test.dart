@@ -212,6 +212,30 @@ void main() {
       },
     );
 
+    testWidgets(
+      'passes a y-axis value formatter and no unit to the chart (UV index '
+      'has none) (issue #212)',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            UvIndexDetailScreen(
+              hourly: [
+                aWeatherHourly(time: DateTime(2026, 1, 1, 12), uvIndex: 5.2),
+              ],
+              now: () => DateTime(2026, 1, 1, 12),
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, isNull);
+        expect(chart.valueFormatter, isNotNull);
+        expect(chart.valueFormatter!(5.2), '5.2');
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

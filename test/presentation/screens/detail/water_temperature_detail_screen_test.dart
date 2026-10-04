@@ -231,6 +231,49 @@ void main() {
       expect(find.text('27'), findsOneWidget);
     });
 
+    testWidgets(
+      'passes a y-axis value formatter and unit (°C) to the chart (issue '
+      '#212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WaterTemperatureDetailScreen(
+              hourly: [aSeaHourly(time: now, seaSurfaceTemperature: 22)],
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '°C');
+        expect(chart.valueFormatter!(22), '22');
+      },
+    );
+
+    testWidgets(
+      'given imperial units, passes a unit (°F) to the chart (issue #212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WaterTemperatureDetailScreen(
+              hourly: [aSeaHourly(time: now, seaSurfaceTemperature: 22)],
+              unitSystem: UnitSystem.imperial,
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '°F');
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

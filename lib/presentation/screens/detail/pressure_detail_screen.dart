@@ -119,6 +119,8 @@ class PressureDetailScreen extends StatelessWidget {
             label: 'Low pressure',
           ),
         ],
+        valueFormatter: (value) => value.round().toString(),
+        unitLabel: 'hPa',
       ),
       minValueLabel: _formatHpa(minValue),
       nowValueLabel: _formatHpa(heroValue),

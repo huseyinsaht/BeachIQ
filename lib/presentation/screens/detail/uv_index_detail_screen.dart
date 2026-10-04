@@ -118,6 +118,7 @@ class UvIndexDetailScreen extends StatelessWidget {
         ],
         nowIndex: nowIndex,
         valueBands: uvChartBands,
+        valueFormatter: (value) => value.toStringAsFixed(1),
       ),
       minValueLabel: _formatUv(minValue),
       nowValueLabel: _formatUv(heroValue),

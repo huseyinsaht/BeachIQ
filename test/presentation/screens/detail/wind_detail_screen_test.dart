@@ -225,6 +225,56 @@ void main() {
       },
     );
 
+    testWidgets(
+      'passes a y-axis value formatter and unit (km/h) to both charts '
+      '(issue #212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WindDetailScreen(
+              hourly: [
+                aWeatherHourly(time: now, windSpeed: 10, windGusts: 20),
+              ],
+              now: () => now,
+            ),
+          ),
+        );
+
+        final speedChart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart).first,
+        );
+        expect(speedChart.unitLabel, 'km/h');
+        expect(speedChart.valueFormatter!(12), '12');
+
+        final gustChart = tester.widget<HourlyMetricChart>(
+          find.byKey(const Key('wind-gusts-chart')),
+        );
+        expect(gustChart.unitLabel, 'km/h');
+      },
+    );
+
+    testWidgets(
+      'given imperial units, passes a unit (mph) to the chart (issue #212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WindDetailScreen(
+              hourly: [aWeatherHourly(time: now, windSpeed: 10)],
+              unitSystem: UnitSystem.imperial,
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart).first,
+        );
+        expect(chart.unitLabel, 'mph');
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
