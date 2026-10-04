@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
@@ -20,6 +21,7 @@ import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
 import 'search_screen.dart';
 import '../widgets/cloud_backdrop.dart';
+import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
 import '../widgets/sea_conditions_row.dart';
@@ -222,7 +224,10 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 /// `SharedPreferences`, never a fixed city — Çeşme is only the first-run
 /// default before anything has ever been picked. [MarineProvider] drives
 /// the loading/error states (#69) and, once loaded, the [SeaConditionsRow]
-/// under the smart suggestion pill (#163).
+/// under the smart suggestion pill (#163). Between the pill and the Sea
+/// section/stat grid sits [ForecastAlertList] (#169): upcoming heads-ups
+/// built from both providers' hourly series via `buildForecastAlerts`,
+/// hidden entirely (no gap) whenever there are none.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -533,9 +538,15 @@ class _HomeScreenState extends State<HomeScreen> {
       windSpeedKmh: weatherData?.windSpeed,
       rainChancePercent: weatherData?.rainChancePercent?.round(),
     );
-    final hourly = _upcomingHourly(
-      weatherData?.hourly ?? const [],
-      (widget.now ?? DateTime.now)(),
+    final effectiveNow = (widget.now ?? DateTime.now)();
+    final hourly = _upcomingHourly(weatherData?.hourly ?? const [], effectiveNow);
+    // #169: upcoming heads-ups for the selected location, computed fresh on
+    // every build from the same WeatherProvider/MarineProvider hourly data
+    // the stat grid and Sea section already use — never a hard-coded list.
+    final forecastAlerts = buildForecastAlerts(
+      weather: weatherData?.hourly ?? const [],
+      sea: marineProvider?.currentData?.hourly ?? const [],
+      now: effectiveNow,
     );
     return Scaffold(
       body: Stack(
@@ -648,6 +659,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),
+                    // #169: sits between the smart suggestion pill and the
+                    // Sea section/stat grid, hidden entirely (no gap) when
+                    // there are no upcoming alerts — see
+                    // ForecastAlertList's own doc comment.
+                    if (forecastAlerts.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      ForecastAlertList(alerts: forecastAlerts),
+                    ],
                     if (marineProvider?.currentData != null) ...[
                       const SizedBox(height: 20),
                       SeaConditionsRow(
