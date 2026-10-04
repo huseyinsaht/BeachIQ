@@ -10,8 +10,10 @@ import 'data/services/api_service.dart';
 import 'data/services/beach_cache.dart';
 import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
+import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
 import 'data/services/weather_api_service.dart';
+import 'logic/providers/condition_alert_dispatcher.dart';
 import 'logic/providers/marine_provider.dart';
 import 'logic/providers/nearby_beaches_provider.dart';
 import 'logic/providers/place_search_provider.dart';
@@ -31,8 +33,33 @@ void main() async {
     BeachCache(prefs),
     MarineBatchService(httpClient),
   );
+
+  // Built here (rather than left to MarineApp's own default) so the
+  // condition-alert dispatcher below can listen to the exact same
+  // long-lived instances that end up wired into the widget tree.
+  final marineProvider = MarineProvider(MarineRepository(MarineApiService()));
+  final weatherProvider = WeatherProvider(
+    WeatherRepository(WeatherApiService()),
+  );
+
+  // Issue #221: wires real foreground notification delivery onto #87's pure
+  // "conditions turned favorable" trigger decision. Out of scope here (see
+  // the issue): true background delivery while the app isn't open, and a
+  // settings screen for the alerts-enabled toggle (it's persisted and
+  // defaults to on, but nothing in the UI flips it yet).
+  final notificationService = NotificationService();
+  await notificationService.init();
+  ConditionAlertDispatcher(
+    weatherProvider: weatherProvider,
+    marineProvider: marineProvider,
+    notificationService: notificationService,
+    prefs: prefs,
+  ).start();
+
   runApp(
     MarineApp(
+      marineProvider: marineProvider,
+      weatherProvider: weatherProvider,
       unitPreferencesProvider: UnitPreferencesProvider(prefs),
       nearbyBeachesProvider: nearbyBeachesProvider,
       placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
@@ -44,6 +71,8 @@ class MarineApp extends StatelessWidget {
   const MarineApp({
     super.key,
     this.tileProvider,
+    this.marineProvider,
+    this.weatherProvider,
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
@@ -51,6 +80,17 @@ class MarineApp extends StatelessWidget {
 
   /// Overridable so integration tests can avoid the real tile network.
   final TileProvider? tileProvider;
+
+  /// The marine-data provider to use. Null (the default for any existing
+  /// call site, e.g. the widget/integration tests) falls back to building
+  /// one from the real repository/API service here, unchanged from before
+  /// this provider became overridable (#221 — so `main()` can hand in the
+  /// same instance its `ConditionAlertDispatcher` listens to).
+  final MarineProvider? marineProvider;
+
+  /// The weather-data provider to use, with the same null-falls-back-to-the
+  /// -real-thing behavior as [marineProvider] above.
+  final WeatherProvider? weatherProvider;
 
   /// Drives the metric/imperial toggle on both Home and Search. Null (the
   /// default for any existing call site that doesn't pass one, e.g. the
@@ -75,13 +115,22 @@ class MarineApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => MarineProvider(MarineRepository(MarineApiService())),
-        ),
-        ChangeNotifierProvider(
-          create: (_) =>
-              WeatherProvider(WeatherRepository(WeatherApiService())),
-        ),
+        marineProvider != null
+            ? ChangeNotifierProvider<MarineProvider>.value(
+                value: marineProvider!,
+              )
+            : ChangeNotifierProvider<MarineProvider>(
+                create: (_) =>
+                    MarineProvider(MarineRepository(MarineApiService())),
+              ),
+        weatherProvider != null
+            ? ChangeNotifierProvider<WeatherProvider>.value(
+                value: weatherProvider!,
+              )
+            : ChangeNotifierProvider<WeatherProvider>(
+                create: (_) =>
+                    WeatherProvider(WeatherRepository(WeatherApiService())),
+              ),
       ],
       child: Consumer2<MarineProvider, WeatherProvider>(
         builder: (context, marineProvider, weatherProvider, _) => MaterialApp(
