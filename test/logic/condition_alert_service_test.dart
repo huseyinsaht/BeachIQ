@@ -2,8 +2,14 @@ import 'package:beachiq/logic/condition_alert_service.dart';
 import 'package:beachiq/logic/swim_suitability.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _good = SwimVerdict(SwimSuitabilityLevel.good, 'Calm seas — good time for a swim.');
-const _caution = SwimVerdict(SwimSuitabilityLevel.caution, 'A bit choppy — swim with care.');
+const _good = SwimVerdict(
+  SwimSuitabilityLevel.good,
+  'Calm seas — good time for a swim.',
+);
+const _caution = SwimVerdict(
+  SwimSuitabilityLevel.caution,
+  'A bit choppy — swim with care.',
+);
 const _poor = SwimVerdict(
   SwimSuitabilityLevel.poor,
   'Rough conditions — best to skip swimming today.',
@@ -71,13 +77,16 @@ void main() {
       expect(result, isFalse);
     });
 
-    test('is suppressed by the alerts-disabled toggle even on a favorable transition', () {
-      const service = ConditionAlertService(alertsEnabled: false);
+    test(
+      'is suppressed by the alerts-disabled toggle even on a favorable transition',
+      () {
+        const service = ConditionAlertService(alertsEnabled: false);
 
-      final result = service.shouldAlert(previous: _poor, current: _good);
+        final result = service.shouldAlert(previous: _poor, current: _good);
 
-      expect(result, isFalse);
-    });
+        expect(result, isFalse);
+      },
+    );
 
     test('stays off when disabled regardless of verdict transition', () {
       const service = ConditionAlertService(alertsEnabled: false);

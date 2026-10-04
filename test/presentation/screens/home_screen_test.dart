@@ -1,10 +1,12 @@
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/cloud_backdrop.dart';
+import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../helpers/builders.dart';
 import '../../helpers/pump_app.dart';
 
 void main() {
@@ -83,6 +85,160 @@ void main() {
         );
         expect(backdropIndex, greaterThanOrEqualTo(0));
         expect(safeAreaIndex, greaterThan(backdropIndex));
+      },
+    );
+  });
+
+  group('HomeScreen forecast alerts (issue #169)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    final now = DateTime(2026, 1, 1, 8, 30);
+    DateTime h(int hour) => DateTime(2026, 1, 1, hour);
+
+    testWidgets(
+      'given no upcoming wind/wave/rain/current transitions, build -> does '
+      'not render ForecastAlertList at all (no widget, no gap)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(9), windSpeed: 10, rainChancePercent: 5),
+              aWeatherHourly(time: h(10), windSpeed: 10, rainChancePercent: 5),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => now),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a wind reading that crosses the high threshold, build -> '
+      'shows a ForecastAlertList row with its icon, message and time '
+      'window',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(9), windSpeed: 10),
+              aWeatherHourly(time: h(10), windSpeed: 45), // crosses 40 km/h
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => now),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ForecastAlertList),
+            matching: find.byIcon(Icons.air),
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+        expect(find.text('09:00 - 10:00'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given both a high-severity wind crossing and a later moderate rain '
+      'crossing, build -> lists the high-severity alert before the '
+      'moderate one',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(9), windSpeed: 10, rainChancePercent: 10),
+              aWeatherHourly(
+                time: h(10),
+                windSpeed: 45, // crosses the high (40) threshold
+                rainChancePercent: 10,
+              ),
+              aWeatherHourly(time: h(11), windSpeed: 45, rainChancePercent: 10),
+              aWeatherHourly(
+                time: h(12),
+                windSpeed: 45,
+                rainChancePercent: 50, // crosses the moderate (40) threshold
+              ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => now),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+
+        final messages = tester
+            .widgetList<Text>(find.byType(Text))
+            .map((t) => t.data)
+            .where((data) => data != null)
+            .toList();
+        final windIndex = messages.indexWhere(
+          (m) => m!.contains('Wind crosses 40 km/h'),
+        );
+        final rainIndex = messages.indexWhere(
+          (m) => m!.contains('Rain chance crosses 40%'),
+        );
+        expect(windIndex, greaterThanOrEqualTo(0));
+        expect(rainIndex, greaterThanOrEqualTo(0));
+        expect(
+          windIndex,
+          lessThan(rainIndex),
+          reason:
+              'the high-severity wind alert must render before the '
+              'moderate-severity rain alert',
+        );
+      },
+    );
+
+    testWidgets(
+      'given marine data with a wave crossing, build -> includes the wave '
+      'alert alongside the weather-driven ones',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: [aWeatherHourly(time: h(9))]),
+        );
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            hourly: [
+              aSeaHourly(time: h(9), waveHeight: 0.4),
+              aSeaHourly(time: h(10), waveHeight: 1.3), // crosses 1.2m
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => now,
+          ),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(ForecastAlertList),
+            matching: find.byIcon(Icons.waves),
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Waves cross'), findsOneWidget);
       },
     );
   });

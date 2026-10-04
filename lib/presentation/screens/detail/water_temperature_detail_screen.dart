@@ -107,12 +107,9 @@ List<HourlyChartValueBand> _waterTempChartBands(UnitSystem unitSystem) {
 /// number (for chart points/bands, which need a `double`, not a formatted
 /// string).
 double _displayCelsius(double celsius, UnitSystem unitSystem) =>
-    unitSystem == UnitSystem.imperial
-    ? celsiusToFahrenheit(celsius)
-    : celsius;
+    unitSystem == UnitSystem.imperial ? celsiusToFahrenheit(celsius) : celsius;
 
-String _formatValue(double? celsius, UnitSystem unitSystem) =>
-    celsius == null
+String _formatValue(double? celsius, UnitSystem unitSystem) => celsius == null
     ? '--'
     : _displayCelsius(celsius, unitSystem).round().toString();
 
@@ -225,6 +222,8 @@ class WaterTemperatureDetailScreen extends StatelessWidget {
               ],
               nowIndex: nowIndex,
               valueBands: _waterTempChartBands(unitSystem),
+              valueFormatter: (value) => value.round().toString(),
+              unitLabel: unitSystem == UnitSystem.imperial ? '°F' : '°C',
             )
           : const SizedBox(
               key: Key('water-temperature-no-data'),

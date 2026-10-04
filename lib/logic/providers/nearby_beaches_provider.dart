@@ -146,12 +146,17 @@ class NearbyBeachesProvider extends ChangeNotifier {
     return mapOverpassToBeaches(response);
   }
 
-  Future<Map<Beach, SeaCondition?>> _fetchSeaConditions(List<Beach> beaches) async {
+  Future<Map<Beach, SeaCondition?>> _fetchSeaConditions(
+    List<Beach> beaches,
+  ) async {
     try {
-      final coordinates = [for (final beach in beaches) LatLng(beach.latitude, beach.longitude)];
+      final coordinates = [
+        for (final beach in beaches) LatLng(beach.latitude, beach.longitude),
+      ];
       final batch = await _marineBatchService.fetchBatch(coordinates);
       return {
-        for (final beach in beaches) beach: batch['${beach.latitude},${beach.longitude}'],
+        for (final beach in beaches)
+          beach: batch['${beach.latitude},${beach.longitude}'],
       };
     } catch (_) {
       // Marine data is an enhancement on top of the beach list: a failed

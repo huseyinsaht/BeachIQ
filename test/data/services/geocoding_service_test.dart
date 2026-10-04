@@ -32,15 +32,18 @@ void main() {
       expect(results.first.latitude, 38.3220);
     });
 
-    test('returns an empty list when the response has no results key', () async {
-      final client = MockClient((request) async {
-        return http.Response(json.encode({}), 200);
-      });
+    test(
+      'returns an empty list when the response has no results key',
+      () async {
+        final client = MockClient((request) async {
+          return http.Response(json.encode({}), 200);
+        });
 
-      final results = await GeocodingService(client).search('Cesme');
+        final results = await GeocodingService(client).search('Cesme');
 
-      expect(results, isEmpty);
-    });
+        expect(results, isEmpty);
+      },
+    );
 
     test('returns an empty list for a query shorter than 2 characters '
         'without making a request', () async {

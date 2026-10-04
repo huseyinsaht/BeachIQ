@@ -42,43 +42,39 @@ void main() {
       expect(find.text('35%'), findsWidgets);
     });
 
-    testWidgets(
-      'falls back to the nearest hourly entry when '
-      'currentRainChancePercent is not supplied',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            RainChanceDetailScreen(
-              hourly: [
-                aWeatherHourly(
-                  time: DateTime(2026, 1, 1, 12),
-                  rainChancePercent: 60,
-                ),
-              ],
-              now: () => DateTime(2026, 1, 1, 12, 30),
-            ),
+    testWidgets('falls back to the nearest hourly entry when '
+        'currentRainChancePercent is not supplied', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          RainChanceDetailScreen(
+            hourly: [
+              aWeatherHourly(
+                time: DateTime(2026, 1, 1, 12),
+                rainChancePercent: 60,
+              ),
+            ],
+            now: () => DateTime(2026, 1, 1, 12, 30),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('60%'), findsWidgets);
-      },
-    );
+      expect(find.text('60%'), findsWidgets);
+    });
 
-    testWidgets(
-      'shows a "--" hero value when there is no rain data at all',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            RainChanceDetailScreen(
-              hourly: const [],
-              now: () => DateTime(2026, 1, 1, 12),
-            ),
+    testWidgets('shows a "--" hero value when there is no rain data at all', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          RainChanceDetailScreen(
+            hourly: const [],
+            now: () => DateTime(2026, 1, 1, 12),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('--'), findsWidgets);
-      },
-    );
+      expect(find.text('--'), findsWidgets);
+    });
 
     testWidgets(
       'shows "No rain expected today." when no upcoming hour qualifies',
@@ -101,31 +97,27 @@ void main() {
       },
     );
 
-    testWidgets(
-      'shows the actual upcoming window in the summary',
-      (tester) async {
-        final now = DateTime(2026, 1, 1, 12);
-        await tester.pumpWidget(
-          wrap(
-            RainChanceDetailScreen(
-              hourly: [
-                aWeatherHourly(time: now, rainChancePercent: 10),
-                aWeatherHourly(
-                  time: DateTime(2026, 1, 1, 14),
-                  rainChancePercent: 55,
-                ),
-              ],
-              now: () => now,
-            ),
+    testWidgets('shows the actual upcoming window in the summary', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 1, 1, 12);
+      await tester.pumpWidget(
+        wrap(
+          RainChanceDetailScreen(
+            hourly: [
+              aWeatherHourly(time: now, rainChancePercent: 10),
+              aWeatherHourly(
+                time: DateTime(2026, 1, 1, 14),
+                rainChancePercent: 55,
+              ),
+            ],
+            now: () => now,
           ),
-        );
+        ),
+      );
 
-        expect(
-          find.text('Rain likely between 14:00 and 15:00.'),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(find.text('Rain likely between 14:00 and 15:00.'), findsOneWidget);
+    });
 
     testWidgets(
       'includes the current hour\'s own qualifying reading in the summary '
@@ -157,27 +149,26 @@ void main() {
       },
     );
 
-    testWidgets(
-      'ignores a qualifying window that is entirely before now',
-      (tester) async {
-        final now = DateTime(2026, 1, 1, 15);
-        await tester.pumpWidget(
-          wrap(
-            RainChanceDetailScreen(
-              hourly: [
-                aWeatherHourly(
-                  time: DateTime(2026, 1, 1, 9),
-                  rainChancePercent: 80,
-                ),
-              ],
-              now: () => now,
-            ),
+    testWidgets('ignores a qualifying window that is entirely before now', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 1, 1, 15);
+      await tester.pumpWidget(
+        wrap(
+          RainChanceDetailScreen(
+            hourly: [
+              aWeatherHourly(
+                time: DateTime(2026, 1, 1, 9),
+                rainChancePercent: 80,
+              ),
+            ],
+            now: () => now,
           ),
-        );
+        ),
+      );
 
-        expect(find.text('No rain expected today.'), findsOneWidget);
-      },
-    );
+      expect(find.text('No rain expected today.'), findsOneWidget);
+    });
 
     testWidgets('shows min/now/max summary labels from the hourly series', (
       tester,
@@ -240,6 +231,32 @@ void main() {
         expect(chart.thresholds, hasLength(2));
         expect(chart.thresholds[0].value, 40.0);
         expect(chart.thresholds[1].value, 70.0);
+      },
+    );
+
+    testWidgets(
+      'passes a y-axis value formatter and unit (%) to the chart (issue '
+      '#212)',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            RainChanceDetailScreen(
+              hourly: [
+                aWeatherHourly(
+                  time: DateTime(2026, 1, 1, 12),
+                  rainChancePercent: 40,
+                ),
+              ],
+              now: () => DateTime(2026, 1, 1, 12),
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '%');
+        expect(chart.valueFormatter!(40), '40');
       },
     );
 

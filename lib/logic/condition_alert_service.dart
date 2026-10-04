@@ -50,7 +50,10 @@ class ConditionAlertService {
   /// This means it never fires on every poll (good → good is a no-op), and
   /// it never fires on a downgrade (e.g. good → poor), only on the
   /// meaningful "conditions just became swimmable" transition.
-  bool shouldAlert({required SwimVerdict previous, required SwimVerdict current}) {
+  bool shouldAlert({
+    required SwimVerdict previous,
+    required SwimVerdict current,
+  }) {
     if (!alertsEnabled) return false;
 
     final becameFavorable = current.level == SwimSuitabilityLevel.good;

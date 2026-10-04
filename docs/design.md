@@ -122,7 +122,22 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
-5. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
+5. **Home: alert list** (issue #169) — not in the mockup; this extends it. Sits directly under the
+   smart suggestion pill and above the Sea section/stat grid: one row per upcoming
+   `ForecastAlert` (`lib/logic/forecast_alerts.dart`'s `buildForecastAlerts`, fed the selected
+   location's real `WeatherProvider`/`MarineProvider` hourly series), each a small type icon (wind,
+   waves, clouds, rain or current), the alert's one-line message, and a compact time-window label
+   underneath (e.g. "09:00 - 10:00"). The icon's color follows severity, not type: amber
+   (`#FFB74D`) for `moderate`, `color.warning`'s red (`#EF5350`) for `high` — the same red the Sea
+   section's away-from-shore label uses, since both mean "pay attention". Alerts are sorted most
+   severe first, with an earlier time window breaking a tie between two alerts of the same
+   severity. The whole list (`ForecastAlertList`) renders nothing — no spacer, no gap — when there
+   are no upcoming alerts, exactly like the Sea section's own "no data yet" treatment. Muted,
+   list-style rows, no card background or border, matching the rest of Home's "no tile background"
+   direction. Tapping a row does nothing yet (optional per the issue) — this is a heads-up list,
+   not a notification: pushing these as device notifications is explicitly out of scope (see the
+   follow-up note in `lib/logic/condition_alert_service.dart`).
+6. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
    extends it. Sits under the smart suggestion pill and above the stat grid: a "Sea" section label
    (small wave icon, matching the "Hourly forecast" label's styling) over a horizontally scrollable
    row of five tiles — wave height, water temperature, wave direction, current speed, current
@@ -146,11 +161,11 @@ Top to bottom:
    (land-side amenities as an anchor), not a guaranteed fact; when no geometry/amenities are
    available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
    labels and never an invented relation.
-6. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
+7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
    tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
    trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
    (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
-7. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
+8. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
    rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
@@ -218,6 +233,8 @@ the marine group.
 Reusable widgets worth extracting rather than rebuilding per-screen:
 
 - `StatTile` — icon + label + value + trend, used 4× in the stat grid.
+- `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
+  rows, sorted most severe first and rendering nothing when empty.
 - `SeaConditionsRow` — the Sea section's horizontally scrollable row of 5 tiles (wave height, water
   temperature, wave direction, current speed, current direction), in `StatTile`'s visual style but
   without its trend row.

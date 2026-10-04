@@ -55,38 +55,59 @@ void main() {
       expect(provider.error, isNull);
     });
 
-    test('sets error, and clears loading, when the repository throws', () async {
-      final provider = WeatherProvider(
-        _FakeWeatherRepository(error: Exception('Network Error: boom')),
-      );
-
-      await provider.fetchData(38.3, 26.3);
-
-      expect(provider.isLoading, false);
-      expect(provider.currentData, isNull);
-      expect(provider.error, contains('boom'));
-    });
-
     test(
-      'disposing while a fetch is in flight does not throw once that '
-      'fetch later completes',
+      'sets error, and clears loading, when the repository throws',
       () async {
-        final completer = Completer<void>();
-        final condition = WeatherCondition(
-          temperature: 27.5,
-          windSpeed: 12.0,
-          weatherCode: 1,
-        );
         final provider = WeatherProvider(
-          _FakeWeatherRepository(data: condition, whenReady: completer.future),
+          _FakeWeatherRepository(error: Exception('Network Error: boom')),
         );
 
-        final future = provider.fetchData(38.3, 26.3);
-        provider.dispose();
+        await provider.fetchData(38.3, 26.3);
 
-        completer.complete();
-        await expectLater(future, completes);
+        expect(provider.isLoading, false);
+        expect(provider.currentData, isNull);
+        expect(provider.error, contains('boom'));
       },
     );
+
+    test('disposing while a fetch is in flight does not throw once that '
+        'fetch later completes', () async {
+      final completer = Completer<void>();
+      final condition = WeatherCondition(
+        temperature: 27.5,
+        windSpeed: 12.0,
+        weatherCode: 1,
+      );
+      final provider = WeatherProvider(
+        _FakeWeatherRepository(data: condition, whenReady: completer.future),
+      );
+
+      final future = provider.fetchData(38.3, 26.3);
+      provider.dispose();
+
+      completer.complete();
+      await expectLater(future, completes);
+    });
+
+    test('lastLat/lastLon are null before the first fetch, then track the '
+        'most recent call\'s coordinates', () async {
+      final condition = WeatherCondition(
+        temperature: 27.5,
+        windSpeed: 12.0,
+        weatherCode: 1,
+      );
+      final provider = WeatherProvider(_FakeWeatherRepository(data: condition));
+
+      expect(provider.lastLat, isNull);
+      expect(provider.lastLon, isNull);
+
+      await provider.fetchData(38.3, 26.3);
+      expect(provider.lastLat, 38.3);
+      expect(provider.lastLon, 26.3);
+
+      await provider.fetchData(40.0, 29.0);
+      expect(provider.lastLat, 40.0);
+      expect(provider.lastLon, 29.0);
+    });
   });
 }

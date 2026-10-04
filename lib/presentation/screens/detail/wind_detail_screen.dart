@@ -169,6 +169,8 @@ class WindDetailScreen extends StatelessWidget {
                     '(${formatWindSpeed(highWindSpeedKmh, unitSystem)})',
               ),
             ],
+            valueFormatter: (value) => value.round().toString(),
+            unitLabel: _unitLabel(unitSystem),
           ),
           if (hasGustSeries) ...[
             const SizedBox(height: 20),
@@ -190,6 +192,8 @@ class WindDetailScreen extends StatelessWidget {
               ],
               nowIndex: nowIndex,
               height: 100,
+              valueFormatter: (value) => value.round().toString(),
+              unitLabel: _unitLabel(unitSystem),
             ),
           ],
         ],

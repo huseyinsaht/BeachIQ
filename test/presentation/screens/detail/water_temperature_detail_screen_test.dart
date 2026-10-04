@@ -89,28 +89,25 @@ void main() {
       expect(find.textContaining('Pleasant — '), findsOneWidget);
     });
 
-    testWidgets(
-      'falls back to the nearest hourly entry when '
-      'currentWaterTemperatureCelsius is not supplied',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            WaterTemperatureDetailScreen(
-              hourly: [
-                aSeaHourly(
-                  time: DateTime(2026, 1, 1, 12),
-                  seaSurfaceTemperature: 14,
-                ),
-              ],
-              now: () => DateTime(2026, 1, 1, 12, 30),
-            ),
+    testWidgets('falls back to the nearest hourly entry when '
+        'currentWaterTemperatureCelsius is not supplied', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          WaterTemperatureDetailScreen(
+            hourly: [
+              aSeaHourly(
+                time: DateTime(2026, 1, 1, 12),
+                seaSurfaceTemperature: 14,
+              ),
+            ],
+            now: () => DateTime(2026, 1, 1, 12, 30),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('14'), findsWidgets);
-        expect(find.textContaining('Cold — '), findsOneWidget);
-      },
-    );
+      expect(find.text('14'), findsWidgets);
+      expect(find.textContaining('Cold — '), findsOneWidget);
+    });
 
     testWidgets(
       'shows the "no data for this location" message when every hour is '
@@ -230,6 +227,49 @@ void main() {
       expect(find.text('15'), findsOneWidget);
       expect(find.text('27'), findsOneWidget);
     });
+
+    testWidgets(
+      'passes a y-axis value formatter and unit (°C) to the chart (issue '
+      '#212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WaterTemperatureDetailScreen(
+              hourly: [aSeaHourly(time: now, seaSurfaceTemperature: 22)],
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '°C');
+        expect(chart.valueFormatter!(22), '22');
+      },
+    );
+
+    testWidgets(
+      'given imperial units, passes a unit (°F) to the chart (issue #212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WaterTemperatureDetailScreen(
+              hourly: [aSeaHourly(time: now, seaSurfaceTemperature: 22)],
+              unitSystem: UnitSystem.imperial,
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, '°F');
+      },
+    );
 
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(

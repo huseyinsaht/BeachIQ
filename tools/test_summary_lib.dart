@@ -46,8 +46,7 @@ class ModuleSummary {
   int get total => cases.length;
   int get passed => cases.where((c) => c.status == TestStatus.passed).length;
   int get failed => cases.where((c) => c.status == TestStatus.failed).length;
-  int get skipped =>
-      cases.where((c) => c.status == TestStatus.skipped).length;
+  int get skipped => cases.where((c) => c.status == TestStatus.skipped).length;
 
   bool get isSuccess => failed == 0;
 }
@@ -75,8 +74,7 @@ class TestReport {
   int get totalTests => modules.values.fold(0, (sum, m) => sum + m.total);
   int get totalPassed => modules.values.fold(0, (sum, m) => sum + m.passed);
   int get totalFailed => modules.values.fold(0, (sum, m) => sum + m.failed);
-  int get totalSkipped =>
-      modules.values.fold(0, (sum, m) => sum + m.skipped);
+  int get totalSkipped => modules.values.fold(0, (sum, m) => sum + m.skipped);
 }
 
 /// Maps an absolute or relative test-file path to a module name.
@@ -182,7 +180,8 @@ TestReport parseReporterEvents(Iterable<String> lines) {
   final suitePaths = <int, String>{};
   final tests = <int, _TestMeta>{};
   final firstErrorMessage = <int, String>{};
-  final results = <int, String>{}; // testID -> result ("success"/"failure"/"error")
+  final results =
+      <int, String>{}; // testID -> result ("success"/"failure"/"error")
   final hidden = <int, bool>{};
   final skipped = <int, bool>{};
   bool? runSucceeded;
@@ -265,8 +264,13 @@ TestReport parseReporterEvents(Iterable<String> lines) {
     final suitePath = suitePaths[meta.suiteID] ?? '';
     final displayPath = meta.rootUrl ?? meta.url ?? suitePath;
     final effectiveLine = meta.rootUrl != null ? meta.rootLine : meta.line;
-    final moduleName = moduleForPath(suitePath.isNotEmpty ? suitePath : displayPath);
-    final module = modules.putIfAbsent(moduleName, () => ModuleSummary(moduleName));
+    final moduleName = moduleForPath(
+      suitePath.isNotEmpty ? suitePath : displayPath,
+    );
+    final module = modules.putIfAbsent(
+      moduleName,
+      () => ModuleSummary(moduleName),
+    );
 
     final result = entry.value;
     final isSkipped = skipped[testID] == true;
@@ -274,14 +278,18 @@ TestReport parseReporterEvents(Iterable<String> lines) {
         ? TestStatus.skipped
         : (result == 'success' ? TestStatus.passed : TestStatus.failed);
 
-    module.cases.add(TestCaseResult(
-      name: meta.name,
-      module: moduleName,
-      file: displayPath.isEmpty ? null : relativeTestPath(displayPath),
-      line: effectiveLine,
-      status: status,
-      failureMessage: status == TestStatus.failed ? firstErrorMessage[testID] : null,
-    ));
+    module.cases.add(
+      TestCaseResult(
+        name: meta.name,
+        module: moduleName,
+        file: displayPath.isEmpty ? null : relativeTestPath(displayPath),
+        line: effectiveLine,
+        status: status,
+        failureMessage: status == TestStatus.failed
+            ? firstErrorMessage[testID]
+            : null,
+      ),
+    );
   }
 
   return TestReport(modules, runSucceeded: runSucceeded);
@@ -302,7 +310,9 @@ String renderConsoleSummary(TestReport report) {
   }
 
   final labels = {for (final m in modules) m.name: '[${m.name}:test]'};
-  final width = labels.values.map((l) => l.length).reduce((a, b) => a > b ? a : b);
+  final width = labels.values
+      .map((l) => l.length)
+      .reduce((a, b) => a > b ? a : b);
 
   for (final module in modules) {
     final label = labels[module.name]!.padRight(width + 1);
@@ -343,9 +353,11 @@ String _xmlEscape(String input) => input
 String renderJUnitXml(TestReport report) {
   final buffer = StringBuffer();
   buffer.writeln('<?xml version="1.0" encoding="UTF-8"?>');
-  buffer.writeln('<testsuites name="BeachIQ Flutter Tests" '
-      'tests="${report.totalTests}" failures="${report.totalFailed}" '
-      'skipped="${report.totalSkipped}">');
+  buffer.writeln(
+    '<testsuites name="BeachIQ Flutter Tests" '
+    'tests="${report.totalTests}" failures="${report.totalFailed}" '
+    'skipped="${report.totalSkipped}">',
+  );
 
   for (final module in report.sortedModules) {
     buffer.writeln(
@@ -354,7 +366,8 @@ String renderJUnitXml(TestReport report) {
     );
     for (final testCase in module.cases) {
       final hasBody = testCase.status != TestStatus.passed;
-      final openTag = '    <testcase classname="${_xmlEscape(module.name)}" '
+      final openTag =
+          '    <testcase classname="${_xmlEscape(module.name)}" '
           'name="${_xmlEscape(testCase.name)}"';
       if (!hasBody) {
         buffer.writeln('$openTag/>');

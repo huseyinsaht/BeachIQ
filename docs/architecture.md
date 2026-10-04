@@ -2,10 +2,12 @@
 
 BeachIQ is a Flutter app (SDK `^3.8.1`). Both screens from `docs/design.md` are now
 implemented and wired to real data: the Home screen is a live weather/sea-conditions/
-swim-suitability dashboard with an interactive map (beach outlines and amenity markers)
-and per-metric detail screens, and the Search screen shows real nearby beaches (from
-OpenStreetMap) and real place-name search results, enriched with marine data, favorites
-and unit preferences.
+swim-suitability dashboard for a user-selected location (tapped on the map, searched
+by place name, or restored from a previous session) with an interactive map (beach
+outlines, amenity markers and an in-card place search) and a detail screen for every
+stat tile, and the Search screen shows real nearby beaches (from OpenStreetMap) and
+real place-name search results, enriched with marine data, favorites and unit
+preferences.
 
 ## Layers
 
@@ -154,10 +156,22 @@ Pure, platform-agnostic logic with no I/O:
   comment for its limitations), then classifies a current's or wave's direction of
   travel as `towardShore`/`awayFromShore`/`alongShore` relative to it (within 45° of
   the seaward/landward normal counts as away/toward; the rest is along-shore). Used by
-  the Home screen's Sea section to flag a current or wave heading out to sea.
+  the Home screen's Sea section and the Ocean Current detail screen to flag a current
+  or wave heading out to sea.
 - `adviseOnShoes` (`lib/logic/beach_gear_advisor.dart`) — advises `advised`/
   `notNeeded`/`unknown` on bringing shoes/slippers, from a beach's OSM `surface` tag.
   Framed as advice, never as a fact.
+- `uvBandFor`/`uvBandLabel`/`uvProtectionHint` (`lib/logic/uv_band.dart`) — classifies a
+  UV index reading into the five WHO/EPA bands (low 0-2, moderate 3-5, high 6-7, very
+  high 8-10, extreme 11+), with a label and a one-line sun-protection hint per band.
+  Used by the UV index detail screen.
+- `rainChanceWindows`/`rainChanceSummary` (`lib/logic/rain_windows.dart`) — groups an
+  hourly rain-chance series into contiguous windows at/above a threshold (the
+  `moderateRainChancePercent` constant from `swim_suitability.dart`, so the two never
+  disagree) and renders them as a plain-language sentence, e.g. "Rain likely between
+  14:00 and 17:00.", or "No rain expected today." when there are none. A `null` hour
+  breaks a window's continuity without ever being treated as 0%. Used by the rain
+  chance detail screen.
 - `lib/logic/unit_preferences.dart` — the `UnitSystem` enum (`metric`/`imperial`) and
   conversion/formatting helpers (`formatWaveHeight`, `formatTemperature`,
   `formatWindSpeed`, plus the raw `metersToFeet`/`celsiusToFahrenheit`/`kmhToMph`
@@ -209,11 +223,15 @@ Reusable widgets built against `docs/design.md`:
   `NearbyBeachesProvider`, the map becomes interactive: tapping it calls
   `pickLocation`, draws a 20km search-radius circle around the pick, and renders the
   resulting beaches as gold polygons/lines (capped at 40 overlays, nearest-first) via
-  `PolygonLayer`/`PolylineLayer`. At zoom >= 12 (`kAmenityMarkersMinZoom`), each
-  visible beach's amenities are drawn as `AmenityMarker` pins (hidden below that zoom
-  to avoid visual noise), with an `AmenityLegend` toggle row and a tap-to-select info
-  card showing the amenity's name/kind and distance from the pick. Includes an
-  `OsmAttribution` credit in the bottom-left corner.
+  `PolygonLayer`/`PolylineLayer`, and (via `onLocationPicked`) reports the pick up to
+  the caller. At zoom >= 12 (`kAmenityMarkersMinZoom`), each visible beach's amenities
+  are drawn as `AmenityMarker` pins (hidden below that zoom to avoid visual noise),
+  with an `AmenityLegend` toggle row and a tap-to-select info card showing the
+  amenity's name/kind and distance from the pick. When given a `PlaceSearchProvider`,
+  a search icon in the location bar expands into a live place-name search (loading/
+  empty/error/loaded); selecting a result recenters the map and reports the pick via
+  `onLocationPicked` with the place's real name, exactly as a map tap would (issue
+  #158). Includes an `OsmAttribution` credit in the bottom-left corner.
 - `AmenityMarker`/`amenityColor`/`amenityIcon`/`amenityLabel`
   (`amenity_marker.dart`) — a single colored circular pin per `AmenityKind` (orange
   cafe, blue toilets/shower/changing room, blue-grey "P" parking, teal beach club, red
@@ -230,11 +248,19 @@ Reusable widgets built against `docs/design.md`:
   each contrast-checked against WCAG AA).
 - `SeaConditionsRow` (`sea_conditions_row.dart`) — the Home screen's "Sea" section
   under the suggestion pill: wave height, water temperature, wave direction, current
-  speed and current direction, read from `MarineProvider.currentData`. When a
-  `seawardBearingDegrees` is supplied (the nearest beach's shore bearing, from
-  `wave_shore_relation.dart`), the direction tiles also show a toward/away/along-shore
-  label, with "away from shore" shown as a bold warning. Renders nothing when no sea
-  data has loaded yet; any individual missing field shows "No data".
+  speed and current direction, read from `MarineProvider.currentData`. The wave
+  height, water temperature and current speed/direction tiles each open their own
+  detail screen (`buildDetailRoute`) when tapped; only the wave-direction tile has no
+  tap target. When a `seawardBearingDegrees` is supplied (the nearest beach's shore
+  bearing, from `wave_shore_relation.dart`), the direction tiles also show a
+  toward/away/along-shore label, with "away from shore" shown as a bold warning.
+  Renders nothing when no sea data has loaded yet; any individual missing field shows
+  "No data".
+- `CloudBackdrop` (`cloud_backdrop.dart`) — a faint, deterministic (no `Random()`, no
+  animation) blurred-cloud texture painted behind the Home header with
+  `CustomPainter`, replacing the mockup's missing photographic asset. Wrapped in
+  `IgnorePointer` (never intercepts taps) and `RepaintBoundary` (isolated from the
+  scrolling content below it).
 - `BeachResultCard` (`beach_result_card.dart`) — the Search screen's result-sheet row:
   beach name/subtitle, a weather icon/temperature, a favorite-toggle heart (when a
   callback is supplied), and — once any beach info is supplied — a two-column block of
@@ -248,8 +274,10 @@ Reusable widgets built against `docs/design.md`:
   max summary row, and an explanation paragraph.
 - `HourlyMetricChart` (`hourly_metric_chart.dart`) — a reusable hourly line chart
   (`CustomPaint`-based, no charting package) for the metric detail screens: a "Now"
-  marker, optional horizontal threshold lines, an optional filled area band, and gaps
-  (never a fabricated zero) wherever an hour's value is `null`.
+  marker, optional horizontal threshold lines, an optional filled area band, optional
+  fixed colored value-range bands (`HourlyChartValueBand`, painted as full-width
+  background strips behind everything else — e.g. the UV index screen's risk bands),
+  and gaps (never a fabricated zero) wherever an hour's value is `null`.
 
 ### `lib/presentation/theme`
 
@@ -260,27 +288,36 @@ Reusable widgets built against `docs/design.md`:
 ### `lib/presentation/navigation`
 
 - `detail_routes.dart` — `buildDetailRoute(DetailMetric metric, ...)` builds the
-  `MaterialPageRoute` (named `/detail/<metric>`) for a tapped Home stat tile. Only
-  `DetailMetric.pressure` is wired to a real screen (`PressureDetailScreen`); the other
-  `DetailMetric` values (`uvIndex`, `rainChance`, `wind`, `waveHeight`,
-  `waterTemperature`, `current`) throw `UnimplementedError` until their own screens
-  land.
+  `MaterialPageRoute` (named `/detail/<metric>`) for a tapped Home/Sea-section stat
+  tile. Every `DetailMetric` value (`pressure`, `uvIndex`, `rainChance`, `wind`,
+  `waveHeight`, `waterTemperature`, `current`) is wired to its own screen. Most read
+  the `hourly` (`WeatherHourly`) series; `waveHeight`/`waterTemperature`/`current`
+  instead read `seaHourly` (`SeaCondition.hourly`, marine data); `current` additionally
+  takes `currentDirectionValue` and `seawardBearingDegrees` for its drift-out warning.
+  `unitSystem` carries the display-unit preference to every metric that has a unit.
 
 ### `lib/presentation/screens`
 
-- `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — the real dashboard: a
-  header (place name, live temperature), a condition row (description, high/low),
-  `LocationMapCard`, a tappable (non-editable) `SearchField` that pushes
-  `SearchScreen`, `SwimSuggestionPill`, the `SeaConditionsRow` (once marine data has
-  loaded), the 2×2 `StatTile` grid (wind speed, rain chance, pressure — tappable to
-  `PressureDetailScreen`, UV index — all from `WeatherProvider`), and the hourly
-  forecast row (trimmed to the next 24 entries from "now"). Shows a full-screen
-  loading spinner or error message (driven by `MarineProvider`) before the first
-  successful load; pull-to-refresh re-fetches both `MarineProvider` and
-  `WeatherProvider` without tearing down the screen. Also derives the nearest beach to
-  the fixed location (by real distance — `NearbyBeachesProvider.beaches` is in
-  Overpass element-id order, not distance order) and that beach's seaward bearing, fed
-  into `SeaConditionsRow` for its shore-relation labels.
+- `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — the real dashboard for
+  a **selected location**: a header (place name, live temperature), a condition row
+  (description, high/low), `LocationMapCard` (with its own search icon and overflow
+  menu — "Beaches" opens `SearchScreen`, "Units" the metric/imperial sheet, when a
+  `UnitPreferencesProvider` is supplied), `SwimSuggestionPill`, the `SeaConditionsRow`
+  (once marine data has loaded), the 2×2 `StatTile` grid (wind speed, rain chance,
+  pressure, UV index — each tappable to its own detail screen, all from
+  `WeatherProvider`), and the hourly forecast row (trimmed to the next 24 entries from
+  "now"). A `CloudBackdrop` sits behind the header in both the loaded and
+  loading/error layouts. The selected location starts at a fixed Çeşme default, is
+  replaced by whatever the user taps on the map or picks via its search icon, and is
+  persisted via `SharedPreferences` and restored on the next app start; every fetch
+  (weather, marine, nearby beaches) and the header/place name follow it, never a fixed
+  city once a pick has happened. Shows a full-screen loading spinner or error message
+  (driven by `MarineProvider`) before the first successful load; pull-to-refresh
+  re-fetches both `MarineProvider` and `WeatherProvider` for the selected location
+  without tearing down the screen. Also derives the nearest beach to the selected
+  location (by real distance — `NearbyBeachesProvider.beaches` is in Overpass
+  element-id order, not distance order) and that beach's seaward bearing, fed into
+  `SeaConditionsRow` for its shore-relation labels.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Filters the list by name/city substring as the
@@ -295,6 +332,41 @@ Reusable widgets built against `docs/design.md`:
   and a low-pressure threshold line, a min/max/now summary, and a rising/steady/
   falling trend (`classifyPressureTrend`, comparing "now" to 3 hours earlier). Pushed
   from `HomeScreen`'s pressure `StatTile` via `buildDetailRoute`.
+- `UvIndexDetailScreen` (`detail/uv_index_detail_screen.dart`) — the day's hourly UV
+  index as an `HourlyMetricChart` with the five `uv_band.dart` risk bands colored in
+  via `valueBands`, a "Now" marker, a min/max/now summary, and `uvProtectionHint` for
+  the current band. Pushed from the Home UV index `StatTile`.
+- `WindDetailScreen` (`detail/wind_detail_screen.dart`) — the day's hourly wind speed
+  and gusts (a second chart, shown only when at least one hour has gust data) with the
+  20/40 km/h calm/moderate/strong thresholds imported from `swim_suitability.dart`.
+  Pushed from the Home wind speed `StatTile`.
+- `RainChanceDetailScreen` (`detail/rain_chance_detail_screen.dart`) — the day's hourly
+  rain probability with the 40%/70% thresholds from `swim_suitability.dart` and a
+  plain-language summary of the day's rain window(s) from `rain_windows.dart`. Pushed
+  from the Home rain chance `StatTile`.
+- `WaveHeightDetailScreen` (`detail/wave_height_detail_screen.dart`) — the day's hourly
+  wave height (from `SeaCondition.hourly`) with the 0.6 m/1.2 m choppy/rough
+  thresholds from `swim_suitability.dart`, plus wave period and direction per hour
+  underneath. Shows "No data for this location." instead of an empty chart when the
+  whole series is null. Pushed from `SeaConditionsRow`'s wave height tile.
+- `WaterTemperatureDetailScreen` (`detail/water_temperature_detail_screen.dart`) — the
+  day's hourly sea surface temperature with four comfort bands (below 16°C cold,
+  16-20°C cool, 20-24°C pleasant, above 24°C warm) and a comfort hint; same "no data"
+  handling as the wave height screen. Pushed from `SeaConditionsRow`'s water
+  temperature tile.
+- `CurrentDetailScreen` (`detail/current_detail_screen.dart`) — the day's hourly ocean
+  current speed as a chart plus a per-hour direction arrow strip, and a prominent
+  drift-out warning banner when the current flows away from shore (via
+  `wave_shore_relation.dart`'s `classifyDirection`) at or above 2.0 km/h
+  (`driftOutWarningSpeedKmh`, from NOAA swimmer-safety guidance). With no beach
+  geometry or direction data, the status line says so instead of inventing a shore
+  relation; names Open-Meteo's ocean current grid as coarse/often empty near shore
+  when there's no data at all. Pushed from `SeaConditionsRow`'s current speed/
+  direction tiles.
+
+Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
+`lib/presentation/widgets`) and is reached only via `buildDetailRoute`
+(`lib/presentation/navigation/detail_routes.dart`).
 
 ### `lib/main.dart`
 
@@ -311,30 +383,39 @@ Reusable widgets built against `docs/design.md`:
 
 ## State flow
 
-On mount, `HomeScreen` calls `WeatherProvider.fetchData` and
-`NearbyBeachesProvider.pickLocation` for the fixed Çeşme coordinates (post-frame, to
-avoid notifying an ancestor mid-build). `WeatherProvider`/`MarineProvider` are
-`ChangeNotifier`s updated through their repository → service → Open-Meteo API chain;
-`HomeScreen` listens to both (plus `UnitPreferencesProvider` and
-`NearbyBeachesProvider`, the latter so the Sea section's shore-relation bearing
-appears once beaches resolve) and rebuilds on change. `MarineProvider.fetchData` is
-**not** called on initial load — only on pull-to-refresh — so `SwimSuggestionPill`'s
-wave-height input and `SeaConditionsRow` are typically absent until the user refreshes
-once; `MarineProvider` is otherwise used for the initial loading/error shell.
+On mount, `HomeScreen` restores a previously-picked location from `SharedPreferences`
+(falling back to the fixed Çeşme default on a first run or a restore failure), then
+calls `WeatherProvider.fetchData` and `NearbyBeachesProvider.pickLocation` for that
+selected location (post-frame, to avoid notifying an ancestor mid-build).
+`WeatherProvider`/`MarineProvider` are `ChangeNotifier`s updated through their
+repository → service → Open-Meteo API chain; `HomeScreen` listens to both (plus
+`UnitPreferencesProvider` and `NearbyBeachesProvider`, the latter so the Sea section's
+shore-relation bearing appears once beaches resolve) and rebuilds on change.
+`MarineProvider.fetchData` is **not** called on initial load — only on pull-to-refresh
+or a fresh location pick — so `SwimSuggestionPill`'s wave-height input and
+`SeaConditionsRow` are typically absent until one of those happens; `MarineProvider` is
+otherwise used for the initial loading/error shell.
 
-`NearbyBeachesProvider.pickLocation` (debounced) resolves beaches via `BeachCache` →
+Tapping the map (or picking a place via the map card's own search icon) calls
+`HomeScreen._handleLocationPicked`: it updates the selected location/place name
+immediately, re-fetches `WeatherProvider`/`MarineProvider` for the new point, and
+persists the pick via `SharedPreferences` so it survives an app restart.
+`NearbyBeachesProvider.pickLocation` (debounced) is called directly by
+`LocationMapCard`'s own tap handler and resolves beaches via `BeachCache` →
 `OverpassService` → the Overpass API, maps them with `mapOverpassToBeaches`, then
 enriches them with a single `MarineBatchService` call; it notifies `LocationMapCard`
-(which redraws the beach/amenity overlay) and, once the user opens `SearchScreen`,
-that screen too. Tapping the map calls `pickLocation` again with the tapped point.
-`PlaceSearchProvider.search` (debounced) resolves place matches via `GeocodingService`;
-selecting one on `SearchScreen` calls `NearbyBeachesProvider.pickLocation` with its
-coordinates instead. `FavoritesProvider` and `UnitPreferencesProvider` are each
-created once SharedPreferences is available and persist across restarts.
+(which redraws the beach/amenity overlay) and, once the user opens `SearchScreen`
+(via the map card's overflow menu → "Beaches"), that screen too.
+`PlaceSearchProvider.search` (debounced) resolves place matches via `GeocodingService`,
+used by both the map card's own search icon and `SearchScreen`'s "Places" section;
+selecting a result calls `NearbyBeachesProvider.pickLocation`/`onLocationPicked` with
+its coordinates instead of a raw map tap. `FavoritesProvider` and
+`UnitPreferencesProvider` are each created once SharedPreferences is available and
+persist across restarts.
 
-Tapping a detail-capable `StatTile` (currently only Pressure) pushes a route from
-`buildDetailRoute`, passing that metric's hourly series and current value from
-`WeatherProvider`'s already-loaded `WeatherCondition` — no separate fetch.
+Tapping any Home stat tile or Sea-section tile pushes a route from `buildDetailRoute`,
+passing that metric's hourly series and current value from the already-loaded
+`WeatherCondition`/`SeaCondition` — no separate fetch.
 
 ## External APIs
 
@@ -360,23 +441,38 @@ Tapping a detail-capable `StatTile` (currently only Pressure) pushes a route fro
   (`test/data/`), pure logic (`test/logic/`, including `swim_suitability_test.dart`,
   `condition_alert_service_test.dart`, `forecast_alerts_test.dart`,
   `pressure_trend_test.dart`, `wave_shore_relation_test.dart`,
-  `beach_gear_advisor_test.dart`, `unit_preferences_test.dart`), provider tests
-  (`test/logic/providers/`, including `NearbyBeachesProvider`/`PlaceSearchProvider`/
-  `FavoritesProvider`/`UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`),
-  widget tests for every presentational widget and for `SearchScreen`/
-  `PressureDetailScreen` (`test/presentation/`), plus `test/widget_test.dart` rendering
-  `HomeScreen` with a fake tile provider. API/service tests fake `http.Client` so none
-  hit the network. Shared fixtures/fakes/builders live in `test/helpers/` (see
-  `docs/testing.md` for the full conventions: layout, naming, `mocktail` usage, and
-  which edge cases are mandatory).
+  `beach_gear_advisor_test.dart`, `unit_preferences_test.dart`, `uv_band_test.dart`,
+  `rain_windows_test.dart`), provider tests (`test/logic/providers/`, including
+  `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
+  `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`), widget tests for every
+  presentational widget and for `SearchScreen` and all seven metric detail screens
+  (`test/presentation/`, including `test/presentation/screens/detail/`), plus
+  `test/widget_test.dart` rendering `HomeScreen` with a fake tile provider, and
+  `test/tools/test_summary_test.dart` (the CI test-summary tool itself, below). API/
+  service tests fake `http.Client` so none hit the network. Shared fixtures/fakes/
+  builders live in `test/helpers/` (see `docs/testing.md` for the full conventions:
+  layout, naming, `mocktail` usage, and which edge cases are mandatory).
 - `flutter test integration_test` — `integration_test/app_test.dart` boots the real
   `MarineApp` widget tree with a fake tile provider and a fixture `http.Client`
   (covering Overpass and the marine batch endpoint) and checks: the app boots with
-  `MarineProvider` clean; Home-to-Search navigation (search entry → `SearchScreen`,
-  back chevron → `HomeScreen`); and the full nearby-beaches flow (pick on boot → real
-  `BeachResultCard` fields from the fixture data). CI runs this on Linux under a
-  virtual display: `xvfb-run -a flutter test integration_test -d linux --reporter
-  expanded`.
+  `MarineProvider` clean; Home-to-Search navigation (map card overflow → "Beaches" →
+  `SearchScreen`, back chevron → `HomeScreen`); the full nearby-beaches flow (pick on
+  boot → real `BeachResultCard` fields from the fixture data); the pick-a-location flow
+  (map tap changes the data shown and survives a simulated restart); the map card's own
+  search-icon flow; and a detail-flow test per metric (tap a stat tile → its detail
+  screen → back). CI runs this on Linux under a virtual display: `xvfb-run -a flutter
+  test integration_test -d linux --reporter expanded`.
+- `tools/run_tests.sh` (used by both CI and local development) runs `flutter test
+  --coverage --concurrency=4 --reporter json` and pipes it through
+  `tools/test_summary.dart`
+  (parsing/rendering logic in `tools/test_summary_lib.dart`), which prints one `Test
+  summary: SUCCESS/FAILURE` line per module (a depth-two directory under `test/`) with
+  failure details, and writes `build/reports/junit.xml` (JUnit XML) and
+  `build/reports/summary.md`. `tools/check_coverage.sh` then parses
+  `coverage/lcov.info` and fails if total line coverage drops below the baseline in
+  `tools/coverage_baseline.txt`. CI (`analyze-and-test` job) runs both, uploads the
+  reports/coverage as workflow artifacts, and appends the summary to the job's step
+  summary.
 - A `functional-verify` GitHub Actions workflow runs each pull request's acceptance
   criteria as an additional automated check, alongside `flutter analyze`/`flutter
   test`/the integration test run.

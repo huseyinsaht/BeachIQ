@@ -32,14 +32,17 @@ final _fullyPopulatedBeach = Beach(
   hasParking: true,
   hasCafe: true,
   hasBeachResort: true,
-  geometry: [LatLng(36.90, 30.65), LatLng(36.91, 30.66)],
+  geometry: [const LatLng(36.90, 30.65), const LatLng(36.91, 30.66)],
   amenities: [
-    BeachAmenity(
+    const BeachAmenity(
       kind: AmenityKind.shower,
       position: LatLng(36.901, 30.651),
       name: 'Beach Shower',
     ),
-    BeachAmenity(kind: AmenityKind.lifeguard, position: LatLng(36.902, 30.652)),
+    const BeachAmenity(
+      kind: AmenityKind.lifeguard,
+      position: LatLng(36.902, 30.652),
+    ),
   ],
 );
 
@@ -81,134 +84,157 @@ void main() {
   Future<SharedPreferences> prefs() => SharedPreferences.getInstance();
 
   group('BeachCache.get', () {
-    test('write then read within TTL returns the cached value without hitting fetch', () async {
-      final now = DateTime(2026, 1, 1);
-      final cache = BeachCache(await prefs(), now: () => now);
+    test(
+      'write then read within TTL returns the cached value without hitting fetch',
+      () async {
+        final now = DateTime(2026, 1, 1);
+        final cache = BeachCache(await prefs(), now: () => now);
 
-      await cache.put(36.90, 30.65, [_testBeach]);
+        await cache.put(36.90, 30.65, [_testBeach]);
 
-      final result = await cache.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async {
-          fail('fetch should not be called when a fresh entry is cached');
-        },
-      );
+        final result = await cache.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async {
+            fail('fetch should not be called when a fresh entry is cached');
+          },
+        );
 
-      _expectSameBeaches(result.beaches, [_testBeach]);
-      expect(result.isStale, isFalse);
-      expect(result.isFallback, isFalse);
-    });
+        _expectSameBeaches(result.beaches, [_testBeach]);
+        expect(result.isStale, isFalse);
+        expect(result.isFallback, isFalse);
+      },
+    );
 
-    test('read after TTL expiry reports the entry as stale but still returns last known data', () async {
-      var now = DateTime(2026, 1, 1);
-      final cache = BeachCache(await prefs(), now: () => now);
+    test(
+      'read after TTL expiry reports the entry as stale but still returns last known data',
+      () async {
+        var now = DateTime(2026, 1, 1);
+        final cache = BeachCache(await prefs(), now: () => now);
 
-      await cache.put(36.90, 30.65, [_testBeach]);
+        await cache.put(36.90, 30.65, [_testBeach]);
 
-      // Advance the clock past the 7-day TTL.
-      now = now.add(const Duration(days: 8));
+        // Advance the clock past the 7-day TTL.
+        now = now.add(const Duration(days: 8));
 
-      final result = await cache.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async {
-          fail('fetch should not be called; staleness is only reported, not auto-refreshed');
-        },
-      );
+        final result = await cache.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async {
+            fail(
+              'fetch should not be called; staleness is only reported, not auto-refreshed',
+            );
+          },
+        );
 
-      _expectSameBeaches(result.beaches, [_testBeach]);
-      expect(result.isStale, isTrue);
-      expect(result.isFallback, isFalse);
-    });
+        _expectSameBeaches(result.beaches, [_testBeach]);
+        expect(result.isStale, isTrue);
+        expect(result.isFallback, isFalse);
+      },
+    );
 
-    test('nothing cached and fetch failing falls back to staticBeaches within a reasonable radius', () async {
-      final cache = BeachCache(await prefs(), now: DateTime.now);
+    test(
+      'nothing cached and fetch failing falls back to staticBeaches within a reasonable radius',
+      () async {
+        final cache = BeachCache(await prefs(), now: DateTime.now);
 
-      // Close to Konyaaltı Plajı (36.8720, 30.6480) in staticBeaches.
-      final result = await cache.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async => throw Exception('offline'),
-      );
+        // Close to Konyaaltı Plajı (36.8720, 30.6480) in staticBeaches.
+        final result = await cache.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async => throw Exception('offline'),
+        );
 
-      expect(result.isFallback, isTrue);
-      expect(result.beaches, isNotEmpty);
-      expect(result.beaches.every((b) => staticBeaches.contains(b)), isTrue);
-      expect(result.beaches.any((b) => b.name == 'Konyaaltı Plajı'), isTrue);
-    });
+        expect(result.isFallback, isTrue);
+        expect(result.beaches, isNotEmpty);
+        expect(result.beaches.every((b) => staticBeaches.contains(b)), isTrue);
+        expect(result.beaches.any((b) => b.name == 'Konyaaltı Plajı'), isTrue);
+      },
+    );
 
-    test('caches a successful fetch so a later read within TTL does not fetch again', () async {
-      final cache = BeachCache(await prefs(), now: DateTime.now);
-      var fetchCount = 0;
+    test(
+      'caches a successful fetch so a later read within TTL does not fetch again',
+      () async {
+        final cache = BeachCache(await prefs(), now: DateTime.now);
+        var fetchCount = 0;
 
-      final first = await cache.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async {
-          fetchCount++;
-          return [_testBeach];
-        },
-      );
-      final second = await cache.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async {
-          fetchCount++;
-          return [_testBeach];
-        },
-      );
+        final first = await cache.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async {
+            fetchCount++;
+            return [_testBeach];
+          },
+        );
+        final second = await cache.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async {
+            fetchCount++;
+            return [_testBeach];
+          },
+        );
 
-      expect(fetchCount, 1);
-      _expectSameBeaches(first.beaches, [_testBeach]);
-      _expectSameBeaches(second.beaches, [_testBeach]);
-    });
+        expect(fetchCount, 1);
+        _expectSameBeaches(first.beaches, [_testBeach]);
+        _expectSameBeaches(second.beaches, [_testBeach]);
+      },
+    );
   });
 
   group('BeachCache.gridKeyFor', () {
-    test('two picks within the same 0.25 degree grid cell resolve to the same cache key', () async {
-      final cache = BeachCache(await prefs());
+    test(
+      'two picks within the same 0.25 degree grid cell resolve to the same cache key',
+      () async {
+        final cache = BeachCache(await prefs());
 
-      final keyA = cache.gridKeyFor(36.70, 30.50);
-      final keyB = cache.gridKeyFor(36.80, 30.60);
+        final keyA = cache.gridKeyFor(36.70, 30.50);
+        final keyB = cache.gridKeyFor(36.80, 30.60);
 
-      expect(keyA, keyB);
-    });
+        expect(keyA, keyB);
+      },
+    );
 
-    test('picks in different grid cells resolve to different cache keys', () async {
-      final cache = BeachCache(await prefs());
+    test(
+      'picks in different grid cells resolve to different cache keys',
+      () async {
+        final cache = BeachCache(await prefs());
 
-      final keyA = cache.gridKeyFor(36.70, 30.50);
-      final keyB = cache.gridKeyFor(38.28, 26.37);
+        final keyA = cache.gridKeyFor(36.70, 30.50);
+        final keyB = cache.gridKeyFor(38.28, 26.37);
 
-      expect(keyA, isNot(keyB));
-    });
+        expect(keyA, isNot(keyB));
+      },
+    );
   });
 
   group('BeachCache persistence', () {
-    test('a cached entry survives a fresh BeachCache instance backed by the same store', () async {
-      final sharedPrefs = await prefs();
-      final firstInstance = BeachCache(sharedPrefs);
-      await firstInstance.put(36.90, 30.65, [_testBeach]);
+    test(
+      'a cached entry survives a fresh BeachCache instance backed by the same store',
+      () async {
+        final sharedPrefs = await prefs();
+        final firstInstance = BeachCache(sharedPrefs);
+        await firstInstance.put(36.90, 30.65, [_testBeach]);
 
-      // Simulate an app restart: a brand new BeachCache wrapping the same
-      // persistent SharedPreferences instance should still see the entry.
-      final secondInstance = BeachCache(sharedPrefs);
-      final result = await secondInstance.get(
-        latitude: 36.90,
-        longitude: 30.65,
-        fetch: () async {
-          fail('fetch should not be called; the entry should have persisted');
-        },
-      );
+        // Simulate an app restart: a brand new BeachCache wrapping the same
+        // persistent SharedPreferences instance should still see the entry.
+        final secondInstance = BeachCache(sharedPrefs);
+        final result = await secondInstance.get(
+          latitude: 36.90,
+          longitude: 30.65,
+          fetch: () async {
+            fail('fetch should not be called; the entry should have persisted');
+          },
+        );
 
-      _expectSameBeaches(result.beaches, [_testBeach]);
-    });
+        _expectSameBeaches(result.beaches, [_testBeach]);
+      },
+    );
   });
 
   group('BeachCache.refresh', () {
     test('overwrites the cache entry with freshly fetched data', () async {
-      var now = DateTime(2026, 1, 1);
+      final now = DateTime(2026, 1, 1);
       final cache = BeachCache(await prefs(), now: () => now);
       await cache.put(36.90, 30.65, [_testBeach]);
 
@@ -229,7 +255,8 @@ void main() {
       final result = await cache.get(
         latitude: 36.90,
         longitude: 30.65,
-        fetch: () async => fail('should not be called; the refreshed entry is fresh'),
+        fetch: () async =>
+            fail('should not be called; the refreshed entry is fresh'),
       );
       _expectSameBeaches(result.beaches, [refreshedBeach]);
       expect(result.isStale, isFalse);
@@ -310,7 +337,8 @@ void main() {
       final result = await cache.get(
         latitude: 36.90,
         longitude: 30.65,
-        fetch: () async => fail('fetch should not be called; this entry is not stale'),
+        fetch: () async =>
+            fail('fetch should not be called; this entry is not stale'),
       );
 
       expect(result.beaches.single.name, 'Old Schema Plajı');

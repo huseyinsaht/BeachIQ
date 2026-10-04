@@ -21,6 +21,9 @@ jobs:
 
       - run: flutter analyze
 
+      - name: Checkstyle (format + strict lints)
+        run: bash tools/checkstyle.sh
+
       - name: Run tests (per-module summary, JUnit XML, coverage)
         run: bash tools/run_tests.sh
 

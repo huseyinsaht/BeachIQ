@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
@@ -18,13 +19,14 @@ import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
 import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
-import 'search_screen.dart';
 import '../widgets/cloud_backdrop.dart';
+import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
 import '../widgets/sea_conditions_row.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/swim_suggestion_pill.dart';
+import 'search_screen.dart';
 
 const String _noData = 'No data';
 
@@ -222,7 +224,10 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 /// `SharedPreferences`, never a fixed city — Çeşme is only the first-run
 /// default before anything has ever been picked. [MarineProvider] drives
 /// the loading/error states (#69) and, once loaded, the [SeaConditionsRow]
-/// under the smart suggestion pill (#163).
+/// under the smart suggestion pill (#163). Between the pill and the Sea
+/// section/stat grid sits [ForecastAlertList] (#169): upcoming heads-ups
+/// built from both providers' hourly series via `buildForecastAlerts`,
+/// hidden entirely (no gap) whenever there are none.
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -282,7 +287,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// The first-run default, per docs/design.md — used only until the user
   /// has ever picked a location (on the map or via search) or one was
   /// restored from a previous session; see [_restoreSelectedLocation].
-  static final _cesmeDefault = LatLng(38.3220, 26.3260);
+  static final _cesmeDefault = const LatLng(38.3220, 26.3260);
   static const _cesmeDefaultName = 'Çeşme, İzmir';
 
   static const _prefsLatKey = 'home_selected_location_lat';
@@ -339,9 +344,14 @@ class _HomeScreenState extends State<HomeScreen> {
           _placeName = restored.displayName;
         });
       }
-      widget.weatherProvider?.fetchData(
-        _selectedLocation.latitude,
-        _selectedLocation.longitude,
+      // Fire-and-forget: this screen doesn't need to wait on the refresh
+      // before continuing, and any failure already surfaces through
+      // weatherProvider's own error state.
+      unawaited(
+        widget.weatherProvider?.fetchData(
+          _selectedLocation.latitude,
+          _selectedLocation.longitude,
+        ),
       );
       widget.nearbyBeachesProvider?.pickLocation(_selectedLocation);
     });
@@ -533,9 +543,18 @@ class _HomeScreenState extends State<HomeScreen> {
       windSpeedKmh: weatherData?.windSpeed,
       rainChancePercent: weatherData?.rainChancePercent?.round(),
     );
+    final effectiveNow = (widget.now ?? DateTime.now)();
     final hourly = _upcomingHourly(
       weatherData?.hourly ?? const [],
-      (widget.now ?? DateTime.now)(),
+      effectiveNow,
+    );
+    // #169: upcoming heads-ups for the selected location, computed fresh on
+    // every build from the same WeatherProvider/MarineProvider hourly data
+    // the stat grid and Sea section already use — never a hard-coded list.
+    final forecastAlerts = buildForecastAlerts(
+      weather: weatherData?.hourly ?? const [],
+      sea: marineProvider?.currentData?.hourly ?? const [],
+      now: effectiveNow,
     );
     return Scaffold(
       body: Stack(
@@ -648,6 +667,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),
+                    // #169: sits between the smart suggestion pill and the
+                    // Sea section/stat grid, hidden entirely (no gap) when
+                    // there are no upcoming alerts — see
+                    // ForecastAlertList's own doc comment.
+                    if (forecastAlerts.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      ForecastAlertList(alerts: forecastAlerts),
+                    ],
                     if (marineProvider?.currentData != null) ...[
                       const SizedBox(height: 20),
                       SeaConditionsRow(
