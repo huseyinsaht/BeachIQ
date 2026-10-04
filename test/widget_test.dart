@@ -325,6 +325,23 @@ SeaCondition _fakeSeaCondition() => SeaCondition(
   seaSurfaceTemperature: 22,
 );
 
+/// Like [_SequentialMarineRepository], but for [WeatherRepository] — each
+/// call gets its own [Completer], kept in [calls] in call order, so a test
+/// can resolve the initial load while leaving a later map pick's fetch
+/// pending (issue #213).
+class _SequentialWeatherRepository extends WeatherRepository {
+  _SequentialWeatherRepository() : super(WeatherApiService());
+
+  final List<Completer<WeatherCondition>> calls = [];
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) {
+    final completer = Completer<WeatherCondition>();
+    calls.add(completer);
+    return completer.future;
+  }
+}
+
 class _SucceedingMarineRepository extends MarineRepository {
   _SucceedingMarineRepository() : super(MarineApiService());
 
@@ -1620,5 +1637,256 @@ void main() {
         expect(find.text('Çeşme, İzmir'), findsNothing);
       },
     );
+  });
+
+  group('map pick staleness (issue #213)', () {
+    testWidgets(
+      'tapping the map for a new pick immediately (same frame) replaces '
+      'the old place\'s weather/sea values with a loading layout — never '
+      'showing the old values under the new place name — and the new '
+      'data replaces it once the fetches resolve',
+      (WidgetTester tester) async {
+        final weatherRepository = _SequentialWeatherRepository();
+        final marineRepository = _SequentialMarineRepository();
+        final weatherProvider = WeatherProvider(weatherRepository);
+        final marineProvider = MarineProvider(marineRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: weatherProvider,
+              marineProvider: marineProvider,
+            ),
+          ),
+        );
+        // initState's postFrameCallback fires WeatherProvider.fetchData for
+        // the Çeşme default; held open until resolved below.
+        await tester.pump();
+        expect(weatherRepository.calls, hasLength(1));
+        weatherRepository.calls[0].complete(_fakeWeatherCondition());
+
+        // MarineProvider is never auto-fetched on init (only an explicit
+        // refresh/pick triggers it) — seeding it here simulates the "old
+        // place" already having real sea data on screen, e.g. from an
+        // earlier pick this session.
+        final initialMarineFetch = marineProvider.fetchData(38.3220, 26.3260);
+        expect(marineRepository.calls, hasLength(1));
+        marineRepository.calls[0].complete(_fakeSeaCondition());
+        await initialMarineFetch;
+        await tester.pumpAndSettle();
+
+        // Sanity: the old place's values are genuinely on screen first.
+        expect(find.text('27°'), findsOneWidget);
+        expect(find.byType(SeaConditionsRow), findsOneWidget);
+        expect(find.byType(HourlyForecastItem), findsWidgets);
+
+        // Tap the map's own center — flutter_map's lat/lng <-> pixel
+        // projection round-trip makes this a genuinely different point
+        // from the Çeşme default (see location_map_card_picker_test.dart),
+        // so this is a real "different location" pick, not a refresh.
+        await tester.tap(find.byType(FlutterMap));
+        // flutter_map delays a single tap by its double-tap-to-zoom
+        // window before firing onTap.
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // The new fetches started (two more repository calls)...
+        expect(weatherRepository.calls, hasLength(2));
+        expect(marineRepository.calls, hasLength(2));
+        // ...but neither has resolved yet. Even so, in this very same
+        // frame the old place's values must already be gone, replaced by
+        // a loading layout — never shown stale under the new place name.
+        expect(find.text('27°'), findsNothing);
+        expect(find.byType(SeaConditionsRow), findsNothing);
+        expect(find.byType(HourlyForecastItem), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsWidgets);
+        // The header/map card itself is NOT torn down into the full-screen
+        // shell: "My Location" (and the rest of the chrome) stays visible,
+        // only the data sections show loading.
+        expect(find.text('My Location'), findsOneWidget);
+        expect(find.byType(LocationMapCard), findsOneWidget);
+
+        // Resolve the new location's fetches.
+        weatherRepository.calls[1].complete(
+          WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+        );
+        marineRepository.calls[1].complete(
+          SeaCondition(
+            waveHeight: 1.8,
+            waveDirection: 90,
+            wavePeriod: 5,
+            seaSurfaceTemperature: 22,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('31°'), findsOneWidget);
+        expect(find.text('27°'), findsNothing);
+        expect(find.byType(SeaConditionsRow), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'last tap wins: two overlapping picks completing out of order show '
+      "the NEWEST pick's weather and marine data, not the older one's "
+      'late-arriving result',
+      (WidgetTester tester) async {
+        final weatherRepository = _SequentialWeatherRepository();
+        final marineRepository = _SequentialMarineRepository();
+        final weatherProvider = WeatherProvider(weatherRepository);
+        final marineProvider = MarineProvider(marineRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: weatherProvider,
+              marineProvider: marineProvider,
+            ),
+          ),
+        );
+        await tester.pump();
+        weatherRepository.calls[0].complete(_fakeWeatherCondition());
+        await tester.pumpAndSettle();
+
+        // Two rapid picks for different points, call [1] (tap A) then [2]
+        // (tap B), without letting tap A's fetch resolve first.
+        unawaited(
+          marineProvider.fetchData(10, 10), // tap A: older
+        );
+        unawaited(weatherProvider.fetchData(10, 10));
+        unawaited(
+          marineProvider.fetchData(20, 20), // tap B: newer
+        );
+        unawaited(weatherProvider.fetchData(20, 20));
+        await tester.pump();
+
+        // WeatherProvider got the initial Çeşme-default fetch too (call
+        // [0]), so its "tap A"/"tap B" calls are [1]/[2]; MarineProvider
+        // is never auto-fetched on init, so its two calls are [0]/[1].
+        expect(weatherRepository.calls, hasLength(3));
+        expect(marineRepository.calls, hasLength(2));
+
+        // Resolve the NEWER request (tap B) first.
+        weatherRepository.calls[2].complete(
+          WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+        );
+        marineRepository.calls[1].complete(
+          SeaCondition(
+            waveHeight: 1.8,
+            waveDirection: 90,
+            wavePeriod: 5,
+            seaSurfaceTemperature: 22,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('31°'), findsOneWidget);
+        expect(weatherProvider.currentData!.temperature, 31);
+        expect(marineProvider.currentData!.waveHeight, 1.8);
+
+        // The OLDER request (tap A) resolving late must not overwrite
+        // tap B's already-displayed data.
+        weatherRepository.calls[1].complete(
+          WeatherCondition(temperature: 99, windSpeed: 1, weatherCode: 1),
+        );
+        marineRepository.calls[0].complete(
+          SeaCondition(
+            waveHeight: 0.1,
+            waveDirection: 1,
+            wavePeriod: 1,
+            seaSurfaceTemperature: 1,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('31°'), findsOneWidget);
+        expect(find.text('99°'), findsNothing);
+        expect(weatherProvider.currentData!.temperature, 31);
+        expect(marineProvider.currentData!.waveHeight, 1.8);
+      },
+    );
+
+    testWidgets(
+      'a fetch that fails for the newly picked location shows the error '
+      "state for that place, never the previous place's stale data",
+      (WidgetTester tester) async {
+        final weatherRepository = _SequentialWeatherRepository();
+        final weatherProvider = WeatherProvider(weatherRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              weatherProvider: weatherProvider,
+            ),
+          ),
+        );
+        await tester.pump();
+        weatherRepository.calls[0].complete(_fakeWeatherCondition());
+        await tester.pumpAndSettle();
+        expect(find.text('27°'), findsOneWidget);
+
+        // A pick for a new location whose fetch then fails.
+        unawaited(weatherProvider.fetchData(50, 50));
+        await tester.pump();
+        weatherRepository.calls[1].completeError(Exception('boom'));
+        await tester.pumpAndSettle();
+
+        // The old place's temperature must never reappear next to the
+        // failed new pick — it shows the "no data" placeholder instead.
+        expect(find.text('27°'), findsNothing);
+        expect(find.text('--°'), findsWidgets);
+        expect(weatherProvider.error, isNotNull);
+        expect(weatherProvider.currentData, isNull);
+      },
+    );
+
+    testWidgets('pull-to-refresh on the same place keeps the current values '
+        'visible while refreshing, unlike a genuine new pick', (
+      WidgetTester tester,
+    ) async {
+      final marineRepository = _SequentialMarineRepository();
+      final marineProvider = MarineProvider(marineRepository);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+
+      // Seeded at the screen's own Çeşme-default coordinates (the point
+      // HomeScreen's pull-to-refresh will itself re-fetch below), so the
+      // refresh below is genuinely a same-location one.
+      unawaited(marineProvider.fetchData(38.3220, 26.3260));
+      await tester.pump();
+      marineRepository.calls[0].complete(_fakeSeaCondition());
+      await tester.pumpAndSettle();
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+
+      // Same (lat, lon) refresh, via a real drag gesture.
+      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(marineRepository.calls, hasLength(2));
+      // Still visible while the refresh is in flight — a same-location
+      // refresh never clears the data like a new pick does.
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+
+      marineRepository.calls[1].complete(
+        SeaCondition(
+          waveHeight: 0.6,
+          waveDirection: 90,
+          wavePeriod: 5,
+          seaSurfaceTemperature: 22,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+    });
   });
 }

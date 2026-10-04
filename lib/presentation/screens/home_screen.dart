@@ -308,6 +308,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// await is still pending.
   bool _openingSearch = false;
 
+  /// True once [build] has ever seen [MarineProvider.currentData] non-null
+  /// for this screen instance. The full-screen loading/error shell (see
+  /// [build]) is only for the very first load, before anything has ever
+  /// been shown — a later map pick re-fetching for a new location must
+  /// keep the header/map card on screen (with the new place name already
+  /// visible) instead of tearing the whole screen down again (#213).
+  bool _hasLoadedOnce = false;
+
   @override
   void initState() {
     super.initState();
@@ -506,7 +514,17 @@ class _HomeScreenState extends State<HomeScreen> {
     // very refresh) back to a full-screen shell — only the *first* load
     // (no data yet) uses the full-screen loading/error states below.
     final hasData = marineProvider?.currentData != null;
-    if (marineProvider != null && marineProvider.isLoading && !hasData) {
+    // Only the very first load (nothing has ever rendered for this screen
+    // instance) uses the full-screen shell below — once real content has
+    // shown once, a later map pick re-fetching for a new location keeps
+    // the header/map card on screen instead of hiding them again (#213);
+    // see the sectional loading/error handling further down for that case.
+    final isFirstLoad = !_hasLoadedOnce;
+    if (hasData) _hasLoadedOnce = true;
+    if (marineProvider != null &&
+        marineProvider.isLoading &&
+        !hasData &&
+        isFirstLoad) {
       return _buildStatusShell(
         const Center(
           child: CircularProgressIndicator(
@@ -516,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
     final error = marineProvider?.error;
-    if (error != null && !hasData) {
+    if (error != null && !hasData && isFirstLoad) {
       return _buildStatusShell(
         Center(
           child: Padding(
@@ -530,7 +548,19 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }
-    final weatherData = widget.weatherProvider?.currentData;
+    final weatherProvider = widget.weatherProvider;
+    final weatherData = weatherProvider?.currentData;
+    // Drives the sectional loading placeholders below (hourly row, stat
+    // grid): true only while a fetch is in flight for a location whose
+    // data hasn't arrived yet — never while a same-location refresh keeps
+    // showing the previous values (#213).
+    final weatherLoading =
+        weatherProvider != null &&
+        weatherProvider.isLoading &&
+        weatherData == null;
+    // Same idea as [weatherLoading], for the Sea section below.
+    final marineLoading =
+        marineProvider != null && marineProvider.isLoading && !hasData;
     final unitSystem =
         widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
     final swimVerdict = scoreSwimSuitability(
@@ -539,7 +569,10 @@ class _HomeScreenState extends State<HomeScreen> {
       rainChancePercent: weatherData?.rainChancePercent?.round(),
     );
     final effectiveNow = (widget.now ?? DateTime.now)();
-    final hourly = _upcomingHourly(weatherData?.hourly ?? const [], effectiveNow);
+    final hourly = _upcomingHourly(
+      weatherData?.hourly ?? const [],
+      effectiveNow,
+    );
     // #169: upcoming heads-ups for the selected location, computed fresh on
     // every build from the same WeatherProvider/MarineProvider hourly data
     // the stat grid and Sea section already use — never a hard-coded list.
@@ -667,7 +700,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 16),
                       ForecastAlertList(alerts: forecastAlerts),
                     ],
-                    if (marineProvider?.currentData != null) ...[
+                    // #213: a fetch in flight for a new pick (no data for
+                    // it yet) shows a loading placeholder here instead of
+                    // either the previous pick's row or nothing at all;
+                    // once loaded (or when there's simply no
+                    // MarineProvider), this falls back to the existing
+                    // behavior unchanged.
+                    if (marineLoading) ...[
+                      const SizedBox(height: 20),
+                      _buildSectionLoading(height: 78),
+                    ] else if (marineProvider?.currentData != null) ...[
                       const SizedBox(height: 20),
                       SeaConditionsRow(
                         data: marineProvider?.currentData,
@@ -676,82 +718,91 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
-                    GridView.count(
-                      crossAxisCount: 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 2.6,
-                      children: [
-                        StatTile(
-                          icon: Icons.air,
-                          label: 'Wind speed',
-                          value: _formatWindSpeed(
-                            weatherData?.windSpeed,
-                            unitSystem,
-                          ),
-                          trendDirection: StatTrendDirection.up,
-                          trendDelta: unitSystem == UnitSystem.imperial
-                              ? '1 mph'
-                              : '2 km/h',
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.wind,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.windSpeed,
-                              unitSystem: unitSystem,
-                              now: widget.now,
+                    // #213: same loading placeholder for the stat grid
+                    // while a new pick's weather fetch is in flight, so the
+                    // old place's wind/rain/pressure/UV values are never
+                    // shown next to the new place name.
+                    if (weatherLoading)
+                      _buildSectionLoading(height: 164)
+                    else
+                      GridView.count(
+                        crossAxisCount: 2,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: 2.6,
+                        children: [
+                          StatTile(
+                            icon: Icons.air,
+                            label: 'Wind speed',
+                            value: _formatWindSpeed(
+                              weatherData?.windSpeed,
+                              unitSystem,
+                            ),
+                            trendDirection: StatTrendDirection.up,
+                            trendDelta: unitSystem == UnitSystem.imperial
+                                ? '1 mph'
+                                : '2 km/h',
+                            onTap: () => Navigator.of(context).push(
+                              buildDetailRoute(
+                                DetailMetric.wind,
+                                hourly: weatherData?.hourly ?? const [],
+                                currentValue: weatherData?.windSpeed,
+                                unitSystem: unitSystem,
+                                now: widget.now,
+                              ),
                             ),
                           ),
-                        ),
-                        StatTile(
-                          icon: Icons.water_drop_outlined,
-                          label: 'Rain chance',
-                          value: _formatPercent(weatherData?.rainChancePercent),
-                          trendDirection: StatTrendDirection.down,
-                          trendDelta: '3%',
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.rainChance,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.rainChancePercent,
-                              now: widget.now,
+                          StatTile(
+                            icon: Icons.water_drop_outlined,
+                            label: 'Rain chance',
+                            value: _formatPercent(
+                              weatherData?.rainChancePercent,
+                            ),
+                            trendDirection: StatTrendDirection.down,
+                            trendDelta: '3%',
+                            onTap: () => Navigator.of(context).push(
+                              buildDetailRoute(
+                                DetailMetric.rainChance,
+                                hourly: weatherData?.hourly ?? const [],
+                                currentValue: weatherData?.rainChancePercent,
+                                now: widget.now,
+                              ),
                             ),
                           ),
-                        ),
-                        StatTile(
-                          icon: Icons.speed,
-                          label: 'Pressure',
-                          value: _formatPressure(weatherData?.pressureHpa),
-                          trendDirection: StatTrendDirection.up,
-                          trendDelta: '1 hPa',
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.pressure,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.pressureHpa,
-                              now: widget.now,
+                          StatTile(
+                            icon: Icons.speed,
+                            label: 'Pressure',
+                            value: _formatPressure(weatherData?.pressureHpa),
+                            trendDirection: StatTrendDirection.up,
+                            trendDelta: '1 hPa',
+                            onTap: () => Navigator.of(context).push(
+                              buildDetailRoute(
+                                DetailMetric.pressure,
+                                hourly: weatherData?.hourly ?? const [],
+                                currentValue: weatherData?.pressureHpa,
+                                now: widget.now,
+                              ),
                             ),
                           ),
-                        ),
-                        StatTile(
-                          icon: Icons.wb_sunny_outlined,
-                          label: 'UV index',
-                          value: _formatUvIndex(weatherData?.uvIndex),
-                          trendDirection: StatTrendDirection.up,
-                          trendDelta: '0.5',
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.uvIndex,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.uvIndex,
-                              now: widget.now,
+                          StatTile(
+                            icon: Icons.wb_sunny_outlined,
+                            label: 'UV index',
+                            value: _formatUvIndex(weatherData?.uvIndex),
+                            trendDirection: StatTrendDirection.up,
+                            trendDelta: '0.5',
+                            onTap: () => Navigator.of(context).push(
+                              buildDetailRoute(
+                                DetailMetric.uvIndex,
+                                hourly: weatherData?.hourly ?? const [],
+                                currentValue: weatherData?.uvIndex,
+                                now: widget.now,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
                     const SizedBox(height: 20),
                     const Row(
                       children: [
@@ -770,26 +821,33 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     SizedBox(
                       height: 90,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: hourly.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 20),
-                        itemBuilder: (context, index) {
-                          final entry = hourly[index];
-                          return HourlyForecastItem(
-                            timeLabel: _hourLabel(
-                              entry.time,
-                              isFirst: index == 0,
+                      // #213: a new pick's hourly row shows a loading
+                      // placeholder instead of the previous pick's entries
+                      // (or an empty-looking row) while its weather fetch
+                      // is still in flight.
+                      child: weatherLoading
+                          ? _buildSectionLoading()
+                          : ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: hourly.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(width: 20),
+                              itemBuilder: (context, index) {
+                                final entry = hourly[index];
+                                return HourlyForecastItem(
+                                  timeLabel: _hourLabel(
+                                    entry.time,
+                                    isFirst: index == 0,
+                                  ),
+                                  icon: _iconForWeatherCode(entry.weatherCode),
+                                  temperature: _formatTemperature(
+                                    entry.temperature,
+                                    unitSystem,
+                                  ),
+                                  time: entry.time,
+                                );
+                              },
                             ),
-                            icon: _iconForWeatherCode(entry.weatherCode),
-                            temperature: _formatTemperature(
-                              entry.temperature,
-                              unitSystem,
-                            ),
-                            time: entry.time,
-                          );
-                        },
-                      ),
                     ),
                   ],
                 ),
@@ -799,6 +857,23 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  /// The same spinner [_buildStatusShell] uses for the full-screen loading
+  /// state, reused inline (#213) for a single section (the Sea row, the
+  /// stat grid or the hourly row) while its own data is loading for a
+  /// newly picked location — rather than the whole screen being replaced.
+  /// [height] bounds it to that section's usual footprint; null lets it
+  /// fill whatever space its parent already constrains (e.g. the hourly
+  /// row's own fixed-height `SizedBox`).
+  Widget _buildSectionLoading({double? height}) {
+    const spinner = Center(
+      child: CircularProgressIndicator(
+        strokeWidth: 2,
+        valueColor: AlwaysStoppedAnimation<Color>(_textPrimary),
+      ),
+    );
+    return height == null ? spinner : SizedBox(height: height, child: spinner);
   }
 
   /// Wraps [child] in the same background/[SafeArea]/cloud-backdrop shell
