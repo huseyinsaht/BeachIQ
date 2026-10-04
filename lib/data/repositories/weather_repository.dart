@@ -1,9 +1,7 @@
-
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 
-class WeatherRepository{
-
+class WeatherRepository {
   final WeatherApiService apiService;
   WeatherRepository(this.apiService);
 
@@ -23,5 +21,4 @@ class WeatherRepository{
     };
     return WeatherCondition.fromJson(merged);
   }
-
 }

@@ -219,17 +219,14 @@ class CurrentDetailScreen extends StatelessWidget {
                   valueFormatter: (value) => value.round().toString(),
                   unitLabel: _unitLabel(unitSystem),
                 )
-              : SizedBox(
-                  key: const Key('current-no-data'),
+              : const SizedBox(
+                  key: Key('current-no-data'),
                   height: 160,
                   child: Center(
                     child: Text(
                       noCurrentDataForLocationText,
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: _textSecondary,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: _textSecondary, fontSize: 13),
                     ),
                   ),
                 ),

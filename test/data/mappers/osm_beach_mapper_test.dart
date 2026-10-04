@@ -17,7 +17,12 @@ Map<String, dynamic> _rawResponse() => {
     {
       'type': 'way',
       'id': 1,
-      'tags': {'natural': 'beach', 'name': 'Beach A', 'surface': 'sand', 'fee': 'yes'},
+      'tags': {
+        'natural': 'beach',
+        'name': 'Beach A',
+        'surface': 'sand',
+        'fee': 'yes',
+      },
       'geometry': [
         {'lat': 36.0000, 'lon': 27.0000},
         {'lat': 36.0010, 'lon': 27.0000},
@@ -104,14 +109,17 @@ void main() {
       expect(mergedA.geometry!.length, 4);
     });
 
-    test('falls back to "Unnamed beach" and unknown fee/surface when tags are missing', () {
-      final beaches = mapOverpassToBeaches(_rawResponse());
-      final beachC = _byApproxLon(beaches, 27.0500);
+    test(
+      'falls back to "Unnamed beach" and unknown fee/surface when tags are missing',
+      () {
+        final beaches = mapOverpassToBeaches(_rawResponse());
+        final beachC = _byApproxLon(beaches, 27.0500);
 
-      expect(beachC.name, 'Unnamed beach');
-      expect(beachC.surface, isNull);
-      expect(beachC.fee, BeachFee.unknown);
-    });
+        expect(beachC.name, 'Unnamed beach');
+        expect(beachC.surface, isNull);
+        expect(beachC.fee, BeachFee.unknown);
+      },
+    );
 
     test('attaches amenities to the nearest beach within 150m', () {
       final beaches = mapOverpassToBeaches(_rawResponse());
@@ -127,56 +135,77 @@ void main() {
       expect(beachC.hasShower, isFalse);
     });
 
-    test('does not attach an amenity that is farther than 150m from every beach', () {
-      final beaches = mapOverpassToBeaches(_rawResponse());
+    test(
+      'does not attach an amenity that is farther than 150m from every beach',
+      () {
+        final beaches = mapOverpassToBeaches(_rawResponse());
 
-      expect(beaches.every((b) => !b.hasCafe), isTrue);
-    });
+        expect(beaches.every((b) => !b.hasCafe), isTrue);
+      },
+    );
 
-    test('fills amenities with the real position and kind of every attached amenity', () {
-      final beaches = mapOverpassToBeaches(_rawResponse());
-      final mergedA = _byApproxLon(beaches, 27.0000);
-      final beachC = _byApproxLon(beaches, 27.0500);
+    test(
+      'fills amenities with the real position and kind of every attached amenity',
+      () {
+        final beaches = mapOverpassToBeaches(_rawResponse());
+        final mergedA = _byApproxLon(beaches, 27.0000);
+        final beachC = _byApproxLon(beaches, 27.0500);
 
-      expect(mergedA.amenities, hasLength(1));
-      expect(mergedA.amenities.single.kind, AmenityKind.shower);
-      expect(mergedA.amenities.single.position.latitude, closeTo(36.00005, 1e-6));
-      expect(mergedA.amenities.single.position.longitude, closeTo(27.0000, 1e-6));
-      expect(mergedA.amenities.single.name, isNull);
+        expect(mergedA.amenities, hasLength(1));
+        expect(mergedA.amenities.single.kind, AmenityKind.shower);
+        expect(
+          mergedA.amenities.single.position.latitude,
+          closeTo(36.00005, 1e-6),
+        );
+        expect(
+          mergedA.amenities.single.position.longitude,
+          closeTo(27.0000, 1e-6),
+        );
+        expect(mergedA.amenities.single.name, isNull);
 
-      expect(beachC.amenities, hasLength(3));
-      expect(
-        beachC.amenities.map((a) => a.kind),
-        containsAll([AmenityKind.toilets, AmenityKind.lifeguard, AmenityKind.parking]),
-      );
-    });
+        expect(beachC.amenities, hasLength(3));
+        expect(
+          beachC.amenities.map((a) => a.kind),
+          containsAll([
+            AmenityKind.toilets,
+            AmenityKind.lifeguard,
+            AmenityKind.parking,
+          ]),
+        );
+      },
+    );
 
     test('fills the amenity name from the OSM name tag when present', () {
       final beaches = mapOverpassToBeaches(_rawResponse());
       final beachC = _byApproxLon(beaches, 27.0500);
 
-      final parking = beachC.amenities.firstWhere((a) => a.kind == AmenityKind.parking);
+      final parking = beachC.amenities.firstWhere(
+        (a) => a.kind == AmenityKind.parking,
+      );
       expect(parking.name, 'Beach C Car Park');
     });
 
-    test('a boolean has... flag is true if and only if a matching amenity exists', () {
-      final beaches = mapOverpassToBeaches(_rawResponse());
+    test(
+      'a boolean has... flag is true if and only if a matching amenity exists',
+      () {
+        final beaches = mapOverpassToBeaches(_rawResponse());
 
-      for (final beach in beaches) {
-        expect(
-          beach.hasShower,
-          beach.amenities.any((a) => a.kind == AmenityKind.shower),
-        );
-        expect(
-          beach.hasToilets,
-          beach.amenities.any((a) => a.kind == AmenityKind.toilets),
-        );
-        expect(
-          beach.hasParking,
-          beach.amenities.any((a) => a.kind == AmenityKind.parking),
-        );
-      }
-    });
+        for (final beach in beaches) {
+          expect(
+            beach.hasShower,
+            beach.amenities.any((a) => a.kind == AmenityKind.shower),
+          );
+          expect(
+            beach.hasToilets,
+            beach.amenities.any((a) => a.kind == AmenityKind.toilets),
+          );
+          expect(
+            beach.hasParking,
+            beach.amenities.any((a) => a.kind == AmenityKind.parking),
+          );
+        }
+      },
+    );
 
     test('a beach with no attached amenities has an empty amenities list', () {
       final beaches = mapOverpassToBeaches({
@@ -196,20 +225,23 @@ void main() {
       expect(beaches.single.amenities, isEmpty);
     });
 
-    test('ignores elements without natural=beach or a recognized amenity tag', () {
-      final beaches = mapOverpassToBeaches({
-        'elements': [
-          {
-            'type': 'node',
-            'id': 999,
-            'lat': 36.0,
-            'lon': 27.0,
-            'tags': {'shop': 'supermarket'},
-          },
-        ],
-      });
+    test(
+      'ignores elements without natural=beach or a recognized amenity tag',
+      () {
+        final beaches = mapOverpassToBeaches({
+          'elements': [
+            {
+              'type': 'node',
+              'id': 999,
+              'lat': 36.0,
+              'lon': 27.0,
+              'tags': {'shop': 'supermarket'},
+            },
+          ],
+        });
 
-      expect(beaches, isEmpty);
-    });
+        expect(beaches, isEmpty);
+      },
+    );
   });
 }

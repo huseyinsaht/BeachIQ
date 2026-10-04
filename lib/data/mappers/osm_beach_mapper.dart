@@ -101,7 +101,9 @@ class _OsmElement {
   List<LatLng> get referencePoints => geometry ?? [point];
 
   static _OsmElement? fromJson(Map<String, dynamic> json) {
-    final tags = (json['tags'] as Map?)?.cast<String, dynamic>() ?? const <String, dynamic>{};
+    final tags =
+        (json['tags'] as Map?)?.cast<String, dynamic>() ??
+        const <String, dynamic>{};
 
     List<LatLng>? geometry;
     final rawGeometry = json['geometry'];
@@ -109,7 +111,12 @@ class _OsmElement {
       final points = <LatLng>[];
       for (final entry in rawGeometry) {
         if (entry is Map && entry['lat'] != null && entry['lon'] != null) {
-          points.add(LatLng((entry['lat'] as num).toDouble(), (entry['lon'] as num).toDouble()));
+          points.add(
+            LatLng(
+              (entry['lat'] as num).toDouble(),
+              (entry['lon'] as num).toDouble(),
+            ),
+          );
         }
       }
       if (points.isNotEmpty) geometry = points;
@@ -117,11 +124,17 @@ class _OsmElement {
 
     LatLng? point;
     if (json['lat'] != null && json['lon'] != null) {
-      point = LatLng((json['lat'] as num).toDouble(), (json['lon'] as num).toDouble());
+      point = LatLng(
+        (json['lat'] as num).toDouble(),
+        (json['lon'] as num).toDouble(),
+      );
     } else if (json['center'] is Map) {
       final center = (json['center'] as Map).cast<String, dynamic>();
       if (center['lat'] != null && center['lon'] != null) {
-        point = LatLng((center['lat'] as num).toDouble(), (center['lon'] as num).toDouble());
+        point = LatLng(
+          (center['lat'] as num).toDouble(),
+          (center['lon'] as num).toDouble(),
+        );
       }
     }
     point ??= geometry != null ? _centroid(geometry) : null;
@@ -280,7 +293,10 @@ List<_BeachGroup> _mergeAdjoiningBeaches(List<_OsmElement> beachElements) {
 /// Finds the nearest beach group to [amenity] (by minimum distance to its
 /// reference points) and, if within [_amenityAttachRadiusMeters], marks the
 /// matching flag on it.
-void _attachAmenityToNearestBeach(_OsmElement amenity, List<_BeachGroup> groups) {
+void _attachAmenityToNearestBeach(
+  _OsmElement amenity,
+  List<_BeachGroup> groups,
+) {
   _BeachGroup? nearest;
   var nearestDistance = double.infinity;
 

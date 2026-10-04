@@ -28,7 +28,10 @@ class OverpassService {
     this.timeout = const Duration(seconds: 28),
     this.maxAttemptsPerEndpoint = 3,
     this.initialBackoff = const Duration(milliseconds: 500),
-  }) : assert(endpoints.isNotEmpty, 'At least one Overpass endpoint is required');
+  }) : assert(
+         endpoints.isNotEmpty,
+         'At least one Overpass endpoint is required',
+       );
 
   final http.Client _client;
 
@@ -47,7 +50,8 @@ class OverpassService {
   /// Delay before the first retry; doubles after each subsequent retry.
   final Duration initialBackoff;
 
-  static const String _userAgent = 'BeachIQ/1.0 (+https://github.com/huseyinsaht/BeachIQ)';
+  static const String _userAgent =
+      'BeachIQ/1.0 (+https://github.com/huseyinsaht/BeachIQ)';
 
   /// In-flight requests keyed by the raw Overpass query string, so
   /// concurrent identical requests share a single HTTP call.
@@ -74,19 +78,28 @@ class OverpassService {
     return future;
   }
 
-  void _forgetWhenDone(String overpassQuery, Future<Map<String, dynamic>> future) {
+  void _forgetWhenDone(
+    String overpassQuery,
+    Future<Map<String, dynamic>> future,
+  ) {
     () async {
       try {
         await future;
       } catch (_) {
         // Already surfaced to callers via the returned future.
       } finally {
+        // Not an un-awaited async call: this just drops the stored
+        // reference from the de-dup map, whose value type happens to be
+        // Future<Map<String, dynamic>>. There is nothing here to await.
+        // ignore: unawaited_futures
         _inFlight.remove(overpassQuery);
       }
     }();
   }
 
-  Future<Map<String, dynamic>> _executeWithFallback(String overpassQuery) async {
+  Future<Map<String, dynamic>> _executeWithFallback(
+    String overpassQuery,
+  ) async {
     final failures = <String>[];
 
     for (final endpoint in endpoints) {
@@ -102,7 +115,10 @@ class OverpassService {
     );
   }
 
-  Future<Map<String, dynamic>> _executeWithRetry(String endpoint, String overpassQuery) async {
+  Future<Map<String, dynamic>> _executeWithRetry(
+    String endpoint,
+    String overpassQuery,
+  ) async {
     var attempt = 0;
     var backoff = initialBackoff;
 
@@ -123,14 +139,17 @@ class OverpassService {
           backoff *= 2;
           continue;
         }
-        throw Exception('Timed out waiting for a response after $attempt attempt(s)');
+        throw Exception(
+          'Timed out waiting for a response after $attempt attempt(s)',
+        );
       }
 
       if (response.statusCode == 200) {
         return _decodeBody(response.body);
       }
 
-      final isRetryable = response.statusCode == 429 || response.statusCode == 504;
+      final isRetryable =
+          response.statusCode == 429 || response.statusCode == 504;
       if (isRetryable && attempt < maxAttemptsPerEndpoint) {
         await Future.delayed(backoff);
         backoff *= 2;
@@ -150,7 +169,9 @@ class OverpassService {
     }
 
     if (decoded is! Map<String, dynamic>) {
-      throw Exception('Unexpected Overpass response shape: expected a JSON object');
+      throw Exception(
+        'Unexpected Overpass response shape: expected a JSON object',
+      );
     }
 
     return decoded;

@@ -146,10 +146,7 @@ void main() {
           ),
           findsOneWidget,
         );
-        expect(
-          find.textContaining('Wind crosses 40 km/h'),
-          findsOneWidget,
-        );
+        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
         expect(find.text('09:00 - 10:00'), findsOneWidget);
       },
     );
@@ -162,21 +159,13 @@ void main() {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(
             hourly: [
-              aWeatherHourly(
-                time: h(9),
-                windSpeed: 10,
-                rainChancePercent: 10,
-              ),
+              aWeatherHourly(time: h(9), windSpeed: 10, rainChancePercent: 10),
               aWeatherHourly(
                 time: h(10),
                 windSpeed: 45, // crosses the high (40) threshold
                 rainChancePercent: 10,
               ),
-              aWeatherHourly(
-                time: h(11),
-                windSpeed: 45,
-                rainChancePercent: 10,
-              ),
+              aWeatherHourly(time: h(11), windSpeed: 45, rainChancePercent: 10),
               aWeatherHourly(
                 time: h(12),
                 windSpeed: 45,
@@ -209,7 +198,8 @@ void main() {
         expect(
           windIndex,
           lessThan(rainIndex),
-          reason: 'the high-severity wind alert must render before the '
+          reason:
+              'the high-severity wind alert must render before the '
               'moderate-severity rain alert',
         );
       },

@@ -17,9 +17,7 @@ void main() {
     return decoration.gradient as LinearGradient;
   }
 
-  testWidgets('renders the verdict message and a leading icon', (
-    tester,
-  ) async {
+  testWidgets('renders the verdict message and a leading icon', (tester) async {
     const verdict = SwimVerdict(
       SwimSuitabilityLevel.good,
       'Calm seas — good time for a swim.',

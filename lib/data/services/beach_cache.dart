@@ -1,12 +1,11 @@
 import 'dart:convert';
 import 'dart:math' as math;
 
-import 'package:latlong2/latlong.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/models/beach_amenity.dart';
 import 'package:beachiq/data/static_beaches.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// The outcome of a [BeachCache] lookup.
 class BeachCacheResult {
@@ -195,67 +194,68 @@ class BeachCache {
   }
 
   static Map<String, dynamic> _beachToJson(Beach beach) => {
-        'name': beach.name,
-        'city': beach.city,
-        'latitude': beach.latitude,
-        'longitude': beach.longitude,
-        'surface': beach.surface,
-        'hasLifeguard': beach.hasLifeguard,
-        'fee': beach.fee.name,
-        'hasShower': beach.hasShower,
-        'hasToilets': beach.hasToilets,
-        'hasChangingRoom': beach.hasChangingRoom,
-        'hasParking': beach.hasParking,
-        'hasCafe': beach.hasCafe,
-        'hasBeachResort': beach.hasBeachResort,
-        'geometry': beach.geometry
-            ?.map((point) => [point.latitude, point.longitude])
-            .toList(),
-        'amenities': beach.amenities.map(_amenityToJson).toList(),
-      };
+    'name': beach.name,
+    'city': beach.city,
+    'latitude': beach.latitude,
+    'longitude': beach.longitude,
+    'surface': beach.surface,
+    'hasLifeguard': beach.hasLifeguard,
+    'fee': beach.fee.name,
+    'hasShower': beach.hasShower,
+    'hasToilets': beach.hasToilets,
+    'hasChangingRoom': beach.hasChangingRoom,
+    'hasParking': beach.hasParking,
+    'hasCafe': beach.hasCafe,
+    'hasBeachResort': beach.hasBeachResort,
+    'geometry': beach.geometry
+        ?.map((point) => [point.latitude, point.longitude])
+        .toList(),
+    'amenities': beach.amenities.map(_amenityToJson).toList(),
+  };
 
   static Map<String, dynamic> _amenityToJson(BeachAmenity amenity) => {
-        'kind': amenity.kind.name,
-        'latitude': amenity.position.latitude,
-        'longitude': amenity.position.longitude,
-        'name': amenity.name,
-      };
+    'kind': amenity.kind.name,
+    'latitude': amenity.position.latitude,
+    'longitude': amenity.position.longitude,
+    'name': amenity.name,
+  };
 
   static Beach _beachFromJson(Map<String, dynamic> json) => Beach(
-        name: json['name'] as String,
-        city: json['city'] as String,
-        latitude: (json['latitude'] as num).toDouble(),
-        longitude: (json['longitude'] as num).toDouble(),
-        surface: json['surface'] as String?,
-        hasLifeguard: json['hasLifeguard'] as bool?,
-        fee: BeachFee.values.firstWhere(
-          (value) => value.name == json['fee'],
-          orElse: () => BeachFee.unknown,
-        ),
-        hasShower: json['hasShower'] as bool? ?? false,
-        hasToilets: json['hasToilets'] as bool? ?? false,
-        hasChangingRoom: json['hasChangingRoom'] as bool? ?? false,
-        hasParking: json['hasParking'] as bool? ?? false,
-        hasCafe: json['hasCafe'] as bool? ?? false,
-        hasBeachResort: json['hasBeachResort'] as bool? ?? false,
-        geometry: (json['geometry'] as List?)
-            ?.cast<List<dynamic>>()
-            .map(
-              (point) => LatLng(
-                (point[0] as num).toDouble(),
-                (point[1] as num).toDouble(),
-              ),
-            )
-            .toList(),
-        // Absent in a cache entry written before this field existed: an
-        // old entry still loads, just with no amenities (empty list).
-        amenities: (json['amenities'] as List?)
-                ?.cast<Map<String, dynamic>>()
-                .map(_amenityFromJson)
-                .whereType<BeachAmenity>()
-                .toList() ??
-            const [],
-      );
+    name: json['name'] as String,
+    city: json['city'] as String,
+    latitude: (json['latitude'] as num).toDouble(),
+    longitude: (json['longitude'] as num).toDouble(),
+    surface: json['surface'] as String?,
+    hasLifeguard: json['hasLifeguard'] as bool?,
+    fee: BeachFee.values.firstWhere(
+      (value) => value.name == json['fee'],
+      orElse: () => BeachFee.unknown,
+    ),
+    hasShower: json['hasShower'] as bool? ?? false,
+    hasToilets: json['hasToilets'] as bool? ?? false,
+    hasChangingRoom: json['hasChangingRoom'] as bool? ?? false,
+    hasParking: json['hasParking'] as bool? ?? false,
+    hasCafe: json['hasCafe'] as bool? ?? false,
+    hasBeachResort: json['hasBeachResort'] as bool? ?? false,
+    geometry: (json['geometry'] as List?)
+        ?.cast<List<dynamic>>()
+        .map(
+          (point) => LatLng(
+            (point[0] as num).toDouble(),
+            (point[1] as num).toDouble(),
+          ),
+        )
+        .toList(),
+    // Absent in a cache entry written before this field existed: an
+    // old entry still loads, just with no amenities (empty list).
+    amenities:
+        (json['amenities'] as List?)
+            ?.cast<Map<String, dynamic>>()
+            .map(_amenityFromJson)
+            .whereType<BeachAmenity>()
+            .toList() ??
+        const [],
+  );
 
   /// Returns `null` for an entry with an unrecognized `kind` instead of
   /// throwing, so one corrupt amenity does not fail the whole cache read.
@@ -287,7 +287,8 @@ class BeachCache {
     const earthRadiusKm = 6371.0;
     final dLat = _degToRad(lat2 - lat1);
     final dLon = _degToRad(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
         math.cos(_degToRad(lat1)) *
             math.cos(_degToRad(lat2)) *
             math.sin(dLon / 2) *

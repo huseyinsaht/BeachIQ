@@ -62,3 +62,19 @@ wrap-around or out-of-range value (e.g. a compass bearing), and values at a thre
   provider per file.
 - A new screen, flow, or map feature extends `integration_test/app_test.dart` in addition to its
   widget tests.
+
+## Checkstyle (format + strict lints)
+
+`tools/checkstyle.sh` is the CI gate that fails the build on formatting drift or a lint violation,
+the same way a checkstyle run fails a Java build. It runs `dart format --set-exit-if-changed` and
+`dart analyze --fatal-infos --fatal-warnings` (flutter_lints plus the extra strict rules in
+`analysis_options.yaml`) and prints one `file:line rule message` line per violation, then a
+`Checkstyle summary: SUCCESS ✅`/`FAILURE ❌` line. Run it locally before pushing:
+
+```
+bash tools/checkstyle.sh
+```
+
+It's covered by `test/tools/checkstyle_test.dart`, which points the script (via its optional
+directory argument) at tiny fixtures under `tools/test_fixtures/checkstyle/` to exercise the
+formatting-violation, lint-violation and success paths without depending on the rest of the repo.

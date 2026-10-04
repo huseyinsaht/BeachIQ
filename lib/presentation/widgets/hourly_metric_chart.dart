@@ -126,10 +126,7 @@ class HourlyMetricChart extends StatelessWidget {
   final String? unitLabel;
 
   static const _textSecondary = Color(0xFF8B93A6);
-  static const _axisLabelStyle = TextStyle(
-    color: _textSecondary,
-    fontSize: 10,
-  );
+  static const _axisLabelStyle = TextStyle(color: _textSecondary, fontSize: 10);
 
   /// At least 3 ticks (acceptance criterion) and not so many they crowd a
   /// narrow gutter; 4 is [niceTicks]'s usual sweet spot (see its own doc
@@ -187,7 +184,8 @@ class HourlyMetricChart extends StatelessWidget {
     final (yTicks, yTickLabels) = _dedupeTicks(rawYTicks, rawYTickLabels);
 
     final textScaler = MediaQuery.textScalerOf(context);
-    final gutterWidth = _maxTextWidth(yTickLabels, _axisLabelStyle, textScaler) + 8;
+    final gutterWidth =
+        _maxTextWidth(yTickLabels, _axisLabelStyle, textScaler) + 8;
     final bottomAxisHeight =
         _textHeight('Now', _axisLabelStyle, textScaler) + 6;
 
@@ -515,9 +513,14 @@ class HourlyMetricChartPainter extends CustomPainter {
 
     final thresholdPaint = Paint()..strokeWidth = 1;
     for (final threshold in thresholds) {
-      final y = rect.top + rect.height * (1 - (threshold.value - minValue) / _range);
+      final y =
+          rect.top + rect.height * (1 - (threshold.value - minValue) / _range);
       thresholdPaint.color = threshold.color;
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), thresholdPaint);
+      canvas.drawLine(
+        Offset(rect.left, y),
+        Offset(rect.right, y),
+        thresholdPaint,
+      );
     }
 
     if (bandColor != null) {
@@ -538,7 +541,11 @@ class HourlyMetricChartPainter extends CustomPainter {
   void _paintYGridLines(Canvas canvas, Rect rect) {
     for (final tick in yTicks) {
       final y = rect.top + rect.height * (1 - (tick - minValue) / _range);
-      canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), _gridLinePaint);
+      canvas.drawLine(
+        Offset(rect.left, y),
+        Offset(rect.right, y),
+        _gridLinePaint,
+      );
     }
   }
 
@@ -628,8 +635,10 @@ class HourlyMetricChartPainter extends CustomPainter {
         : bandMax;
     if (clampedMax <= clampedMin) return;
 
-    final topY = rect.top + rect.height * (1 - (clampedMax - minValue) / _range);
-    final bottomY = rect.top + rect.height * (1 - (clampedMin - minValue) / _range);
+    final topY =
+        rect.top + rect.height * (1 - (clampedMax - minValue) / _range);
+    final bottomY =
+        rect.top + rect.height * (1 - (clampedMin - minValue) / _range);
     canvas.drawRect(
       Rect.fromLTRB(rect.left, topY, rect.right, bottomY),
       Paint()..color = band.color,
