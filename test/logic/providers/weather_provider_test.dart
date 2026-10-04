@@ -223,23 +223,25 @@ void main() {
       },
     );
 
-    test('disposing while a fetch is in flight does not throw once that '
-        'fetch later completes', () async {
-      final completer = Completer<void>();
+    test('lastLat/lastLon are null before the first fetch, then track the '
+        'most recent call\'s coordinates', () async {
       final condition = WeatherCondition(
         temperature: 27.5,
         windSpeed: 12.0,
         weatherCode: 1,
       );
-      final provider = WeatherProvider(
-        _FakeWeatherRepository(data: condition, whenReady: completer.future),
-      );
+      final provider = WeatherProvider(_FakeWeatherRepository(data: condition));
 
-      final future = provider.fetchData(38.3, 26.3);
-      provider.dispose();
+      expect(provider.lastLat, isNull);
+      expect(provider.lastLon, isNull);
 
-      completer.complete();
-      await expectLater(future, completes);
+      await provider.fetchData(38.3, 26.3);
+      expect(provider.lastLat, 38.3);
+      expect(provider.lastLon, 26.3);
+
+      await provider.fetchData(40.0, 29.0);
+      expect(provider.lastLat, 40.0);
+      expect(provider.lastLon, 29.0);
     });
   });
 }

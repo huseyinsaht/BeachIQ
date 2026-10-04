@@ -1,5 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Issue #221: runtime permission on Android 13+ (API 33) to show the
+         "conditions turned favorable" local notification. The actual
+         prompt is requested once via NotificationService — see
+         lib/data/services/notification_service.dart. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="beachiq"
         android:name="${applicationName}"

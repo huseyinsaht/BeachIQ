@@ -11,10 +11,6 @@ class MarineProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _disposed = false;
-
-  /// The `(lat, lon)` most recently passed to [fetchData], used to tell a
-  /// same-location refresh (pull-to-refresh) apart from a genuinely new
-  /// pick (#213) — null before the first call.
   double? _lastLat;
   double? _lastLon;
 
@@ -28,6 +24,13 @@ class MarineProvider extends ChangeNotifier {
   SeaCondition? get currentData => _currentData;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  /// The coordinates of the most recent [fetchData] call, or `null` before
+  /// the first one. Lets a listener (e.g. `ConditionAlertDispatcher`) detect
+  /// that the selected location changed without this provider needing to
+  /// know about location selection itself.
+  double? get lastLat => _lastLat;
+  double? get lastLon => _lastLon;
 
   Future<void> fetchData(double lat, double lon) async {
     final isSameLocation = _lastLat == lat && _lastLon == lon;
