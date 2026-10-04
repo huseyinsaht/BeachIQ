@@ -332,6 +332,49 @@ void main() {
       },
     );
 
+    testWidgets(
+      'passes a y-axis value formatter and unit (km/h) to the chart (issue '
+      '#212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            CurrentDetailScreen(
+              hourly: [aSeaHourly(time: now, currentVelocity: 5)],
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, 'km/h');
+        expect(chart.valueFormatter!(12), '12');
+      },
+    );
+
+    testWidgets(
+      'given imperial units, passes a unit (mph) to the chart (issue #212)',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            CurrentDetailScreen(
+              hourly: [aSeaHourly(time: now, currentVelocity: 5)],
+              unitSystem: UnitSystem.imperial,
+              now: () => now,
+            ),
+          ),
+        );
+
+        final chart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart),
+        );
+        expect(chart.unitLabel, 'mph');
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

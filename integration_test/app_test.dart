@@ -29,6 +29,7 @@ import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
+import 'package:beachiq/presentation/widgets/hourly_metric_chart.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
@@ -356,6 +357,22 @@ void main() {
 
       expect(find.byType(PressureDetailScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
+
+      // Issue #212: the chart now draws a value scale (y-axis) and hour
+      // labels (x-axis). Those are canvas-painted (not Text widgets), so
+      // assert on the painter's own computed ticks/labels, the same way
+      // this chart's other widget tests already inspect its fields
+      // instead of rendered pixels.
+      final chartPainter = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((w) => w.painter)
+          .whereType<HourlyMetricChartPainter>()
+          .first;
+      expect(chartPainter.yTicks.length, greaterThanOrEqualTo(3));
+      expect(chartPainter.yTickLabels, isNotEmpty);
+      expect(chartPainter.yTickLabels.every((l) => l.endsWith('hPa')), isTrue);
+      expect(chartPainter.xAxisLabels, isNotEmpty);
+      expect(chartPainter.xAxisLabels.any((l) => l.text == 'Now'), isTrue);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();

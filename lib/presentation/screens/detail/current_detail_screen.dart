@@ -216,6 +216,8 @@ class CurrentDetailScreen extends StatelessWidget {
                       ),
                   ],
                   nowIndex: nowIndex,
+                  valueFormatter: (value) => value.round().toString(),
+                  unitLabel: _unitLabel(unitSystem),
                 )
               : SizedBox(
                   key: const Key('current-no-data'),

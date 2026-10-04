@@ -128,6 +128,8 @@ class RainChanceDetailScreen extends StatelessWidget {
             label: 'High ($highRainChancePercent%)',
           ),
         ],
+        valueFormatter: (value) => value.round().toString(),
+        unitLabel: '%',
       ),
       minValueLabel: _formatPercent(minPercent),
       nowValueLabel: _formatPercent(heroPercent),

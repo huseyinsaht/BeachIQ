@@ -220,6 +220,8 @@ class WaveHeightDetailScreen extends StatelessWidget {
                           '(${formatWaveHeight(highWaveHeightM, unitSystem)})',
                     ),
                   ],
+                  valueFormatter: (value) => value.toStringAsFixed(1),
+                  unitLabel: _unitLabel(unitSystem),
                 ),
                 const SizedBox(height: 20),
                 const Text(
