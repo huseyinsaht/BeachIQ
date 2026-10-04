@@ -182,8 +182,9 @@ class HourlyMetricChart extends StatelessWidget {
     // line itself is about to be drawn against (just below) — the single
     // source of truth both the line and the y-axis ticks read from, so
     // they can never diverge (issue #212's explicit requirement).
-    final yTicks = niceTicks(minValue, maxValue, _targetYTicks);
-    final yTickLabels = [for (final tick in yTicks) _tickLabel(tick)];
+    final rawYTicks = niceTicks(minValue, maxValue, _targetYTicks);
+    final rawYTickLabels = [for (final tick in rawYTicks) _tickLabel(tick)];
+    final (yTicks, yTickLabels) = _dedupeTicks(rawYTicks, rawYTickLabels);
 
     final textScaler = MediaQuery.textScalerOf(context);
     final gutterWidth = _maxTextWidth(yTickLabels, _axisLabelStyle, textScaler) + 8;
@@ -266,6 +267,34 @@ class HourlyMetricChart extends StatelessWidget {
   }
 
   static String _defaultTickFormat(double value) => value.round().toString();
+
+  /// Drops any tick whose formatted label duplicates the previously kept
+  /// one (issue #212 functional verification: a narrow value range can
+  /// make [niceTicks] pick a fractional step — e.g. `0.5` on a 2-unit
+  /// pressure range — that two formatted labels round to the same string,
+  /// such as `1010, 1010, 1011, 1012, 1012`). Two ticks sharing a label
+  /// would sit at different pixel heights but read as the same value,
+  /// which is misleading, so every label shown must be distinct. This can
+  /// leave fewer than [_targetYTicks]/3 ticks when the formatter's
+  /// precision genuinely can't distinguish that many values in the range
+  /// (e.g. a 1-degree-wide series rounded to whole degrees has only two
+  /// distinct integers to show) — an unavoidable precision limit, not a
+  /// bug, the same way a flat series already shows fewer meaningful ticks.
+  (List<double>, List<String>) _dedupeTicks(
+    List<double> ticks,
+    List<String> labels,
+  ) {
+    final dedupedTicks = <double>[];
+    final dedupedLabels = <String>[];
+    for (var i = 0; i < ticks.length; i++) {
+      if (dedupedLabels.isNotEmpty && dedupedLabels.last == labels[i]) {
+        continue;
+      }
+      dedupedTicks.add(ticks[i]);
+      dedupedLabels.add(labels[i]);
+    }
+    return (dedupedTicks, dedupedLabels);
+  }
 
   /// Picks the hour step between x-axis labels: the smallest candidate in
   /// [_xAxisStepCandidates] whose pixel spacing (at this series' density)

@@ -277,6 +277,42 @@ void main() {
       );
 
       testWidgets(
+        'given a narrow range (e.g. a quiet-pressure day) with an '
+        'integer-rounding valueFormatter, HourlyMetricChart -> never '
+        'shows two ticks with the same formatted label',
+        (tester) async {
+          await tester.pumpWidget(
+            wrap(
+              HourlyMetricChart(
+                points: [
+                  for (var i = 0; i < 5; i++)
+                    HourlyChartPoint(
+                      time: DateTime(2026, 1, 1, i),
+                      // A 2 hPa-wide range: niceTicks picks a fractional
+                      // step here (e.g. 0.5), which would otherwise round
+                      // to repeated whole-number labels.
+                      value: 1010 + (i % 3) * 1.0,
+                    ),
+                ],
+                valueFormatter: (v) => v.round().toString(),
+                unitLabel: 'hPa',
+              ),
+            ),
+          );
+
+          final painter = painterOf(tester);
+          expect(painter.yTickLabels, isNotEmpty);
+          expect(
+            painter.yTickLabels.toSet().length,
+            painter.yTickLabels.length,
+            reason: 'every shown y-axis label must be distinct: '
+                '${painter.yTickLabels}',
+          );
+          expect(painter.yTicks.length, painter.yTickLabels.length);
+        },
+      );
+
+      testWidgets(
         'given a series with null gaps, HourlyMetricChart -> ticks are '
         "based on the non-null entries' own min/max, matching the "
         'painter minValue/maxValue it also uses for the line',
