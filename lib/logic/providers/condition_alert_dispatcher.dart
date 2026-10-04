@@ -53,6 +53,15 @@ class ConditionAlertDispatcher {
   String _locationLabel;
   late bool _alertsEnabled;
 
+  /// The coordinates this dispatcher last scored a verdict for, read off
+  /// [_weatherProvider]/[_marineProvider] (see their `lastLat`/`lastLon`).
+  /// `null` until the first update. Lets [_handleUpdate] detect a location
+  /// switch by itself — e.g. from a map tap or a search pick in
+  /// `home_screen.dart` calling `fetchData` with new coordinates — without
+  /// needing that call site to also call [onLocationChanged] explicitly.
+  double? _lastSeenLat;
+  double? _lastSeenLon;
+
   /// The last verdict level seen for the currently selected location, or
   /// `null` when there isn't one yet — either nothing has been observed, or
   /// [onLocationChanged] just reset it. A `null` baseline never triggers an
@@ -111,6 +120,23 @@ class ConditionAlertDispatcher {
     // Skip mid-fetch notifications: `currentData` hasn't changed yet while
     // a fetch is in flight, so there's nothing new to score.
     if (_weatherProvider.isLoading || _marineProvider.isLoading) return;
+
+    final lat = _weatherProvider.lastLat ?? _marineProvider.lastLat;
+    final lon = _weatherProvider.lastLon ?? _marineProvider.lastLon;
+    if (lat != null &&
+        lon != null &&
+        _lastSeenLat != null &&
+        _lastSeenLon != null &&
+        (lat != _lastSeenLat || lon != _lastSeenLon)) {
+      // The providers were fetched for different coordinates than last
+      // time this dispatcher scored a verdict: the selected location
+      // changed (e.g. a map tap or a search pick), so the old baseline
+      // belongs to a different place and must not be compared against.
+      _previousLevel = null;
+      unawaited(_persistLevel(null));
+    }
+    _lastSeenLat = lat;
+    _lastSeenLon = lon;
 
     final verdict = scoreSwimSuitability(
       waveHeightM: _marineProvider.currentData?.waveHeight,

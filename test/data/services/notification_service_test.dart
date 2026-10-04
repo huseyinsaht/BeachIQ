@@ -75,9 +75,7 @@ void main() {
       test(
         'given the permission is denied, init -> permissionGranted is false',
         () async {
-          final plugin = FakeLocalNotificationsPlugin(
-            permissionGranted: false,
-          );
+          final plugin = FakeLocalNotificationsPlugin(permissionGranted: false);
           final service = NotificationService(plugin: plugin);
 
           await service.init();
@@ -106,9 +104,7 @@ void main() {
       test(
         'given permission was denied, show -> never calls the plugin (no crash)',
         () async {
-          final plugin = FakeLocalNotificationsPlugin(
-            permissionGranted: false,
-          );
+          final plugin = FakeLocalNotificationsPlugin(permissionGranted: false);
           final service = NotificationService(plugin: plugin);
           await service.init();
 
@@ -122,9 +118,7 @@ void main() {
         'given show is called before init, show -> initializes first and still '
         'respects a denied permission',
         () async {
-          final plugin = FakeLocalNotificationsPlugin(
-            permissionGranted: false,
-          );
+          final plugin = FakeLocalNotificationsPlugin(permissionGranted: false);
           final service = NotificationService(plugin: plugin);
 
           await service.show(title: 'Good swim conditions', body: 'Calm seas.');

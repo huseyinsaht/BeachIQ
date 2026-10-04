@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:http/http.dart' as http;
@@ -47,8 +49,13 @@ void main() async {
   // the issue): true background delivery while the app isn't open, and a
   // settings screen for the alerts-enabled toggle (it's persisted and
   // defaults to on, but nothing in the UI flips it yet).
+  // Not awaited: `NotificationService.show` already lazily calls `init()`
+  // if it hasn't run yet, so blocking app startup on the permission prompt
+  // (or letting a plugin exception there stop the app from launching) is
+  // unnecessary. Kicking it off here just means the permission prompt
+  // likely appears sooner rather than on the first alert.
   final notificationService = NotificationService();
-  await notificationService.init();
+  unawaited(notificationService.init());
   ConditionAlertDispatcher(
     weatherProvider: weatherProvider,
     marineProvider: marineProvider,

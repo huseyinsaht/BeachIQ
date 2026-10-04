@@ -35,8 +35,7 @@ class _ScriptedWeatherRepository extends WeatherRepository {
   WeatherCondition data;
 
   @override
-  Future<WeatherCondition> getWeatherData(double lat, double lon) async =>
-      data;
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async => data;
 }
 
 /// A [LocalNotificationsPlugin] that records every [show] call instead of
@@ -83,7 +82,9 @@ void main() {
   /// Builds a dispatcher wired to the (already-constructed) providers
   /// above and starts it listening, with alerts enabled unless [enabled]
   /// says otherwise.
-  Future<ConditionAlertDispatcher> buildDispatcher({bool enabled = true}) async {
+  Future<ConditionAlertDispatcher> buildDispatcher({
+    bool enabled = true,
+  }) async {
     SharedPreferences.setMockInitialValues({
       if (!enabled) alertsEnabledPrefsKey: false,
     });
@@ -98,15 +99,20 @@ void main() {
     return dispatcher;
   }
 
-  /// Polls both providers with a (fixed, irrelevant) coordinate, after
-  /// pointing the scripted repositories at new data — simulating one
-  /// foreground data refresh.
-  Future<void> poll(SeaCondition sea, WeatherCondition weather) async {
+  /// Polls both providers at [lat]/[lon] (default a fixed, irrelevant
+  /// coordinate), after pointing the scripted repositories at new data —
+  /// simulating one foreground data refresh.
+  Future<void> poll(
+    SeaCondition sea,
+    WeatherCondition weather, {
+    double lat = 0,
+    double lon = 0,
+  }) async {
     marineRepository.data = sea;
     weatherRepository.data = weather;
     await Future.wait([
-      marineProvider.fetchData(0, 0),
-      weatherProvider.fetchData(0, 0),
+      marineProvider.fetchData(lat, lon),
+      weatherProvider.fetchData(lat, lon),
     ]);
     // ConditionAlertDispatcher fires-and-forgets NotificationService.show
     // (itself async: it may lazily initialize first) from its listener
@@ -128,20 +134,17 @@ void main() {
 
   group('ConditionAlertDispatcher', () {
     group('transition to good', () {
-      test(
-        'given the verdict transitions from poor to good, polling -> shows '
-        'exactly one notification',
-        () async {
-          await buildDispatcher();
+      test('given the verdict transitions from poor to good, polling -> shows '
+          'exactly one notification', () async {
+        await buildDispatcher();
 
-          await poll(_poorSea, _poorWeather);
-          expect(notificationPlugin.calls, isEmpty);
+        await poll(_poorSea, _poorWeather);
+        expect(notificationPlugin.calls, isEmpty);
 
-          await poll(_goodSea, _goodWeather);
+        await poll(_goodSea, _goodWeather);
 
-          expect(notificationPlugin.calls, hasLength(1));
-        },
-      );
+        expect(notificationPlugin.calls, hasLength(1));
+      });
 
       test(
         'given the verdict stays good across repeated polls, polling -> never '
@@ -174,18 +177,15 @@ void main() {
     });
 
     group('alerts disabled', () {
-      test(
-        'given alerts_enabled is false, a poor-to-good transition -> never '
-        'fires regardless of the verdict transition',
-        () async {
-          await buildDispatcher(enabled: false);
+      test('given alerts_enabled is false, a poor-to-good transition -> never '
+          'fires regardless of the verdict transition', () async {
+        await buildDispatcher(enabled: false);
 
-          await poll(_poorSea, _poorWeather);
-          await poll(_goodSea, _goodWeather);
+        await poll(_poorSea, _poorWeather);
+        await poll(_goodSea, _goodWeather);
 
-          expect(notificationPlugin.calls, isEmpty);
-        },
-      );
+        expect(notificationPlugin.calls, isEmpty);
+      });
     });
 
     group('location switch', () {
@@ -211,6 +211,43 @@ void main() {
           expect(notificationPlugin.calls, hasLength(1));
         },
       );
+    });
+
+    group('automatic location change detection', () {
+      test('given the providers are polled at new coordinates, without '
+          'onLocationChanged ever being called -> resets the baseline so the '
+          'new location\'s first poll never fires purely from switching, even '
+          'when it is already good', () async {
+        await buildDispatcher();
+
+        // Establish a "poor" baseline for location A (lat/lon 38.3/26.3).
+        await poll(_poorSea, _poorWeather, lat: 38.3, lon: 26.3);
+
+        // Switch to location B (different coordinates) via the same path
+        // home_screen.dart uses (fetchData with new coordinates) — no
+        // explicit onLocationChanged call. B's first poll happens to be
+        // good: must not fire, since there is no real "previous" for B.
+        await poll(_goodSea, _goodWeather, lat: 40.0, lon: 29.0);
+        expect(notificationPlugin.calls, isEmpty);
+
+        // A genuine transition on B does fire.
+        await poll(_poorSea, _poorWeather, lat: 40.0, lon: 29.0);
+        await poll(_goodSea, _goodWeather, lat: 40.0, lon: 29.0);
+        expect(notificationPlugin.calls, hasLength(1));
+      });
+
+      test('given repeated polls stay at the same coordinates -> never resets '
+          'the baseline purely from polling (duplicate suppression keeps '
+          'working)', () async {
+        await buildDispatcher();
+
+        await poll(_poorSea, _poorWeather, lat: 38.3, lon: 26.3);
+        await poll(_goodSea, _goodWeather, lat: 38.3, lon: 26.3);
+        expect(notificationPlugin.calls, hasLength(1));
+
+        await poll(_goodSea, _goodWeather, lat: 38.3, lon: 26.3);
+        expect(notificationPlugin.calls, hasLength(1));
+      });
     });
 
     group('persistence', () {
