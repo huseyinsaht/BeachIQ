@@ -39,7 +39,10 @@ void main() {
     });
 
     test('stores the OSM-derived fields when provided', () {
-      final geometry = [const LatLng(38.28, 26.37), const LatLng(38.281, 26.371)];
+      final geometry = [
+        const LatLng(38.28, 26.37),
+        const LatLng(38.281, 26.371),
+      ];
 
       final beach = Beach(
         name: 'Alaçatı',

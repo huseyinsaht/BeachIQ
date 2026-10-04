@@ -63,13 +63,16 @@ void main() {
       expect(provider.unitSystem, UnitSystem.metric);
     });
 
-    test('a value persisted by one instance is read by a new instance', () async {
-      final preferences = await prefs();
-      final first = UnitPreferencesProvider(preferences);
-      await first.toggle();
+    test(
+      'a value persisted by one instance is read by a new instance',
+      () async {
+        final preferences = await prefs();
+        final first = UnitPreferencesProvider(preferences);
+        await first.toggle();
 
-      final second = UnitPreferencesProvider(preferences);
-      expect(second.unitSystem, UnitSystem.imperial);
-    });
+        final second = UnitPreferencesProvider(preferences);
+        expect(second.unitSystem, UnitSystem.imperial);
+      },
+    );
   });
 }

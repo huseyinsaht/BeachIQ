@@ -11,7 +11,8 @@ import '../models/place.dart';
 class GeocodingService {
   GeocodingService(this._client, {this.timeout = const Duration(seconds: 10)});
 
-  static const String _baseUrl = 'https://geocoding-api.open-meteo.com/v1/search';
+  static const String _baseUrl =
+      'https://geocoding-api.open-meteo.com/v1/search';
 
   /// A query shorter than this is treated the same as an empty query (no
   /// request sent, empty result), matching a typical "start typing" UX and

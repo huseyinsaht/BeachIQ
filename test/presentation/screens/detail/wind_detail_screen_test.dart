@@ -63,21 +63,20 @@ void main() {
       },
     );
 
-    testWidgets(
-      'shows a "--" hero value when there is no wind data at all',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            WindDetailScreen(
-              hourly: const [],
-              now: () => DateTime(2026, 1, 1, 12),
-            ),
+    testWidgets('shows a "--" hero value when there is no wind data at all', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          WindDetailScreen(
+            hourly: const [],
+            now: () => DateTime(2026, 1, 1, 12),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('--'), findsWidgets);
-      },
-    );
+      expect(find.text('--'), findsWidgets);
+    });
 
     testWidgets('shows a "Calm" status below the moderate threshold', (
       tester,
@@ -95,22 +94,21 @@ void main() {
       expect(find.textContaining('Calm — '), findsOneWidget);
     });
 
-    testWidgets(
-      'shows a "Moderate" status between the two thresholds',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            WindDetailScreen(
-              hourly: const [],
-              currentWindSpeedKmh: 25,
-              now: () => DateTime(2026, 1, 1, 12),
-            ),
+    testWidgets('shows a "Moderate" status between the two thresholds', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          WindDetailScreen(
+            hourly: const [],
+            currentWindSpeedKmh: 25,
+            now: () => DateTime(2026, 1, 1, 12),
           ),
-        );
+        ),
+      );
 
-        expect(find.textContaining('Moderate — '), findsOneWidget);
-      },
-    );
+      expect(find.textContaining('Moderate — '), findsOneWidget);
+    });
 
     testWidgets('shows a "Strong" status above the high threshold', (
       tester,
@@ -154,10 +152,7 @@ void main() {
           wrap(
             WindDetailScreen(
               hourly: [
-                aWeatherHourly(
-                  time: DateTime(2026, 1, 1, 12),
-                  windSpeed: 10,
-                ),
+                aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 10),
                 aWeatherHourly(time: DateTime(2026, 1, 1, 13), windSpeed: null),
                 aWeatherHourly(time: now, windSpeed: 30),
               ],
@@ -206,24 +201,23 @@ void main() {
       },
     );
 
-    testWidgets(
-      'omits the gusts chart entirely when no hour has gust data',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            WindDetailScreen(
-              hourly: [
-                aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 10),
-              ],
-              now: () => DateTime(2026, 1, 1, 12),
-            ),
+    testWidgets('omits the gusts chart entirely when no hour has gust data', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          WindDetailScreen(
+            hourly: [
+              aWeatherHourly(time: DateTime(2026, 1, 1, 12), windSpeed: 10),
+            ],
+            now: () => DateTime(2026, 1, 1, 12),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('Gusts'), findsNothing);
-        expect(find.byKey(const Key('wind-gusts-chart')), findsNothing);
-      },
-    );
+      expect(find.text('Gusts'), findsNothing);
+      expect(find.byKey(const Key('wind-gusts-chart')), findsNothing);
+    });
 
     testWidgets(
       'passes a y-axis value formatter and unit (km/h) to both charts '
@@ -233,9 +227,7 @@ void main() {
         await tester.pumpWidget(
           wrap(
             WindDetailScreen(
-              hourly: [
-                aWeatherHourly(time: now, windSpeed: 10, windGusts: 20),
-              ],
+              hourly: [aWeatherHourly(time: now, windSpeed: 10, windGusts: 20)],
               now: () => now,
             ),
           ),

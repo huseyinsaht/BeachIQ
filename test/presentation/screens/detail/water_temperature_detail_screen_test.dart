@@ -89,28 +89,25 @@ void main() {
       expect(find.textContaining('Pleasant — '), findsOneWidget);
     });
 
-    testWidgets(
-      'falls back to the nearest hourly entry when '
-      'currentWaterTemperatureCelsius is not supplied',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            WaterTemperatureDetailScreen(
-              hourly: [
-                aSeaHourly(
-                  time: DateTime(2026, 1, 1, 12),
-                  seaSurfaceTemperature: 14,
-                ),
-              ],
-              now: () => DateTime(2026, 1, 1, 12, 30),
-            ),
+    testWidgets('falls back to the nearest hourly entry when '
+        'currentWaterTemperatureCelsius is not supplied', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          WaterTemperatureDetailScreen(
+            hourly: [
+              aSeaHourly(
+                time: DateTime(2026, 1, 1, 12),
+                seaSurfaceTemperature: 14,
+              ),
+            ],
+            now: () => DateTime(2026, 1, 1, 12, 30),
           ),
-        );
+        ),
+      );
 
-        expect(find.text('14'), findsWidgets);
-        expect(find.textContaining('Cold — '), findsOneWidget);
-      },
-    );
+      expect(find.text('14'), findsWidgets);
+      expect(find.textContaining('Cold — '), findsOneWidget);
+    });
 
     testWidgets(
       'shows the "no data for this location" message when every hour is '

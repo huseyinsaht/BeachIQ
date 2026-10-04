@@ -88,21 +88,24 @@ void main() {
       expect(provider.error, isNull);
     });
 
-    test('resolves to an explicit empty state when there are no results', () async {
-      final client = _FakeClient((request) async {
-        return http.Response(_resultsFixture([]), 200);
-      });
-      final provider = PlaceSearchProvider(
-        GeocodingService(client),
-        debounceDuration: _debounce,
-      );
+    test(
+      'resolves to an explicit empty state when there are no results',
+      () async {
+        final client = _FakeClient((request) async {
+          return http.Response(_resultsFixture([]), 200);
+        });
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: _debounce,
+        );
 
-      provider.search('Nowhereville');
-      await Future.delayed(_settle);
+        provider.search('Nowhereville');
+        await Future.delayed(_settle);
 
-      expect(provider.status, PlaceSearchStatus.empty);
-      expect(provider.results, isEmpty);
-    });
+        expect(provider.status, PlaceSearchStatus.empty);
+        expect(provider.results, isEmpty);
+      },
+    );
 
     test('resolves to an error state on failure, never throwing', () async {
       final client = _FakeClient((request) async {
@@ -121,30 +124,33 @@ void main() {
       expect(provider.results, isEmpty);
     });
 
-    test('a blank query clears results immediately without a network call', () async {
-      final client = _FakeClient((request) async {
-        return http.Response(
-          _resultsFixture([
-            {'name': 'Cesme', 'latitude': 38.32, 'longitude': 26.33},
-          ]),
-          200,
+    test(
+      'a blank query clears results immediately without a network call',
+      () async {
+        final client = _FakeClient((request) async {
+          return http.Response(
+            _resultsFixture([
+              {'name': 'Cesme', 'latitude': 38.32, 'longitude': 26.33},
+            ]),
+            200,
+          );
+        });
+        final provider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: _debounce,
         );
-      });
-      final provider = PlaceSearchProvider(
-        GeocodingService(client),
-        debounceDuration: _debounce,
-      );
 
-      provider.search('Cesme');
-      await Future.delayed(_settle);
-      expect(provider.results, hasLength(1));
+        provider.search('Cesme');
+        await Future.delayed(_settle);
+        expect(provider.results, hasLength(1));
 
-      provider.search('   ');
+        provider.search('   ');
 
-      expect(provider.status, PlaceSearchStatus.idle);
-      expect(provider.results, isEmpty);
-      expect(client.callCount, 1);
-    });
+        expect(provider.status, PlaceSearchStatus.idle);
+        expect(provider.results, isEmpty);
+        expect(client.callCount, 1);
+      },
+    );
 
     test('an earlier search that resolves after a later one does not '
         'overwrite its result', () async {
