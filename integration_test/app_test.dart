@@ -28,6 +28,7 @@ import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
+import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
@@ -905,6 +906,58 @@ void main() {
         ),
         findsOneWidget,
       );
+    },
+  );
+
+  testWidgets(
+    'Forecast alert list flow (#169): a real wind crossing from '
+    "WeatherProvider's hourly series renders as a visible alert row "
+    'between the smart suggestion pill and the stat grid, with no real '
+    'network involved (WeatherProvider/MarineProvider are faked via '
+    'test/helpers/pump_app.dart, the same fakes the other Home flows '
+    'above use)',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 10,
+          weatherCode: 1,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 9),
+              temperature: 26,
+              weatherCode: 1,
+              windSpeed: 10,
+            ),
+            WeatherHourly(
+              // Crosses the 40 km/h "high" threshold -> a high-severity
+              // wind alert from 09:00 to 10:00.
+              time: DateTime(2026, 1, 1, 10),
+              temperature: 26,
+              weatherCode: 1,
+              windSpeed: 45,
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 8, 30),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForecastAlertList), findsOneWidget);
+      expect(
+        find.textContaining('Wind crosses 40 km/h'),
+        findsOneWidget,
+      );
+      expect(find.text('09:00 - 10:00'), findsOneWidget);
     },
   );
 
