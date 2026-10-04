@@ -86,13 +86,21 @@ for nearby beaches; `lib/data/services/overpass_query_builder.dart` builds that 
 ```
 lib/
   data/
-    models/         # Plain data classes (Beach, SeaCondition, WeatherCondition)
-    repositories/   # Fetch + adapt service responses for the UI/providers
-    services/        # Thin HTTP clients for the Open-Meteo APIs
+    models/          # Plain data classes (Beach, Place, SeaCondition, WeatherCondition, ...)
+    repositories/    # Fetch + adapt service responses for the UI/providers
+    services/        # Thin HTTP clients (Open-Meteo, Overpass, geocoding) and local caches
+    mappers/         # Adapt raw OSM/Overpass data into app models
     static_beaches.dart
   logic/
-    providers/       # ChangeNotifier providers exposing weather/marine state to the UI
-  main.dart          # App entry point and screens
+    providers/       # ChangeNotifier providers exposing weather/marine/beach state to the UI
+    (top-level files) # Pure logic helpers (swim suitability, unit prefs, alerts, chart axes, ...)
+  presentation/
+    navigation/      # Route definitions for the per-metric detail screens
+    screens/         # Top-level screens (Home, Search)
+    screens/detail/  # Per-metric detail screens (pressure, wind, UV, wave height, ...)
+    theme/           # Shared design tokens (color palettes)
+    widgets/         # Reusable UI building blocks (stat tiles, charts, map card, ...)
+  main.dart          # App entry point and dependency/provider wiring
 
 test/                # Unit/widget tests, mirroring the lib/ folder structure
 integration_test/    # End-to-end integration tests

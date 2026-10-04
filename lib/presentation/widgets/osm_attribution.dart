@@ -3,7 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 /// The OpenStreetMap copyright/attribution page, per OSM's attribution
 /// guidelines: https://www.openstreetmap.org/copyright
-final Uri osmCopyrightUri = Uri.parse('https://www.openstreetmap.org/copyright');
+final Uri osmCopyrightUri = Uri.parse(
+  'https://www.openstreetmap.org/copyright',
+);
 
 /// A small, always-visible "© OpenStreetMap contributors" credit, required
 /// by OSM's ODbL license on any map using OSM data or tiles.

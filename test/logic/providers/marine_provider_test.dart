@@ -88,27 +88,24 @@ void main() {
       expect(notifyCount, 2);
     });
 
-    test(
-      'disposing while a fetch is in flight does not throw once that '
-      'fetch later completes',
-      () async {
-        final completer = Completer<void>();
-        final condition = SeaCondition(
-          waveHeight: 0.8,
-          waveDirection: 180,
-          wavePeriod: 6,
-          seaSurfaceTemperature: 23.5,
-        );
-        final provider = MarineProvider(
-          _FakeMarineRepository(data: condition, whenReady: completer.future),
-        );
+    test('disposing while a fetch is in flight does not throw once that '
+        'fetch later completes', () async {
+      final completer = Completer<void>();
+      final condition = SeaCondition(
+        waveHeight: 0.8,
+        waveDirection: 180,
+        wavePeriod: 6,
+        seaSurfaceTemperature: 23.5,
+      );
+      final provider = MarineProvider(
+        _FakeMarineRepository(data: condition, whenReady: completer.future),
+      );
 
-        final future = provider.fetchData(38.3, 26.3);
-        provider.dispose();
+      final future = provider.fetchData(38.3, 26.3);
+      provider.dispose();
 
-        completer.complete();
-        await expectLater(future, completes);
-      },
-    );
+      completer.complete();
+      await expectLater(future, completes);
+    });
   });
 }

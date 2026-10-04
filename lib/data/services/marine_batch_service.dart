@@ -1,8 +1,8 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:latlong2/latlong.dart';
 
 import 'package:beachiq/data/models/sea_condition.dart';
+import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 
 class _CachedBatch {
   final Map<String, SeaCondition?> data;
@@ -28,7 +28,7 @@ class MarineBatchService {
   final Map<String, _CachedBatch> _cache = {};
 
   MarineBatchService(this.client, {DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+    : _now = now ?? DateTime.now;
 
   Future<Map<String, SeaCondition?>> fetchBatch(
     List<LatLng> coordinates,
@@ -128,13 +128,14 @@ class MarineBatchService {
       '${coordinate.latitude},${coordinate.longitude}';
 
   String _cacheKeyFor(List<LatLng> coordinates) {
-    final rounded = coordinates
-        .map(
-          (c) =>
-              '${c.latitude.toStringAsFixed(4)}:${c.longitude.toStringAsFixed(4)}',
-        )
-        .toList()
-      ..sort();
+    final rounded =
+        coordinates
+            .map(
+              (c) =>
+                  '${c.latitude.toStringAsFixed(4)}:${c.longitude.toStringAsFixed(4)}',
+            )
+            .toList()
+          ..sort();
     return rounded.join('|');
   }
 }

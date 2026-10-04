@@ -1,11 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
-
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
@@ -32,7 +27,11 @@ import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/pump_app.dart';

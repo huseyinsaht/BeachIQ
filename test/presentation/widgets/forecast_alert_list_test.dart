@@ -29,9 +29,7 @@ void main() {
       testWidgets(
         'given no alerts, build -> renders nothing and leaves no gap',
         (tester) async {
-          await tester.pumpWidget(
-            wrap(const ForecastAlertList(alerts: [])),
-          );
+          await tester.pumpWidget(wrap(const ForecastAlertList(alerts: [])));
 
           expect(find.byType(Icon), findsNothing);
           expect(find.byType(Text), findsNothing);
@@ -50,9 +48,7 @@ void main() {
             message: 'Waves may rise between 09:00 and 10:00.',
           );
 
-          await tester.pumpWidget(
-            wrap(ForecastAlertList(alerts: [single])),
-          );
+          await tester.pumpWidget(wrap(ForecastAlertList(alerts: [single])));
 
           expect(find.byIcon(Icons.waves), findsOneWidget);
           expect(
@@ -85,9 +81,7 @@ void main() {
           // Deliberately passed in low-then-high (not already sorted), so
           // the test fails if ForecastAlertList ever stops re-sorting and
           // just renders the input order.
-          await tester.pumpWidget(
-            wrap(ForecastAlertList(alerts: [low, high])),
-          );
+          await tester.pumpWidget(wrap(ForecastAlertList(alerts: [low, high])));
 
           final messages = tester
               .widgetList<Text>(find.byType(Text))
@@ -102,7 +96,8 @@ void main() {
                 'Rain chance crosses 40% between 09:00 and 10:00.',
               ),
             ),
-            reason: 'the high-severity alert must render before the '
+            reason:
+                'the high-severity alert must render before the '
                 'moderate one',
           );
         },
@@ -145,26 +140,23 @@ void main() {
         (tester) async {
           final moderate = alert(severity: ForecastAlertSeverity.moderate);
 
-          await tester.pumpWidget(
-            wrap(ForecastAlertList(alerts: [moderate])),
-          );
+          await tester.pumpWidget(wrap(ForecastAlertList(alerts: [moderate])));
 
           final icon = tester.widget<Icon>(find.byType(Icon));
           expect(icon.color, const Color(0xFFFFB74D));
         },
       );
 
-      testWidgets(
-        'given a high-severity alert, build -> colors its icon red',
-        (tester) async {
-          final high = alert(severity: ForecastAlertSeverity.high);
+      testWidgets('given a high-severity alert, build -> colors its icon red', (
+        tester,
+      ) async {
+        final high = alert(severity: ForecastAlertSeverity.high);
 
-          await tester.pumpWidget(wrap(ForecastAlertList(alerts: [high])));
+        await tester.pumpWidget(wrap(ForecastAlertList(alerts: [high])));
 
-          final icon = tester.widget<Icon>(find.byType(Icon));
-          expect(icon.color, const Color(0xFFEF5350));
-        },
-      );
+        final icon = tester.widget<Icon>(find.byType(Icon));
+        expect(icon.color, const Color(0xFFEF5350));
+      });
 
       testWidgets(
         'given alerts of every type, build -> picks a distinct icon per '

@@ -54,23 +54,29 @@ void main() {
       expect(provider.isFavorite(_alacati), isFalse);
     });
 
-    test('favoritesAmong returns only the favorited beaches, in order', () async {
-      final provider = FavoritesProvider(await prefs());
+    test(
+      'favoritesAmong returns only the favorited beaches, in order',
+      () async {
+        final provider = FavoritesProvider(await prefs());
 
-      await provider.toggleFavorite(_patara);
+        await provider.toggleFavorite(_patara);
 
-      expect(provider.favoritesAmong([_alacati, _patara]), [_patara]);
-    });
+        expect(provider.favoritesAmong([_alacati, _patara]), [_patara]);
+      },
+    );
 
-    test('a favorite persisted by one instance is read by a new instance', () async {
-      final preferences = await prefs();
-      final first = FavoritesProvider(preferences);
-      await first.toggleFavorite(_alacati);
+    test(
+      'a favorite persisted by one instance is read by a new instance',
+      () async {
+        final preferences = await prefs();
+        final first = FavoritesProvider(preferences);
+        await first.toggleFavorite(_alacati);
 
-      final second = FavoritesProvider(preferences);
+        final second = FavoritesProvider(preferences);
 
-      expect(second.isFavorite(_alacati), isTrue);
-    });
+        expect(second.isFavorite(_alacati), isTrue);
+      },
+    );
 
     test(
       'two beaches with the same name but a different city are distinct',
@@ -90,27 +96,21 @@ void main() {
       },
     );
 
-    test(
-      'disposing while a toggle\'s persistence write is in flight does not '
-      'throw once that write later completes',
-      () async {
-        final provider = FavoritesProvider(await prefs());
+    test('disposing while a toggle\'s persistence write is in flight does not '
+        'throw once that write later completes', () async {
+      final provider = FavoritesProvider(await prefs());
 
-        final future = provider.toggleFavorite(_alacati);
-        provider.dispose();
+      final future = provider.toggleFavorite(_alacati);
+      provider.dispose();
 
-        await expectLater(future, completes);
-      },
-    );
+      await expectLater(future, completes);
+    });
 
     test('favoritesAmong reflects an un-favorite immediately', () async {
       final provider = FavoritesProvider(await prefs());
       await provider.toggleFavorite(_alacati);
       await provider.toggleFavorite(_patara);
-      expect(provider.favoritesAmong([_alacati, _patara]), [
-        _alacati,
-        _patara,
-      ]);
+      expect(provider.favoritesAmong([_alacati, _patara]), [_alacati, _patara]);
 
       await provider.toggleFavorite(_alacati);
 

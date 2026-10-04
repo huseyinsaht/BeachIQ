@@ -23,7 +23,10 @@ void main() {
     test('reflects a custom radiusMeters in the beach search radius', () {
       final query = buildNearbyBeachesQuery(38.3, 26.3, radiusMeters: 5000);
 
-      expect(query, contains('nwr[natural=beach](around:5000,38.300000,26.300000)->.b;'));
+      expect(
+        query,
+        contains('nwr[natural=beach](around:5000,38.300000,26.300000)->.b;'),
+      );
     });
 
     test('does not select amenities with a bare, unvalued tag filter', () {

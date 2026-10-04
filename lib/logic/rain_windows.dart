@@ -43,7 +43,9 @@ List<RainWindow> rainChanceWindows(
     final start = windowStart;
     final end = windowEnd;
     if (start != null && end != null) {
-      windows.add(RainWindow(start: start, end: end.add(const Duration(hours: 1))));
+      windows.add(
+        RainWindow(start: start, end: end.add(const Duration(hours: 1))),
+      );
     }
     windowStart = null;
     windowEnd = null;

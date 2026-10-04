@@ -9,6 +9,22 @@
 # packages, and plugins designed to encourage good coding practices.
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Vendor-generated code never gets hand-reviewed, so it never enters the
+    # checkstyle gate (tools/checkstyle.sh, see issue #176). None of these
+    # exist in lib/ today, but keep the patterns ready for the day a
+    # build_runner output (e.g. json_serializable, freezed) is added -- see
+    # the matching list in tools/check_coverage.sh.
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+    - "**/*.mocks.dart"
+    # Tiny, deliberately non-compliant sample files that exist only to
+    # exercise tools/checkstyle.sh's own test
+    # (test/tools/checkstyle_test.dart) -- they are not production code and
+    # must never be "fixed".
+    - "tools/test_fixtures/**"
+
 linter:
   # The lint rules applied to this project can be customized in the
   # section below to disable rules from the `package:flutter_lints/flutter.yaml`
@@ -23,6 +39,41 @@ linter:
   rules:
     # avoid_print: false  # Uncomment to disable the `avoid_print` rule
     # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+
+    # --- Checkstyle gate (issue #176): extra strict rules on top of
+    # flutter_lints, enforced by `dart analyze --fatal-infos
+    # --fatal-warnings` via tools/checkstyle.sh, the CI gate equivalent of a
+    # Java checkstyle run. ---
+
+    # Favor immutability: a local that's never reassigned should say so.
+    prefer_final_locals: true
+    # Const constructors avoid rebuilding widgets that never change.
+    prefer_const_constructors: true
+    # A trailing comma on a multi-line argument/parameter list keeps diffs
+    # to one line per change and lets dart format wrap consistently.
+    require_trailing_commas: true
+    # Debug prints are an easy accidental leftover; use a logging seam
+    # instead (BeachIQ has none that should ever reach a release build).
+    avoid_print: true
+    # An un-awaited Future silently swallows its errors.
+    unawaited_futures: true
+    # Explicit return types make a function's contract obvious at a glance
+    # instead of requiring type inference to read it.
+    always_declare_return_types: true
+    # A consistent import/export order makes a file's dependencies easy to
+    # scan and keeps merge conflicts in that block mechanical.
+    directives_ordering: true
+
+    # public_member_api_docs is intentionally NOT enabled here. Scoping it
+    # to lib/logic and lib/data (as the issue suggests) isn't possible from
+    # analysis_options.yaml -- the linter's rule set is project-wide, not
+    # per-directory, and there is no sibling analysis_options.yaml override
+    # mechanism for a subset of a single package. Turning it on project-wide
+    # would force doc comments onto dozens of pre-existing public
+    # classes/methods across lib/logic and lib/data purely to satisfy the
+    # linter, which would balloon this PR's diff far beyond what's
+    # reviewable for a checkstyle-tooling change. Deferred to a follow-up
+    # that can budget time to write real (not filler) docs.
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

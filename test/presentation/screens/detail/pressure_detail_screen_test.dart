@@ -283,32 +283,26 @@ void main() {
       },
     );
 
-    testWidgets(
-      'passes a y-axis value formatter and unit (hPa) to the chart '
-      '(issue #212)',
-      (tester) async {
-        await tester.pumpWidget(
-          wrap(
-            PressureDetailScreen(
-              hourly: [
-                aWeatherHourly(
-                  time: DateTime(2026, 1, 1, 12),
-                  pressureHpa: 1013,
-                ),
-              ],
-              now: () => DateTime(2026, 1, 1, 12),
-            ),
+    testWidgets('passes a y-axis value formatter and unit (hPa) to the chart '
+        '(issue #212)', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          PressureDetailScreen(
+            hourly: [
+              aWeatherHourly(time: DateTime(2026, 1, 1, 12), pressureHpa: 1013),
+            ],
+            now: () => DateTime(2026, 1, 1, 12),
           ),
-        );
+        ),
+      );
 
-        final chart = tester.widget<HourlyMetricChart>(
-          find.byType(HourlyMetricChart),
-        );
-        expect(chart.unitLabel, 'hPa');
-        expect(chart.valueFormatter, isNotNull);
-        expect(chart.valueFormatter!(1013), '1013');
-      },
-    );
+      final chart = tester.widget<HourlyMetricChart>(
+        find.byType(HourlyMetricChart),
+      );
+      expect(chart.unitLabel, 'hPa');
+      expect(chart.valueFormatter, isNotNull);
+      expect(chart.valueFormatter!(1013), '1013');
+    });
 
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
