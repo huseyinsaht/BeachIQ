@@ -138,9 +138,7 @@ void main() {
     });
   });
 
-  testWidgets('shows the moon icon at night for a clear hour', (
-    tester,
-  ) async {
+  testWidgets('shows the moon icon at night for a clear hour', (tester) async {
     await tester.pumpWidget(
       wrap(
         HourlyForecastItem(

@@ -1,4 +1,5 @@
 #!/usr/bin/env dart
+
 /// Reads a `flutter test --reporter json` event stream (from stdin, or from
 /// a file given as the first argument) and prints one `Test summary:` line
 /// per module (see `moduleForPath` in `test_summary_lib.dart`), plus failure
@@ -29,9 +30,8 @@ Future<void> main(List<String> args) async {
   if (args.isNotEmpty) {
     lines.addAll(File(args.first).readAsLinesSync());
   } else {
-    await for (final line in stdin
-        .transform(utf8.decoder)
-        .transform(const LineSplitter())) {
+    await for (final line
+        in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
       lines.add(line);
     }
   }
@@ -42,9 +42,12 @@ Future<void> main(List<String> args) async {
 
   final reportsDir = Directory('build/reports');
   reportsDir.createSync(recursive: true);
-  File('${reportsDir.path}/junit.xml').writeAsStringSync(renderJUnitXml(report));
-  File('${reportsDir.path}/summary.md')
-      .writeAsStringSync(renderMarkdownSummary(report));
+  File(
+    '${reportsDir.path}/junit.xml',
+  ).writeAsStringSync(renderJUnitXml(report));
+  File(
+    '${reportsDir.path}/summary.md',
+  ).writeAsStringSync(renderMarkdownSummary(report));
 
   if (report.totalTests == 0) {
     stderr.writeln('test_summary: no tests found in the reporter stream.');

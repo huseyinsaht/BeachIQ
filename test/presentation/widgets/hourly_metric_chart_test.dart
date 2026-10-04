@@ -165,85 +165,78 @@ void main() {
     });
 
     group('axes (issue #212)', () {
-      testWidgets(
-        'given a valueFormatter and unitLabel, HourlyMetricChart -> '
-        'forwards at least 3 nice tick values, each formatted with the '
-        'unit, to the painter',
-        (tester) async {
-          await tester.pumpWidget(
-            wrap(
-              HourlyMetricChart(
-                points: somePoints(),
-                valueFormatter: (v) => v.round().toString(),
-                unitLabel: 'hPa',
-              ),
+      testWidgets('given a valueFormatter and unitLabel, HourlyMetricChart -> '
+          'forwards at least 3 nice tick values, each formatted with the '
+          'unit, to the painter', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: somePoints(),
+              valueFormatter: (v) => v.round().toString(),
+              unitLabel: 'hPa',
             ),
-          );
+          ),
+        );
 
-          final painter = painterOf(tester);
-          expect(painter.yTicks.length, greaterThanOrEqualTo(3));
-          expect(painter.yTickLabels, hasLength(painter.yTicks.length));
-          for (final label in painter.yTickLabels) {
-            expect(label, endsWith('hPa'));
-          }
-        },
-      );
+        final painter = painterOf(tester);
+        expect(painter.yTicks.length, greaterThanOrEqualTo(3));
+        expect(painter.yTickLabels, hasLength(painter.yTicks.length));
+        for (final label in painter.yTickLabels) {
+          expect(label, endsWith('hPa'));
+        }
+      });
 
-      testWidgets(
-        'given a percent unitLabel, HourlyMetricChart -> attaches it '
-        'directly with no separating space',
-        (tester) async {
-          await tester.pumpWidget(
-            wrap(
-              HourlyMetricChart(
-                points: [
-                  for (var i = 0; i < 4; i++)
-                    HourlyChartPoint(
-                      time: DateTime(2026, 1, 1, i),
-                      value: (i * 20).toDouble(),
-                    ),
-                ],
-                valueFormatter: (v) => v.round().toString(),
-                unitLabel: '%',
-              ),
+      testWidgets('given a percent unitLabel, HourlyMetricChart -> attaches it '
+          'directly with no separating space', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: [
+                for (var i = 0; i < 4; i++)
+                  HourlyChartPoint(
+                    time: DateTime(2026, 1, 1, i),
+                    value: (i * 20).toDouble(),
+                  ),
+              ],
+              valueFormatter: (v) => v.round().toString(),
+              unitLabel: '%',
             ),
-          );
+          ),
+        );
 
-          final painter = painterOf(tester);
-          expect(painter.yTickLabels, isNotEmpty);
-          for (final label in painter.yTickLabels) {
-            expect(label, matches(RegExp(r'^-?\d+%$')));
-          }
-        },
-      );
+        final painter = painterOf(tester);
+        expect(painter.yTickLabels, isNotEmpty);
+        for (final label in painter.yTickLabels) {
+          expect(label, matches(RegExp(r'^-?\d+%$')));
+        }
+      });
 
-      testWidgets(
-        'given a degree unitLabel, HourlyMetricChart -> attaches it '
-        'directly with no separating space',
-        (tester) async {
-          await tester.pumpWidget(
-            wrap(
-              HourlyMetricChart(
-                points: somePoints(),
-                valueFormatter: (v) => v.round().toString(),
-                unitLabel: '°C',
-              ),
+      testWidgets('given a degree unitLabel, HourlyMetricChart -> attaches it '
+          'directly with no separating space', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: somePoints(),
+              valueFormatter: (v) => v.round().toString(),
+              unitLabel: '°C',
             ),
-          );
+          ),
+        );
 
-          final painter = painterOf(tester);
-          expect(painter.yTickLabels, isNotEmpty);
-          for (final label in painter.yTickLabels) {
-            expect(label, matches(RegExp(r'^-?\d+°C$')));
-          }
-        },
-      );
+        final painter = painterOf(tester);
+        expect(painter.yTickLabels, isNotEmpty);
+        for (final label in painter.yTickLabels) {
+          expect(label, matches(RegExp(r'^-?\d+°C$')));
+        }
+      });
 
       testWidgets(
         'given no valueFormatter/unitLabel, HourlyMetricChart -> still '
         'computes bare rounded-number ticks',
         (tester) async {
-          await tester.pumpWidget(wrap(HourlyMetricChart(points: somePoints())));
+          await tester.pumpWidget(
+            wrap(HourlyMetricChart(points: somePoints())),
+          );
 
           final painter = painterOf(tester);
           expect(painter.yTicks.length, greaterThanOrEqualTo(3));
@@ -276,41 +269,39 @@ void main() {
         },
       );
 
-      testWidgets(
-        'given a narrow range (e.g. a quiet-pressure day) with an '
-        'integer-rounding valueFormatter, HourlyMetricChart -> never '
-        'shows two ticks with the same formatted label',
-        (tester) async {
-          await tester.pumpWidget(
-            wrap(
-              HourlyMetricChart(
-                points: [
-                  for (var i = 0; i < 5; i++)
-                    HourlyChartPoint(
-                      time: DateTime(2026, 1, 1, i),
-                      // A 2 hPa-wide range: niceTicks picks a fractional
-                      // step here (e.g. 0.5), which would otherwise round
-                      // to repeated whole-number labels.
-                      value: 1010 + (i % 3) * 1.0,
-                    ),
-                ],
-                valueFormatter: (v) => v.round().toString(),
-                unitLabel: 'hPa',
-              ),
+      testWidgets('given a narrow range (e.g. a quiet-pressure day) with an '
+          'integer-rounding valueFormatter, HourlyMetricChart -> never '
+          'shows two ticks with the same formatted label', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: [
+                for (var i = 0; i < 5; i++)
+                  HourlyChartPoint(
+                    time: DateTime(2026, 1, 1, i),
+                    // A 2 hPa-wide range: niceTicks picks a fractional
+                    // step here (e.g. 0.5), which would otherwise round
+                    // to repeated whole-number labels.
+                    value: 1010 + (i % 3) * 1.0,
+                  ),
+              ],
+              valueFormatter: (v) => v.round().toString(),
+              unitLabel: 'hPa',
             ),
-          );
+          ),
+        );
 
-          final painter = painterOf(tester);
-          expect(painter.yTickLabels, isNotEmpty);
-          expect(
-            painter.yTickLabels.toSet().length,
-            painter.yTickLabels.length,
-            reason: 'every shown y-axis label must be distinct: '
-                '${painter.yTickLabels}',
-          );
-          expect(painter.yTicks.length, painter.yTickLabels.length);
-        },
-      );
+        final painter = painterOf(tester);
+        expect(painter.yTickLabels, isNotEmpty);
+        expect(
+          painter.yTickLabels.toSet().length,
+          painter.yTickLabels.length,
+          reason:
+              'every shown y-axis label must be distinct: '
+              '${painter.yTickLabels}',
+        );
+        expect(painter.yTicks.length, painter.yTickLabels.length);
+      });
 
       testWidgets(
         'given a series with null gaps, HourlyMetricChart -> ticks are '
@@ -331,20 +322,17 @@ void main() {
         },
       );
 
-      testWidgets(
-        'given no data, HourlyMetricChart -> shows "No data" with no '
-        'axes drawn at all',
-        (tester) async {
-          await tester.pumpWidget(wrap(const HourlyMetricChart(points: [])));
+      testWidgets('given no data, HourlyMetricChart -> shows "No data" with no '
+          'axes drawn at all', (tester) async {
+        await tester.pumpWidget(wrap(const HourlyMetricChart(points: [])));
 
-          expect(find.text('No data'), findsOneWidget);
-          final painters = tester
-              .widgetList<CustomPaint>(find.byType(CustomPaint))
-              .map((w) => w.painter)
-              .whereType<HourlyMetricChartPainter>();
-          expect(painters, isEmpty);
-        },
-      );
+        expect(find.text('No data'), findsOneWidget);
+        final painters = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((w) => w.painter)
+            .whereType<HourlyMetricChartPainter>();
+        expect(painters, isEmpty);
+      });
 
       testWidgets(
         'given a nowIndex, HourlyMetricChart -> labels that hour "Now" on '

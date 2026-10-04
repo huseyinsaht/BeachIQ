@@ -37,8 +37,14 @@ WeatherIconStyle styleForWeatherIcon(IconData baseIcon, {required bool isDay}) {
   }
   if (baseIcon == Icons.wb_cloudy) {
     return isDay
-        ? const WeatherIconStyle(icon: Icons.wb_cloudy, color: Color(0xFF90A4AE))
-        : const WeatherIconStyle(icon: Icons.nights_stay, color: Color(0xFFCFD8DC));
+        ? const WeatherIconStyle(
+            icon: Icons.wb_cloudy,
+            color: Color(0xFF90A4AE),
+          )
+        : const WeatherIconStyle(
+            icon: Icons.nights_stay,
+            color: Color(0xFFCFD8DC),
+          );
   }
   if (baseIcon == Icons.cloud) {
     return const WeatherIconStyle(icon: Icons.cloud, color: Color(0xFF78909C));
@@ -50,7 +56,10 @@ WeatherIconStyle styleForWeatherIcon(IconData baseIcon, {required bool isDay}) {
     return const WeatherIconStyle(icon: Icons.grain, color: Color(0xFF4FC3F7));
   }
   if (baseIcon == Icons.ac_unit) {
-    return const WeatherIconStyle(icon: Icons.ac_unit, color: Color(0xFFB3E5FC));
+    return const WeatherIconStyle(
+      icon: Icons.ac_unit,
+      color: Color(0xFFB3E5FC),
+    );
   }
   if (baseIcon == Icons.thunderstorm) {
     return const WeatherIconStyle(

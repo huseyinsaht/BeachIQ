@@ -3,12 +3,7 @@
 /// `surface` tag does not tell us how sharp or hot the ground actually is.
 enum ShoeAdvice { advised, notNeeded, unknown }
 
-const _surfacesNeedingShoes = {
-  'pebbles',
-  'pebblestone',
-  'gravel',
-  'rock',
-};
+const _surfacesNeedingShoes = {'pebbles', 'pebblestone', 'gravel', 'rock'};
 
 const _surfacesNotNeedingShoes = {'sand'};
 

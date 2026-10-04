@@ -84,10 +84,10 @@ void main() {
 
     await tester.pumpWidget(
       wrap(
-        Center(
+        const Center(
           child: SizedBox(
             width: 90,
-            child: const StatTile(
+            child: StatTile(
               icon: Icons.speed,
               label: 'Pressure',
               value: longValue,

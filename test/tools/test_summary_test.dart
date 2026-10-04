@@ -82,8 +82,7 @@ void main() {
     // rather than being fooled by this into bucketing every widget test
     // under "other".
     test('parseReporterEvents -> groups by the suite file, not the '
-        'misleading url field, and reports the root_url/root_line location',
-        () {
+        'misleading url field, and reports the root_url/root_line location', () {
       final events = [
         '{"suite":{"id":0,"platform":"vm","path":"/repo/test/presentation/widgets/stat_tile_test.dart"},"type":"suite","time":0}',
         '{"test":{"id":1,"name":"StatTile shows the formatted value","suiteID":0,"groupIDs":[],"metadata":{"skip":false,"skipReason":null},"line":175,"column":5,"url":"package:flutter_test/src/widget_tester.dart","root_line":12,"root_column":3,"root_url":"file:///repo/test/presentation/widgets/stat_tile_test.dart"},"type":"testStart","time":1}',
@@ -127,8 +126,9 @@ void main() {
       expect(module.failed, 1);
       expect(module.isSuccess, isFalse);
 
-      final failing =
-          module.cases.firstWhere((c) => c.status == TestStatus.failed);
+      final failing = module.cases.firstWhere(
+        (c) => c.status == TestStatus.failed,
+      );
       expect(failing.name, contains('throws ArgumentError'));
       expect(failing.file, 'test/logic/providers/favorites_provider_test.dart');
       expect(failing.line, 28);
@@ -136,8 +136,7 @@ void main() {
     });
 
     test('given a fixture with a skipped test, parseReporterEvents -> counts '
-        'it as skipped, not failed, and the module still reports success',
-        () {
+        'it as skipped, not failed, and the module still reports success', () {
       final report = parseReporterEvents(_loadFixture('with_skipped.jsonl'));
 
       expect(report.hasFailures, isFalse);
@@ -160,8 +159,9 @@ void main() {
       expect(module.passed, 1);
       expect(module.failed, 1);
 
-      final failing =
-          module.cases.firstWhere((c) => c.status == TestStatus.failed);
+      final failing = module.cases.firstWhere(
+        (c) => c.status == TestStatus.failed,
+      );
       expect(failing.failureMessage, contains('StateError'));
     });
 
@@ -211,8 +211,7 @@ void main() {
     });
 
     test('given a module with a skipped test, renderConsoleSummary -> '
-        'reports it in the skipped count without listing it as a failure',
-        () {
+        'reports it in the skipped count without listing it as a failure', () {
       final report = parseReporterEvents(_loadFixture('with_skipped.jsonl'));
       final output = renderConsoleSummary(report);
 
@@ -228,7 +227,10 @@ void main() {
       final xml = renderJUnitXml(report);
 
       expect(xml, contains('<?xml version="1.0" encoding="UTF-8"?>'));
-      expect(xml, contains('<testsuite name="data.models" tests="2" failures="0"'));
+      expect(
+        xml,
+        contains('<testsuite name="data.models" tests="2" failures="0"'),
+      );
       expect(xml, isNot(contains('<failure')));
     });
 
@@ -237,7 +239,10 @@ void main() {
       final report = parseReporterEvents(_loadFixture('failure.jsonl'));
       final xml = renderJUnitXml(report);
 
-      expect(xml, contains('<testsuite name="logic.providers" tests="2" failures="1"'));
+      expect(
+        xml,
+        contains('<testsuite name="logic.providers" tests="2" failures="1"'),
+      );
       expect(xml, contains('<failure'));
       expect(xml, contains('Expected: true'));
     });
@@ -274,11 +279,17 @@ void main() {
       final failure = parseReporterEvents(_loadFixture('failure.jsonl'));
 
       final successMd = renderMarkdownSummary(success);
-      expect(successMd, contains('| data.models | ✅ SUCCESS | 2 | 2 | 0 | 0 |'));
+      expect(
+        successMd,
+        contains('| data.models | ✅ SUCCESS | 2 | 2 | 0 | 0 |'),
+      );
       expect(successMd, isNot(contains('## Failures')));
 
       final failureMd = renderMarkdownSummary(failure);
-      expect(failureMd, contains('| logic.providers | ❌ FAILURE | 2 | 1 | 1 | 0 |'));
+      expect(
+        failureMd,
+        contains('| logic.providers | ❌ FAILURE | 2 | 1 | 1 | 0 |'),
+      );
       expect(failureMd, contains('## Failures'));
       expect(failureMd, contains('throws ArgumentError'));
     });

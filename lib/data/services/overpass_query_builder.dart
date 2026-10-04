@@ -2,7 +2,11 @@
 /// amenities within [radiusMeters] of the given point.
 ///
 /// Pure function: no network, no I/O.
-String buildNearbyBeachesQuery(double lat, double lon, {int radiusMeters = 20000}) {
+String buildNearbyBeachesQuery(
+  double lat,
+  double lon, {
+  int radiusMeters = 20000,
+}) {
   final latStr = lat.toStringAsFixed(6);
   final lonStr = lon.toStringAsFixed(6);
 

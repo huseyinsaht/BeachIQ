@@ -222,5 +222,24 @@ void main() {
         expect(provider.error, contains('boom'));
       },
     );
+
+    test('disposing while a fetch is in flight does not throw once that '
+        'fetch later completes', () async {
+      final completer = Completer<void>();
+      final condition = WeatherCondition(
+        temperature: 27.5,
+        windSpeed: 12.0,
+        weatherCode: 1,
+      );
+      final provider = WeatherProvider(
+        _FakeWeatherRepository(data: condition, whenReady: completer.future),
+      );
+
+      final future = provider.fetchData(38.3, 26.3);
+      provider.dispose();
+
+      completer.complete();
+      await expectLater(future, completes);
+    });
   });
 }

@@ -38,10 +38,7 @@ void main() {
     });
 
     test('returns null when latitude/longitude are missing or not numeric', () {
-      expect(
-        Place.tryFromJson({'name': 'Çeşme', 'longitude': 26.3}),
-        isNull,
-      );
+      expect(Place.tryFromJson({'name': 'Çeşme', 'longitude': 26.3}), isNull);
       expect(
         Place.tryFromJson({
           'name': 'Çeşme',

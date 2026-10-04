@@ -107,12 +107,9 @@ List<HourlyChartValueBand> _waterTempChartBands(UnitSystem unitSystem) {
 /// number (for chart points/bands, which need a `double`, not a formatted
 /// string).
 double _displayCelsius(double celsius, UnitSystem unitSystem) =>
-    unitSystem == UnitSystem.imperial
-    ? celsiusToFahrenheit(celsius)
-    : celsius;
+    unitSystem == UnitSystem.imperial ? celsiusToFahrenheit(celsius) : celsius;
 
-String _formatValue(double? celsius, UnitSystem unitSystem) =>
-    celsius == null
+String _formatValue(double? celsius, UnitSystem unitSystem) => celsius == null
     ? '--'
     : _displayCelsius(celsius, unitSystem).round().toString();
 

@@ -135,10 +135,19 @@ void main() {
     // it. The amenities anchor the heuristic's "landward" side, so the
     // derived seaward bearing should point away from them, i.e. roughly due
     // north (0°), back toward the beach geometry.
-    final shorelineGeometry = [LatLng(36.000, 28.000), LatLng(36.000, 28.010)];
+    final shorelineGeometry = [
+      const LatLng(36.000, 28.000),
+      const LatLng(36.000, 28.010),
+    ];
     final landSideAmenities = [
-      BeachAmenity(kind: AmenityKind.parking, position: LatLng(35.990, 28.003)),
-      BeachAmenity(kind: AmenityKind.cafe, position: LatLng(35.990, 28.007)),
+      const BeachAmenity(
+        kind: AmenityKind.parking,
+        position: LatLng(35.990, 28.003),
+      ),
+      const BeachAmenity(
+        kind: AmenityKind.cafe,
+        position: LatLng(35.990, 28.007),
+      ),
     ];
 
     test('given geometry north of its amenities, '
@@ -166,9 +175,9 @@ void main() {
         city: 'Testville',
         latitude: 36.000,
         longitude: 28.005,
-        geometry: [LatLng(35.990, 28.000), LatLng(35.990, 28.010)],
+        geometry: [const LatLng(35.990, 28.000), const LatLng(35.990, 28.010)],
         amenities: [
-          BeachAmenity(
+          const BeachAmenity(
             kind: AmenityKind.parking,
             position: LatLng(36.000, 28.005),
           ),
@@ -223,7 +232,7 @@ void main() {
           longitude: 28.005,
           geometry: const [LatLng(36.000, 28.005)],
           amenities: [
-            BeachAmenity(
+            const BeachAmenity(
               kind: AmenityKind.parking,
               position: LatLng(36.000, 28.005),
             ),

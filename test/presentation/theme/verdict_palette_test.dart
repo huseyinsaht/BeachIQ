@@ -8,7 +8,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// WCAG relative luminance of a single sRGB channel (0-255).
 double _linearize(int channel) {
   final c = channel / 255;
-  return c <= 0.04045 ? c / 12.92 : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
+  return c <= 0.04045
+      ? c / 12.92
+      : math.pow((c + 0.055) / 1.055, 2.4).toDouble();
 }
 
 int _channel(double normalized) => (normalized * 255.0).round() & 0xff;
