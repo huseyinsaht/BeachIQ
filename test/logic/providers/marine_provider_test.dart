@@ -27,6 +27,29 @@ class _FakeMarineRepository extends MarineRepository {
   }
 }
 
+/// A [MarineRepository] whose calls each get their own [Completer], kept
+/// in [calls] in call order, so a test can resolve them in a different
+/// order than they were made (#213's "last tap wins" guarantee).
+class _SequentialMarineRepository extends MarineRepository {
+  _SequentialMarineRepository() : super(MarineApiService());
+
+  final List<Completer<SeaCondition>> calls = [];
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) {
+    final completer = Completer<SeaCondition>();
+    calls.add(completer);
+    return completer.future;
+  }
+}
+
+SeaCondition _condition(double waveHeight) => SeaCondition(
+  waveHeight: waveHeight,
+  waveDirection: 90,
+  wavePeriod: 5,
+  seaSurfaceTemperature: 22,
+);
+
 void main() {
   group('MarineProvider.fetchData', () {
     test('starts in a non-loading state with no data or error', () {
@@ -107,6 +130,118 @@ void main() {
       completer.complete();
       await expectLater(future, completes);
     });
+
+    test('given a different location than the currently loaded data, '
+        'fetchData clears currentData and sets isLoading immediately, '
+        'synchronously before the network call resolves (#213)', () async {
+      final repository = _SequentialMarineRepository();
+      final provider = MarineProvider(repository);
+
+      final first = provider.fetchData(10, 10);
+      repository.calls[0].complete(_condition(0.3));
+      await first;
+      expect(provider.currentData, isNotNull);
+      expect(provider.currentData!.waveHeight, 0.3);
+
+      // A pick for a DIFFERENT location (B) must clear the old data and
+      // flip isLoading *before* its own network call has resolved — the
+      // old place's values must never be visible under the new pick.
+      final second = provider.fetchData(20, 20);
+      expect(provider.currentData, isNull);
+      expect(provider.isLoading, isTrue);
+
+      repository.calls[1].complete(_condition(1.6));
+      await second;
+      expect(provider.currentData!.waveHeight, 1.6);
+    });
+
+    test('given the same location as the currently loaded data (a '
+        'pull-to-refresh), fetchData keeps currentData visible while it '
+        'reloads (#213)', () async {
+      final repository = _SequentialMarineRepository();
+      final provider = MarineProvider(repository);
+
+      final first = provider.fetchData(10, 10);
+      repository.calls[0].complete(_condition(0.3));
+      await first;
+
+      final second = provider.fetchData(10, 10);
+      expect(provider.currentData, isNotNull);
+      expect(provider.currentData!.waveHeight, 0.3);
+      expect(provider.isLoading, isTrue);
+
+      repository.calls[1].complete(_condition(0.5));
+      await second;
+      expect(provider.currentData!.waveHeight, 0.5);
+    });
+
+    test(
+      'given two overlapping fetchData calls for different locations that '
+      'resolve out of order, the result of the most recently started call '
+      '("last tap wins") wins, even though it resolved first (#213)',
+      () async {
+        final repository = _SequentialMarineRepository();
+        final provider = MarineProvider(repository);
+
+        final older = provider.fetchData(10, 10); // tap A
+        final newer = provider.fetchData(20, 20); // tap B, right after
+
+        // Resolve the NEWER request (B) first.
+        repository.calls[1].complete(_condition(1.6));
+        await newer;
+        expect(provider.currentData!.waveHeight, 1.6);
+        expect(provider.isLoading, isFalse);
+
+        // The OLDER request (A) resolving late must be discarded entirely:
+        // it must not overwrite B's already-displayed data nor flip
+        // isLoading back to true.
+        repository.calls[0].complete(_condition(0.3));
+        await older;
+        expect(provider.currentData!.waveHeight, 1.6);
+        expect(provider.isLoading, isFalse);
+      },
+    );
+
+    test('given a fetch for a new location that fails, currentData stays '
+        'null (the error state is for the new place, never the previous '
+        "place's stale data) (#213)", () async {
+      final repository = _SequentialMarineRepository();
+      final provider = MarineProvider(repository);
+
+      final first = provider.fetchData(10, 10);
+      repository.calls[0].complete(_condition(0.3));
+      await first;
+      expect(provider.currentData, isNotNull);
+
+      final second = provider.fetchData(20, 20);
+      expect(provider.currentData, isNull); // cleared immediately
+      repository.calls[1].completeError(Exception('boom'));
+      await second;
+
+      expect(provider.currentData, isNull);
+      expect(provider.error, contains('boom'));
+    });
+
+    test(
+      'given a same-location refresh that fails, currentData from the '
+      'previous successful fetch is kept rather than cleared (#213)',
+      () async {
+        final repository = _SequentialMarineRepository();
+        final provider = MarineProvider(repository);
+
+        final first = provider.fetchData(10, 10);
+        repository.calls[0].complete(_condition(0.3));
+        await first;
+
+        final second = provider.fetchData(10, 10);
+        repository.calls[1].completeError(Exception('boom'));
+        await second;
+
+        expect(provider.currentData, isNotNull);
+        expect(provider.currentData!.waveHeight, 0.3);
+        expect(provider.error, contains('boom'));
+      },
+    );
 
     test('lastLat/lastLon are null before the first fetch, then track the '
         'most recent call\'s coordinates', () async {

@@ -5,6 +5,44 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.7] - 2026-10-05
+
+### Added
+
+- Home screen: an upcoming forecast-alerts list (`ForecastAlertList`) between the
+  suggestion pill and the stat grid, built from `buildForecastAlerts`'s wind/wave/
+  current/cloud/rain rules on the already-loaded hourly data — a type icon and
+  one-line message per alert, colored and sorted most-severe-first, shown for nothing
+  when there are no upcoming alerts (#223)
+- Real notification delivery for the "conditions turned favorable" alert:
+  `NotificationService` (wrapping `flutter_local_notifications`) and
+  `ConditionAlertDispatcher`, listening to `WeatherProvider`/`MarineProvider` and
+  firing a local notification whenever `ConditionAlertService` says the swim verdict
+  just turned good at the selected location. Requests the platform notification
+  permission on startup; the alerts-enabled toggle is persisted but still has no
+  settings-screen UI to flip it, and delivery only happens while the app is running
+  (#227)
+- Detail-screen charts (`HourlyMetricChart`) now draw a value scale on the y-axis and
+  hourly time labels on the x-axis alongside the existing line/threshold/band drawing
+  (#224)
+- A checkstyle CI gate: `dart format --set-exit-if-changed` plus a stricter
+  `analysis_options.yaml` lint set, enforced on every pull request (#226)
+- Additional edge-case tests for `MarineBatchService.fetchBatch` (#233)
+
+### Changed
+
+- The `functional-verify` CI workflow is paused (no longer run on pull requests) to
+  reduce token usage (#230)
+- Claude's automated PR review is now skipped on release PRs (`develop` → `main`)
+  (#232)
+
+### Fixed
+
+- Picking a new map location now updates the Home screen reliably: an in-flight
+  `WeatherProvider`/`MarineProvider` fetch for a since-abandoned pick can no longer
+  overwrite the data for the latest one, so the last tap always wins even under rapid
+  repeated picks (#228)
+
 ## [2026.10.6] - 2026-10-03
 
 ### Added

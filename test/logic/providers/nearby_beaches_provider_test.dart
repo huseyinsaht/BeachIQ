@@ -666,5 +666,76 @@ void main() {
         await Future.delayed(_settle);
       },
     );
+
+    test('given a map pick already loaded, picking a NEW location shows a '
+        'loading indication again for that new pick, not just the first '
+        'one ever made (issue #213)', () async {
+      final cache = await _emptyCache();
+      // The first pick resolves instantly; the second one's Overpass
+      // call is held open via a Completer so the test can observe the
+      // loading state before it resolves (mirrors the "status
+      // transitions..." test above).
+      var pickCount = 0;
+      final secondOverpassCompleter = Completer<http.Response>();
+      final overpassService = OverpassService(
+        _FakeClient((request) async {
+          pickCount++;
+          if (pickCount == 1) {
+            return http.Response(
+              _overpassFixture([
+                {'id': 1, 'lat': 10.0, 'lon': 10.0, 'name': 'First Beach'},
+              ]),
+              200,
+            );
+          }
+          return secondOverpassCompleter.future;
+        }),
+        endpoints: ['https://example.com/api'],
+      );
+      final marineBatchService = MarineBatchService(
+        _FakeClient((request) async => http.Response(_marineFixture([]), 200)),
+      );
+
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        cache,
+        marineBatchService,
+        debounceDuration: _debounce,
+      );
+      addTearDown(provider.dispose);
+
+      // First pick: loads normally.
+      provider.pickLocation(const LatLng(10.0, 10.0));
+      await Future.delayed(_settle);
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches.single.name, 'First Beach');
+
+      // A second pick, for a DIFFERENT location, must show the loading
+      // state again (so the overlay for the OLD place's beaches isn't
+      // mistaken for the new pick already being ready) rather than
+      // staying "loaded" with the previous pick's beaches the whole
+      // time the new fetch is in flight.
+      final statuses = <NearbyBeachesStatus>[];
+      provider.addListener(() => statuses.add(provider.status));
+
+      provider.pickLocation(const LatLng(70.0, 70.0));
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+
+      expect(provider.status, NearbyBeachesStatus.loading);
+      expect(provider.isLoading, isTrue);
+      expect(statuses, contains(NearbyBeachesStatus.loading));
+
+      secondOverpassCompleter.complete(
+        http.Response(
+          _overpassFixture([
+            {'id': 2, 'lat': 70.0, 'lon': 70.0, 'name': 'Second Beach'},
+          ]),
+          200,
+        ),
+      );
+      await Future.delayed(_settle);
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches.single.name, 'Second Beach');
+    });
   });
 }

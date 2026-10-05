@@ -140,6 +140,98 @@ void main() {
       );
 
       test(
+        'given an empty coordinate list, fetchBatch -> returns an empty map without calling the client',
+        () async {
+          final client = FakeHttpClient();
+          final service = MarineBatchService(client);
+
+          final result = await service.fetchBatch(const []);
+
+          expect(result, isEmpty);
+          expect(client.requests, isEmpty);
+        },
+      );
+
+      test(
+        'given a single-location response as a JSON object (not a list), fetchBatch -> maps the one coordinate',
+        () async {
+          final client = FakeHttpClient()
+            ..queueJson(
+              host: 'marine-api.open-meteo.com',
+              json: {
+                'latitude': 38.3,
+                'longitude': 26.3,
+                'current': {
+                  'wave_height': 0.8,
+                  'sea_surface_temperature': 23.1,
+                },
+              },
+            );
+
+          final service = MarineBatchService(client);
+          final result = await service.fetchBatch(const [LatLng(38.3, 26.3)]);
+
+          expect(result['38.3,26.3']!.waveHeight, 0.8);
+          expect(result['38.3,26.3']!.seaSurfaceTemperature, 23.1);
+        },
+      );
+
+      test(
+        'given a response that is neither a list nor an object, fetchBatch -> throws a clear error',
+        () async {
+          final client = FakeHttpClient()
+            ..queueJson(host: 'marine-api.open-meteo.com', json: 42);
+
+          final service = MarineBatchService(client);
+
+          await expectLater(
+            () => service.fetchBatch(coordinates),
+            throwsA(
+              isA<Exception>().having(
+                (e) => e.toString(),
+                'message',
+                contains('expected a list of locations'),
+              ),
+            ),
+          );
+        },
+      );
+
+      test(
+        'given a location entry that is not a JSON object, fetchBatch -> throws a clear error',
+        () async {
+          final client = FakeHttpClient()
+            ..queueJson(
+              host: 'marine-api.open-meteo.com',
+              json: [
+                'not an object',
+                {
+                  'latitude': 39.1,
+                  'longitude': 27.0,
+                  'current': {
+                    'wave_height': 1.0,
+                    'sea_surface_temperature': 22.0,
+                  },
+                },
+              ],
+            );
+
+          final service = MarineBatchService(client);
+
+          await expectLater(
+            () => service.fetchBatch(coordinates),
+            throwsA(
+              isA<Exception>().having(
+                (e) => e.toString(),
+                'message',
+                contains('location entry is not an object'),
+              ),
+            ),
+          );
+        },
+      );
+
+      test(
         'given a repeat call within 1 hour, fetchBatch -> does not re-invoke the client',
         () async {
           final client = FakeHttpClient()
