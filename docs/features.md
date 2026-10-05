@@ -21,6 +21,15 @@ pick survives an app restart):
   green/orange/red-orange to match, from wave height, wind speed and rain chance —
   though the wave-height input is only filled in after a pull-to-refresh or a fresh
   location pick (see `docs/architecture.md` § State flow).
+- An upcoming-alerts list between the suggestion pill and the stat grid: heads-up,
+  one-line warnings (wind, waves, incoming current, clouds, rain) for a fast rise or
+  threshold crossing later in the day, colored by severity and sorted most-severe
+  first — shown only when there's something to flag.
+- A real notification when conditions turn favorable: if the swim verdict for the
+  selected location flips from caution/poor/unknown to good while the app is running,
+  a local notification is shown (after a one-time permission prompt). There is no
+  settings screen yet to turn this off, and it only fires while the app is open —
+  there's no background/scheduled check.
 - A "Sea" section (once marine data has loaded) showing wave height, water
   temperature, wave direction and current speed/direction — when the nearest beach's
   shoreline can be derived from OpenStreetMap data, the direction readings also say
@@ -30,7 +39,8 @@ pick survives an app restart):
   forecast row (with colored, time-of-day-aware weather icons), both bound to real
   data.
 - **Every stat tile and every Sea-section tile (except wave direction) opens its own
-  detail screen**: an hourly chart, a min/max/now summary, and metric-specific context
+  detail screen**: an hourly chart (with a value scale and time-of-day labels on its
+  axes), a min/max/now summary, and metric-specific context
   — Pressure's rising/steady/falling trend; UV index's five colored risk bands and a
   protection hint; Wind's speed-and-gusts chart with calm/moderate/strong thresholds;
   Rain chance's plain-language "likely between X and Y" summary; Wave height's period
@@ -66,14 +76,6 @@ pick survives an app restart):
 
 ## Built, but not yet user-facing
 
-- `ConditionAlertService` can decide *when* a "conditions turned favorable" alert
-  should fire (on a caution/poor/unknown → good transition), but nothing in the app
-  schedules a background check or shows an actual notification yet — there is no
-  alerts feature a user can turn on.
-- `buildForecastAlerts` can produce wind/wave/cloud/rain/current heads-up alerts
-  ("wind picks up between 10:00 and 11:00", etc.) from the hourly forecast, but
-  nothing in the app shows these to the user yet — no screen or notification surfaces
-  them.
 - `BeachRepository`/`staticBeaches` (10 hardcoded Turkish beaches) still exist as the
   Search screen's fallback when no live provider is supplied (e.g. tests), but the
   shipped app always supplies one.
@@ -83,8 +85,9 @@ pick survives an app restart):
 From the roadmap on `README.md`:
 
 - Google Play launch
-- Condition alerts (the underlying trigger logic exists — see above — but no delivery
-  mechanism, permission handling, or background scheduling has been built)
+- A settings screen to turn condition alerts off, and background/scheduled delivery
+  so the "conditions turned favorable" notification can fire while the app isn't
+  open (today it only fires while the app is running — see "Today" above)
 
 The core wave-height dashboard and nearby beach search from the original roadmap are
 now implemented, as described above.
