@@ -92,6 +92,12 @@ is cached yet.
   QL query against the public Overpass API. Tries a primary endpoint then a fallback
   mirror; retries HTTP 429/504 with bounded exponential backoff; de-duplicates
   concurrent calls for the same query string so only one HTTP request is made.
+- `NotificationService`/`LocalNotificationsPlugin` (`lib/data/services/notification_service.dart`)
+  — initializes `flutter_local_notifications`, requests the platform's runtime
+  notification permission once, and shows a single foreground "conditions turned
+  favorable" notification. `LocalNotificationsPlugin` is the injectable interface
+  (`RealLocalNotificationsPlugin` in production) so tests never touch a real platform
+  channel. A no-op if the permission was denied. Used by `ConditionAlertDispatcher`.
 
 ### `lib/data/repositories`
 
@@ -130,9 +136,8 @@ Pure, platform-agnostic logic with no I/O:
   "rough" means.
 - `ConditionAlertService` (`lib/logic/condition_alert_service.dart`) — decides whether
   a "conditions turned favorable" alert should fire on a verdict transition (only on
-  not-good → good). Pure trigger logic only: nothing in the app yet schedules a
-  background check or shows a real notification, so this isn't wired to any delivery
-  mechanism.
+  not-good → good). Pure trigger-decision logic; `ConditionAlertDispatcher` (see
+  `lib/logic/providers`) is the delivery half that actually calls it.
 - `buildForecastAlerts` (`lib/logic/forecast_alerts.dart`) — a pure function producing
   `ForecastAlert`s (wind/waves/clouds/rain/current) from hourly weather and sea data:
   a rule fires on a fast rise (wind, waves, current) within a 2-hour window or on
@@ -142,7 +147,8 @@ Pure, platform-agnostic logic with no I/O:
   hours are merged into one alert window. The current rule only covers "speed rises"
   — the owner's "current turns away from shore" half needs
   `wave_shore_relation.dart`'s classifier plus a beach's shore bearing, not wired up
-  here. **Not yet surfaced anywhere in the UI** — see `docs/features.md`.
+  here. Rendered on the Home screen by `ForecastAlertList` (see
+  `lib/presentation/widgets`).
 - `classifyPressureTrend` (`lib/logic/pressure_trend.dart`) — classifies a pressure
   reading as `rising`/`steady`/`falling` against an earlier one (>= 1 hPa change
   either way is a trend, matching the ~1 hPa/3h "rapid change" meteorological
@@ -206,6 +212,15 @@ Pure, platform-agnostic logic with no I/O:
   (`idle`/`loading`/`loaded`/`empty`/`error`), following the same request-id/debounce/
   disposal-guard pattern as `NearbyBeachesProvider`. A blank query clears immediately
   with no debounce or network call.
+- `ConditionAlertDispatcher` (`lib/logic/providers/condition_alert_dispatcher.dart`) —
+  not a `ChangeNotifier` itself, but a listener built alongside the other providers
+  (see `main.dart`) that watches `WeatherProvider`/`MarineProvider`, scores a
+  `SwimVerdict` via `scoreSwimSuitability` on every update, and calls
+  `NotificationService.show` whenever `ConditionAlertService.shouldAlert` fires.
+  Tracks the last-seen coordinates itself so a location switch (map tap or search
+  pick) resets the verdict baseline instead of looking like a transition; the
+  baseline and the alerts-enabled toggle (`setAlertsEnabled`, no settings-screen UI
+  yet) are persisted via `SharedPreferences`.
 
 ### `lib/presentation/widgets`
 
@@ -273,11 +288,18 @@ Reusable widgets built against `docs/design.md`:
   button + title, a hero value with optional unit/trend line, a chart slot, a min/now/
   max summary row, and an explanation paragraph.
 - `HourlyMetricChart` (`hourly_metric_chart.dart`) — a reusable hourly line chart
-  (`CustomPaint`-based, no charting package) for the metric detail screens: a "Now"
-  marker, optional horizontal threshold lines, an optional filled area band, optional
-  fixed colored value-range bands (`HourlyChartValueBand`, painted as full-width
-  background strips behind everything else — e.g. the UV index screen's risk bands),
-  and gaps (never a fabricated zero) wherever an hour's value is `null`.
+  (`CustomPaint`-based, no charting package) for the metric detail screens: a value
+  scale on the y-axis and hourly time labels on the x-axis, a "Now" marker, optional
+  horizontal threshold lines, an optional filled area band, optional fixed colored
+  value-range bands (`HourlyChartValueBand`, painted as full-width background strips
+  behind everything else — e.g. the UV index screen's risk bands), and gaps (never a
+  fabricated zero) wherever an hour's value is `null`.
+- `ForecastAlertList` (`forecast_alert_list.dart`) — the Home screen's list of
+  upcoming `ForecastAlert`s (from `buildForecastAlerts`), sitting between the
+  suggestion pill and the stat grid: one row per alert (a type icon colored by
+  severity, the alert's one-line message, a compact time-window label), sorted
+  most-severe-first via `sortAlertsBySeverity`. Renders nothing when there are no
+  alerts, leaving no gap.
 
 ### `lib/presentation/theme`
 
@@ -302,7 +324,9 @@ Reusable widgets built against `docs/design.md`:
   a **selected location**: a header (place name, live temperature), a condition row
   (description, high/low), `LocationMapCard` (with its own search icon and overflow
   menu — "Beaches" opens `SearchScreen`, "Units" the metric/imperial sheet, when a
-  `UnitPreferencesProvider` is supplied), `SwimSuggestionPill`, the `SeaConditionsRow`
+  `UnitPreferencesProvider` is supplied), `SwimSuggestionPill`, `ForecastAlertList`
+  (built fresh on every build from `buildForecastAlerts` on the same hourly data;
+  hidden entirely when there are no upcoming alerts), the `SeaConditionsRow`
   (once marine data has loaded), the 2×2 `StatTile` grid (wind speed, rain chance,
   pressure, UV index — each tappable to its own detail screen, all from
   `WeatherProvider`), and the hourly forecast row (trimmed to the next 24 entries from
@@ -373,7 +397,10 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
 - `main()` — initializes Flutter bindings, loads `SharedPreferences`, creates one
   shared `http.Client`, builds a `NearbyBeachesProvider` (`OverpassService` +
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, and a
-  `PlaceSearchProvider` (`GeocodingService`), and runs `MarineApp` with all three.
+  `PlaceSearchProvider` (`GeocodingService`); also builds the `MarineProvider`/
+  `WeatherProvider` instances here (rather than leaving it to `MarineApp`'s default)
+  so it can start a `NotificationService` and a `ConditionAlertDispatcher` listening
+  to those same instances before `runApp`, then runs `MarineApp` with all of them.
 - `MarineApp` — the root widget. Creates `MarineProvider`/`WeatherProvider` via
   `MultiProvider`/`ChangeNotifierProvider` and hosts `HomeScreen` inside a
   `MaterialApp`, forwarding the `UnitPreferencesProvider`/`NearbyBeachesProvider`/
@@ -417,6 +444,12 @@ Tapping any Home stat tile or Sea-section tile pushes a route from `buildDetailR
 passing that metric's hourly series and current value from the already-loaded
 `WeatherCondition`/`SeaCondition` — no separate fetch.
 
+`ConditionAlertDispatcher` (started in `main()` before `runApp`) listens to the same
+`WeatherProvider`/`MarineProvider` instances independently of the widget tree: on
+every update it scores a `SwimVerdict` and, through `NotificationService`, fires a
+local notification whenever `ConditionAlertService` says the verdict just turned
+favorable for the currently selected location.
+
 ## External APIs
 
 - **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — single-location
@@ -438,13 +471,16 @@ passing that metric's hourly series and current value from the already-loaded
 ## Tests
 
 - `flutter test` — unit tests for models, mappers, services, repositories
-  (`test/data/`), pure logic (`test/logic/`, including `swim_suitability_test.dart`,
-  `condition_alert_service_test.dart`, `forecast_alerts_test.dart`,
-  `pressure_trend_test.dart`, `wave_shore_relation_test.dart`,
-  `beach_gear_advisor_test.dart`, `unit_preferences_test.dart`, `uv_band_test.dart`,
-  `rain_windows_test.dart`), provider tests (`test/logic/providers/`, including
+  (`test/data/`, including `notification_service_test.dart`'s fake
+  `LocalNotificationsPlugin`), pure logic (`test/logic/`, including
+  `swim_suitability_test.dart`, `condition_alert_service_test.dart`,
+  `forecast_alerts_test.dart`, `pressure_trend_test.dart`,
+  `wave_shore_relation_test.dart`, `beach_gear_advisor_test.dart`,
+  `unit_preferences_test.dart`, `uv_band_test.dart`, `rain_windows_test.dart`),
+  provider tests (`test/logic/providers/`, including
   `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
-  `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`), widget tests for every
+  `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`/
+  `ConditionAlertDispatcher`), widget tests for every
   presentational widget and for `SearchScreen` and all seven metric detail screens
   (`test/presentation/`, including `test/presentation/screens/detail/`), plus
   `test/widget_test.dart` rendering `HomeScreen` with a fake tile provider, and
@@ -473,6 +509,9 @@ passing that metric's hourly series and current value from the already-loaded
   `tools/coverage_baseline.txt`. CI (`analyze-and-test` job) runs both, uploads the
   reports/coverage as workflow artifacts, and appends the summary to the job's step
   summary.
-- A `functional-verify` GitHub Actions workflow runs each pull request's acceptance
-  criteria as an additional automated check, alongside `flutter analyze`/`flutter
-  test`/the integration test run.
+- A checkstyle CI step runs `dart format --set-exit-if-changed` and a stricter
+  `analysis_options.yaml` lint set as a gate on every pull request, alongside
+  `flutter analyze`/`flutter test`/the integration test run.
+- The `functional-verify` GitHub Actions workflow (each pull request's acceptance
+  criteria as an additional automated check) is currently paused — defined but not
+  run on pull requests — to reduce token usage.

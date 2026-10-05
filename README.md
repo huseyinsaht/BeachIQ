@@ -25,7 +25,8 @@ BeachIQ tells you what to expect *before* you leave the house, so every trip to 
 - 🌊 **Live wave height** — no more guessing
 - 📍 **Nearby spots** — find the best conditions close to you
 - 📊 **One glance, all you need** — clean dashboard, no clutter
-- 🔔 *(coming soon)* Alerts when conditions turn perfect
+- 🔔 Alerts when conditions turn perfect (while the app is running — background
+  delivery is still coming)
 
 ## 📱 See it in action
 
@@ -43,7 +44,7 @@ BeachIQ is launching on **Google Play** — stay tuned!
 - [x] Core wave-height dashboard
 - [x] Nearby beach search
 - [ ] Google Play launch
-- [ ] Condition alerts
+- [x] Condition alerts
 
 ---
 
