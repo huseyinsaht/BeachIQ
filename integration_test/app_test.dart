@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:beachiq/data/models/beach.dart';
@@ -79,6 +80,37 @@ class _RecordingMarineRepository extends MarineRepository {
         ? calls.length - 1
         : results.length - 1;
     return results[index];
+  }
+}
+
+/// A [WeatherRepository] whose calls each get their own [Completer], kept
+/// in [calls] in call order, so a test can resolve a later pick's fetch
+/// before an earlier one — the "last tap wins" out-of-order scenario
+/// (#213) — without any real network delay to race against.
+class _SequentialWeatherRepository extends WeatherRepository {
+  _SequentialWeatherRepository() : super(WeatherApiService());
+
+  final List<Completer<WeatherCondition>> calls = [];
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) {
+    final completer = Completer<WeatherCondition>();
+    calls.add(completer);
+    return completer.future;
+  }
+}
+
+/// Like [_SequentialWeatherRepository], but for [MarineRepository].
+class _SequentialMarineRepository extends MarineRepository {
+  _SequentialMarineRepository() : super(MarineApiService());
+
+  final List<Completer<SeaCondition>> calls = [];
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) {
+    final completer = Completer<SeaCondition>();
+    calls.add(completer);
+    return completer.future;
   }
 }
 
@@ -581,9 +613,21 @@ void main() {
       );
       addTearDown(placeSearchProvider.dispose);
 
+      // Fixture providers keep Home off the real network: with MarineApp's
+      // real defaults the fetch never completes, the loading spinner
+      // animates forever and pumpAndSettle times out (#228).
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
       await tester.pumpWidget(
         MarineApp(
           tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           nearbyBeachesProvider: nearbyBeachesProvider,
           placeSearchProvider: placeSearchProvider,
         ),
@@ -899,9 +943,21 @@ void main() {
       );
       addTearDown(nearbyBeachesProvider.dispose);
 
+      // Fixture providers keep Home off the real network: with MarineApp's
+      // real defaults the fetch never completes, the sectional loading
+      // placeholder (#228) animates forever and pumpAndSettle times out.
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
       await tester.pumpWidget(
         MarineApp(
           tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           nearbyBeachesProvider: nearbyBeachesProvider,
         ),
       );
@@ -1069,6 +1125,117 @@ void main() {
         closeTo(pickedPoint.$2, 0.0001),
       );
       expect(find.text('Çeşme, İzmir'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Two-tap map pick flow (#213): tapping the map a second time before '
+    "the first pick's fetch has resolved shows the SECOND (newest) pick's "
+    "data once both resolve, with the first pick's slower, late-arriving "
+    'result discarded rather than overwriting it — real tap gestures, no '
+    'real network (fake repositories/clients throughout)',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = _FixtureNetworkClient();
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        OverpassService(nearbyClient),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(nearbyClient),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      final weatherRepository = _SequentialWeatherRepository();
+      final marineRepository = _SequentialMarineRepository();
+      final weatherProvider = WeatherProvider(weatherRepository);
+      final marineProvider = MarineProvider(marineRepository);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            nearbyBeachesProvider: nearbyBeachesProvider,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Initial load, for the Çeşme first-run default.
+      expect(weatherRepository.calls, hasLength(1));
+      weatherRepository.calls[0].complete(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('27°'), findsOneWidget);
+
+      // Seeds an initial MarineProvider load too, at the screen's own
+      // Çeşme-default coordinates — MarineProvider is never auto-fetched
+      // on init (only an explicit refresh/pick triggers it), so this
+      // simulates the "old place" already having real sea data on screen
+      // from an earlier pick this session, matching how a returning user
+      // would actually see this screen.
+      expect(marineRepository.calls, isEmpty);
+      final initialMarineFetch = marineProvider.fetchData(38.3220, 26.3260);
+      expect(marineRepository.calls, hasLength(1));
+      marineRepository.calls[0].complete(SeaCondition(waveHeight: 0.3));
+      await initialMarineFetch;
+      await tester.pumpAndSettle();
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+
+      // First tap ("tap A"): a real gesture at the map's own center.
+      await tester.tap(find.byType(FlutterMap));
+      // flutter_map delays a single tap by its double-tap-to-zoom window
+      // before firing onTap.
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(weatherRepository.calls, hasLength(2));
+      expect(marineRepository.calls, hasLength(2));
+      // Tap A's old values are already gone, replaced by a loading
+      // layout, even though tap A's own fetch hasn't resolved yet (#213).
+      expect(find.text('27°'), findsNothing);
+      expect(find.byType(SeaConditionsRow), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsWidgets);
+      // The header/map card itself stays on screen (not torn down into
+      // the full-screen shell): only the data sections show loading.
+      expect(find.byType(FlutterMap), findsOneWidget);
+
+      // Second tap ("tap B"): a real gesture at a different point on the
+      // map, while tap A's fetch is still pending — the overlapping-picks
+      // scenario. Offset from the FlutterMap's own center (tap A's point)
+      // so it lands on a genuinely different spot, well inside the map
+      // card's bounds.
+      final mapCenter = tester.getCenter(find.byType(FlutterMap));
+      await tester.tapAt(mapCenter + const Offset(40, 20));
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(weatherRepository.calls, hasLength(3));
+      expect(marineRepository.calls, hasLength(3));
+
+      // Resolve tap B (the newer pick) first.
+      weatherRepository.calls[2].complete(
+        WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+      );
+      marineRepository.calls[2].complete(SeaCondition(waveHeight: 1.8));
+      await tester.pumpAndSettle();
+
+      expect(find.text('31°'), findsOneWidget);
+      expect(find.byType(SeaConditionsRow), findsOneWidget);
+
+      // Tap A (the older pick) resolving late must be discarded entirely:
+      // it must not overwrite tap B's already-displayed data ("last tap
+      // wins").
+      weatherRepository.calls[1].complete(
+        WeatherCondition(temperature: 99, windSpeed: 1, weatherCode: 1),
+      );
+      marineRepository.calls[1].complete(SeaCondition(waveHeight: 0.1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('31°'), findsOneWidget);
+      expect(find.text('99°'), findsNothing);
+      expect(weatherProvider.currentData!.temperature, 31);
+      expect(marineProvider.currentData!.waveHeight, 1.8);
     },
   );
 }
