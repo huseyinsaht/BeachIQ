@@ -12,6 +12,9 @@ permissions:
 
 jobs:
   review:
+    # develop->main release PRs only bundle PRs that were already reviewed on
+    # develop. A skipped job still satisfies the required `review` check.
+    if: github.base_ref != 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
