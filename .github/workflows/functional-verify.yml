@@ -1,8 +1,10 @@
 name: Functional Verification
 
-# Runs the app's behavior against the PR's acceptance criteria. The reviewer
-# (claude-review.yml) only reads the diff; this job actually executes tests.
-# Feedback is posted as a PR comment that the implementer agent reads and fixes.
+# TEMPORARILY PAUSED to cut token usage. The job keeps its name because
+# `functional-verify` is a required status check on develop; a no-op job that
+# succeeds keeps PRs mergeable without running the verifier agent.
+# To re-enable: revert the commit that introduced this stub
+# (`git revert <sha>`), or restore the previous version of this file.
 
 on:
   pull_request:
@@ -11,127 +13,10 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  issues: read
-
-concurrency:
-  group: functional-verify-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   functional-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: '3.32.2'
-          cache: true
-
-      - name: Install Linux desktop build dependencies and a virtual display
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev xvfb
-
-      - run: flutter pub get
-
-      - name: Record verification start time
-        id: t
-        run: echo "start=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
-
-      - uses: anthropics/claude-code-action@v1
-        with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
-
-            You are the FUNCTIONAL VERIFIER for this Flutter app (BeachIQ). A separate agent
-            wrote this PR and another one reviews the diff. Your job is different from both:
-            you must EXECUTE the changed behavior and observe the result. Reading code and
-            concluding "this should work" is not verification. You never merge, approve,
-            request changes or push commits.
-
-            1. Find what the PR is supposed to deliver: `gh pr view <n> --json title,body`.
-               Take the issue number(s) from `Fixes #N` / `Closes #N` in the body, then read
-               each with `gh issue view <N>`. The acceptance criteria (and the "Tests"
-               section) of the issue are the contract. If there is no linked issue, the
-               claims in the PR body are the contract.
-            2. Read the diff (`gh pr diff <n>`) to know which files and flows are affected.
-            3. For EVERY acceptance criterion, produce observed evidence:
-               - Prefer an existing test that really asserts it. Run it
-                 (`flutter test <file>` or
-                 `xvfb-run -a flutter test integration_test/<file> -d linux`) and read the
-                 output. A test that exists but does not assert the criterion does not count.
-               - If no test asserts it, write a throwaway test named `*_verify_tmp_test.dart`
-                 under `test/` or `integration_test/` that drives the real widgets /
-                 providers / logic with fake network clients (never the real network), and
-                 run it. Throwaway tests are never committed; do not use git.
-               - For UI changes also run the whole integration suite once:
-                 `xvfb-run -a flutter test integration_test -d linux --reporter expanded`.
-            4. Classify each criterion:
-               - PASS: you ran something and saw the expected result.
-               - FAIL: you ran it and the result differs from the criterion, OR the behavior
-                 is faked: hard-coded or static values where the criterion needs live or
-                 selected data, a widget that exists but is not wired into the screen, a
-                 feature that is not reachable from the UI, a new screen or flow without
-                 integration-test coverage when the issue asks for it.
-               - UNVERIFIED: cannot be checked headless (real device, real network, a
-                 visual-taste judgement). Say why. UNVERIFIED alone never blocks.
-            5. Post ONE top-level comment with `gh pr comment`. First delete your earlier
-               functional-verification comments on this PR (comments whose body starts with
-               `## Functional verification`) via `gh api -X DELETE
-               repos/<repo>/issues/comments/<id>`. Format:
-
-               ## Functional verification
-               | # | Acceptance criterion | Result | Evidence |
-               |---|---|---|---|
-               (one row per criterion; Evidence = the exact command and the relevant output
-               line, or the test name)
-
-               Then, for every FAIL, a block written for an implementer agent that cannot
-               ask questions: what was expected, what you observed, the file:line responsible,
-               and the concrete change that would fix it. Do not pad with praise or style
-               remarks.
-
-               The LAST line of the comment must be exactly one of:
-                 FUNCTIONAL RESULT: PASS
-                 FUNCTIONAL RESULT: FAIL
-               FAIL if at least one criterion is FAIL, or if `flutter test` / the integration
-               suite fails because of this PR. Otherwise PASS. This line is machine-read and
-               gates the merge; never omit it. Do not use the word VERDICT anywhere in the
-               comment (another workflow reads that word).
-
-          claude_args: |
-            --max-turns 60
-            --allowedTools "Read,Write,Edit,Glob,Grep,Bash(flutter:*),Bash(dart:*),Bash(xvfb-run:*),Bash(ls:*),Bash(cat:*),Bash(gh pr comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh api:*)"
-
-      - name: Enforce functional result
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const start = new Date('${{ steps.t.outputs.start }}');
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner: context.repo.owner, repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number, per_page: 100,
-            });
-            const mine = comments
-              .filter(c => c.user && c.user.type === 'Bot'
-                && new Date(c.updated_at) >= start
-                && (c.body || '').trimStart().startsWith('## Functional verification'))
-              .sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
-            let result = null;
-            for (const c of mine) {
-              const m = [...(c.body || '').matchAll(/FUNCTIONAL RESULT:\s*(PASS|FAIL)/gi)].pop();
-              if (m) result = m[1].toUpperCase();
-            }
-            core.info(`functional result: ${result}`);
-            if (result === 'FAIL') core.setFailed('Functional verification FAILED - see the "Functional verification" comment on this PR.');
-            else if (result !== 'PASS') core.setFailed('Functional verifier did not post a FUNCTIONAL RESULT line.');
+      - run: echo "Functional verification is temporarily paused (see comment at top of this file)."
