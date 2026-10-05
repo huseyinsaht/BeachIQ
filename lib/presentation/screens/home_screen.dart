@@ -283,6 +283,10 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _bgGradientBottom = Color(0xFF2A3145);
   static const _textPrimary = Color(0xFFFFFFFF);
   static const _textSecondary = Color(0xFF8B93A6);
+  // docs/design.md `color.warning` — the same red used for the
+  // away-from-shore shore-relation label, reused here for the Sea
+  // section's inline error (see [_buildSectionError]).
+  static const _colorWarning = Color(0xFFEF5350);
 
   /// The first-run default, per docs/design.md — used only until the user
   /// has ever picked a location (on the map or via search) or one was
@@ -566,6 +570,20 @@ class _HomeScreenState extends State<HomeScreen> {
     // Same idea as [weatherLoading], for the Sea section below.
     final marineLoading =
         marineProvider != null && marineProvider.isLoading && !hasData;
+    // A fetch for a freshly picked location that has failed, with nothing
+    // to fall back to and nothing in flight — rendered inline in the Sea
+    // section's place below (#228). The very first load's failure is
+    // already handled by the full-screen error shell above (which returns
+    // before this point), so in practice this only ever fires for a later
+    // pick; computing it unconditionally (rather than gating on
+    // `!isFirstLoad`) keeps it correct even if that earlier branch's
+    // conditions ever change. Previously a later pick's marine error had
+    // no visible rendering at all — the Sea section simply vanished next
+    // to the new place name while the error was silently swallowed.
+    final marineErrorMessage =
+        marineProvider != null && !hasData && !marineLoading
+        ? marineProvider.error
+        : null;
     final unitSystem =
         widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
     final swimVerdict = scoreSwimSuitability(
@@ -714,6 +732,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (marineLoading) ...[
                       const SizedBox(height: 20),
                       _buildSectionLoading(height: 78),
+                    ] else if (marineErrorMessage != null) ...[
+                      const SizedBox(height: 20),
+                      _buildSectionError(marineErrorMessage, height: 78),
                     ] else if (marineProvider?.currentData != null) ...[
                       const SizedBox(height: 20),
                       SeaConditionsRow(
@@ -879,6 +900,38 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     return height == null ? spinner : SizedBox(height: height, child: spinner);
+  }
+
+  /// Shown in the Sea section's place when a fetch for the newly picked
+  /// location has failed and there's no previous data to fall back to
+  /// (#228) — the sectional counterpart to the full-screen error state
+  /// [build] uses for the very first load, so a later pick's failure is
+  /// never silently left blank. Mirrors that state's wording; [height]
+  /// bounds it to the Sea section's usual footprint, matching
+  /// [_buildSectionLoading].
+  Widget _buildSectionError(String error, {double? height}) {
+    final content = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: _colorWarning, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Unable to load marine data.\n$error',
+              style: const TextStyle(color: _textPrimary, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+    return height == null
+        ? content
+        : SizedBox(
+            height: height,
+            child: Center(child: content),
+          );
   }
 
   /// Wraps [child] in the same background/[SafeArea]/cloud-backdrop shell

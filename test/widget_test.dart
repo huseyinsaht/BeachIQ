@@ -1841,6 +1841,58 @@ void main() {
       },
     );
 
+    testWidgets(
+      'a marine fetch that fails for the newly picked location renders '
+      "the error visibly in the Sea section's place (#228), never a "
+      "blank gap under the new place name's other, successfully-loaded "
+      'data',
+      (WidgetTester tester) async {
+        final marineRepository = _SequentialMarineRepository();
+        final marineProvider = MarineProvider(marineRepository);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Seeds the "old place" already having real sea data on screen,
+        // same as the loaded-layout test above (MarineProvider is never
+        // auto-fetched on init).
+        final initialMarineFetch = marineProvider.fetchData(38.3220, 26.3260);
+        expect(marineRepository.calls, hasLength(1));
+        marineRepository.calls[0].complete(_fakeSeaCondition());
+        await initialMarineFetch;
+        await tester.pumpAndSettle();
+        expect(find.byType(SeaConditionsRow), findsOneWidget);
+
+        // A pick for a new, different location whose marine fetch then
+        // fails.
+        unawaited(marineProvider.fetchData(50, 50));
+        await tester.pump();
+        expect(marineRepository.calls, hasLength(2));
+        marineRepository.calls[1].completeError(Exception('boom'));
+        await tester.pumpAndSettle();
+
+        // The old place's Sea row must never reappear next to the failed
+        // new pick, and the failure must be visible — not a silent blank
+        // gap (the pre-fix regression) and not a loading spinner either.
+        expect(find.byType(SeaConditionsRow), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(
+          find.textContaining('Unable to load marine data'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('boom'), findsOneWidget);
+        expect(marineProvider.error, isNotNull);
+        expect(marineProvider.currentData, isNull);
+      },
+    );
+
     testWidgets('pull-to-refresh on the same place keeps the current values '
         'visible while refreshing, unlike a genuine new pick', (
       WidgetTester tester,
