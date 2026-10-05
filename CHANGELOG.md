@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.7] - 2026-10-05
+
 ### Added
 
 - Home screen: an upcoming forecast-alerts list (`ForecastAlertList`) between the
