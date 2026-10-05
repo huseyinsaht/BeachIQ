@@ -19,9 +19,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  functional-verify:
+  # Cheap gate: skip the (token-expensive) verifier for drafts and for PRs that
+  # touch no code (docs, changelog, README only). A skipped job counts as
+  # success for the required `functional-verify` check.
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.f.outputs.code }}
+    steps:
+      - id: f
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          files=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[].filename')
+          if echo "$files" | grep -Eq '^(lib/|test/|integration_test/|pubspec\.(yaml|lock)$|android/|ios/|linux/)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  functional-verify:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && !github.event.pull_request.draft
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,8 +96,10 @@ jobs:
                  under `test/` or `integration_test/` that drives the real widgets /
                  providers / logic with fake network clients (never the real network), and
                  run it. Throwaway tests are never committed; do not use git.
-               - For UI changes also run the whole integration suite once:
-                 `xvfb-run -a flutter test integration_test -d linux --reporter expanded`.
+               - Run only the tests relevant to the changed files and criteria. Do NOT run
+                 the whole test or integration suite: the CI jobs `analyze-and-test` and
+                 `integration` already run it on every PR. Only run an integration file
+                 when it covers a screen/flow this PR changes.
             4. Classify each criterion:
                - PASS: you ran something and saw the expected result.
                - FAIL: you ran it and the result differs from the criterion, OR the behavior
@@ -104,13 +128,14 @@ jobs:
                The LAST line of the comment must be exactly one of:
                  FUNCTIONAL RESULT: PASS
                  FUNCTIONAL RESULT: FAIL
-               FAIL if at least one criterion is FAIL, or if `flutter test` / the integration
-               suite fails because of this PR. Otherwise PASS. This line is machine-read and
+               FAIL if at least one criterion is FAIL, or if a test you ran fails because of
+               this PR. Otherwise PASS. This line is machine-read and
                gates the merge; never omit it. Do not use the word VERDICT anywhere in the
                comment (another workflow reads that word).
 
           claude_args: |
-            --max-turns 60
+            --max-turns 25
+            --model claude-sonnet-5-5
             --allowedTools "Read,Write,Edit,Glob,Grep,Bash(flutter:*),Bash(dart:*),Bash(xvfb-run:*),Bash(ls:*),Bash(cat:*),Bash(gh pr comment:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh issue view:*),Bash(gh api:*)"
 
       - name: Enforce functional result
