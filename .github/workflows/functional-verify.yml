@@ -6,7 +6,7 @@ name: Functional Verification
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [develop]
 
 permissions:
@@ -32,6 +32,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           files=$(gh api --paginate "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" --jq '.[].filename')
           if echo "$files" | grep -Eq '^(lib/|test/|integration_test/|pubspec\.(yaml|lock)$|android/|ios/|linux/)'; then
             echo "code=true" >> "$GITHUB_OUTPUT"
