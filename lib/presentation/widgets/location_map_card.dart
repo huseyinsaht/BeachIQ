@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -52,6 +54,18 @@ const double kAmenityMarkersMinZoom = 12.0;
 /// Pure so it's directly unit-testable without a widget/map in play.
 bool shouldShowAmenityMarkers(double zoom) => zoom >= kAmenityMarkersMinZoom;
 
+/// The bounds [LocationMapCard] should fit its camera to for [beach]
+/// (#214): its geometry's bounding box when it has 2+ points, or null when
+/// it doesn't (no geometry, or a single-point way) — the caller then falls
+/// back to a plain centered move instead. Pure so it's directly
+/// unit-testable without a widget/map in play, matching
+/// [shouldShowAmenityMarkers].
+LatLngBounds? beachBoundsToFit(Beach? beach) {
+  final geometry = beach?.geometry;
+  if (geometry == null || geometry.length < 2) return null;
+  return LatLngBounds.fromPoints(geometry);
+}
+
 /// Formats [point] as a short "lat°N/S, lon°E/W" label, e.g.
 /// `"38.3220°N, 26.3260°E"` — the display name reported by a map tap when
 /// no real place name is known. `GeocodingService` (#156) only supports
@@ -94,6 +108,8 @@ class LocationMapCard extends StatefulWidget {
     this.nearbyBeachesProvider,
     this.onLocationPicked,
     this.placeSearchProvider,
+    this.selectedBeach,
+    this.mapController,
   });
 
   final LatLng center;
@@ -125,6 +141,24 @@ class LocationMapCard extends StatefulWidget {
   /// notify a parent of the new point.
   final void Function(LatLng point, String displayName)? onLocationPicked;
 
+  /// A beach picked elsewhere (e.g. tapped in `SearchScreen`'s results,
+  /// #214) to highlight distinctly among the gold beach overlays and to
+  /// frame the camera on: when it has 2+ `geometry` points the camera fits
+  /// to its bounds, otherwise it centers on the beach at a zoom high enough
+  /// for amenity markers to show. Compared to the overlay list by value
+  /// (name + coordinates), not identity, since a fresh
+  /// [NearbyBeachesProvider] fetch replaces its `beaches` list with new
+  /// instances. Null (the default) draws every beach the same way and
+  /// leaves the camera alone, unchanged from before.
+  final Beach? selectedBeach;
+
+  /// Overridable so a widget test can read back the camera's resulting
+  /// `center`/`zoom` after a `center`/`selectedBeach` change (#214),
+  /// instead of reaching into this widget's private state. Null (the
+  /// default) makes this widget own and dispose its own controller,
+  /// unchanged from before.
+  final MapController? mapController;
+
   @override
   State<LocationMapCard> createState() => _LocationMapCardState();
 }
@@ -138,6 +172,8 @@ class _LocationMapCardState extends State<LocationMapCard> {
   double _currentZoom = _initialZoom;
   final Set<AmenityKind> _hiddenAmenityKinds = {};
   BeachAmenity? _selectedAmenity;
+  late final MapController _mapController =
+      widget.mapController ?? MapController();
 
   bool _searchExpanded = false;
   final TextEditingController _searchController = TextEditingController();
@@ -146,6 +182,9 @@ class _LocationMapCardState extends State<LocationMapCard> {
   @override
   void dispose() {
     _searchController.dispose();
+    // Only dispose a controller this widget created itself — disposing a
+    // caller-supplied one (widget.mapController) is that caller's job.
+    if (widget.mapController == null) _mapController.dispose();
     super.dispose();
   }
 
@@ -164,6 +203,35 @@ class _LocationMapCardState extends State<LocationMapCard> {
     if (oldWidget.center != widget.center) {
       _pickedPoint = widget.center;
     }
+    // A `center`/`selectedBeach` change from outside (e.g. a beach tapped
+    // in `SearchScreen`, #214) must actually move the map camera, not just
+    // this state's own `_pickedPoint` above — `MapOptions.initialCenter`
+    // only applies once, on the very first build, so without this the
+    // camera would stay wherever the user last left it. Deferred to after
+    // this frame so the map (and, for a bounds fit, its current viewport
+    // size) is guaranteed to be laid out before the controller is used.
+    if (oldWidget.center != widget.center ||
+        !identical(oldWidget.selectedBeach, widget.selectedBeach)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _moveCameraTo(widget.center, widget.selectedBeach);
+      });
+    }
+  }
+
+  /// Moves the map camera to [point]: fitting to [beach]'s geometry bounds
+  /// when it has 2+ points (see [beachBoundsToFit]), otherwise centering on
+  /// [point] at a zoom no lower than [kAmenityMarkersMinZoom] (so amenity
+  /// markers are visible), never zooming out from whatever the user is
+  /// already at.
+  void _moveCameraTo(LatLng point, Beach? beach) {
+    final bounds = beachBoundsToFit(beach);
+    if (bounds != null) {
+      _mapController.fitCamera(
+        CameraFit.bounds(bounds: bounds, padding: const EdgeInsets.all(40)),
+      );
+      return;
+    }
+    _mapController.move(point, math.max(_currentZoom, kAmenityMarkersMinZoom));
   }
 
   void _handleTap(TapPosition tapPosition, LatLng point) {
@@ -481,6 +549,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
     return Stack(
       children: [
         FlutterMap(
+          mapController: _mapController,
           options: MapOptions(
             initialCenter: widget.center,
             initialZoom: _initialZoom,
@@ -507,8 +576,12 @@ class _LocationMapCardState extends State<LocationMapCard> {
                 ),
               ],
             ),
-            PolygonLayer(polygons: _polygonsFor(overlayBeaches)),
-            PolylineLayer(polylines: _polylinesFor(overlayBeaches)),
+            PolygonLayer(
+              polygons: _polygonsFor(overlayBeaches, widget.selectedBeach),
+            ),
+            PolylineLayer(
+              polylines: _polylinesFor(overlayBeaches, widget.selectedBeach),
+            ),
             if (showMarkers)
               MarkerLayer(
                 markers: [
@@ -557,30 +630,36 @@ class _LocationMapCardState extends State<LocationMapCard> {
   }
 
   /// Beach geometry with 3+ points is drawn as a filled/outlined polygon
-  /// (a closed shoreline area).
-  List<Polygon> _polygonsFor(Iterable<Beach> beaches) {
+  /// (a closed shoreline area). [selected] (#214), when it matches a beach
+  /// by value (see [isSameBeach]), gets a distinct white border and a
+  /// heavier stroke instead of the plain gold outline every other overlay
+  /// uses, so it stands out among the rest of the gold beaches.
+  List<Polygon> _polygonsFor(Iterable<Beach> beaches, Beach? selected) {
     return [
       for (final beach in beaches)
         if ((beach.geometry?.length ?? 0) >= 3)
           Polygon(
             points: beach.geometry!,
             color: _goldFill,
-            borderColor: _goldHighlight,
-            borderStrokeWidth: 2,
+            borderColor: isSameBeach(beach, selected)
+                ? Colors.white
+                : _goldHighlight,
+            borderStrokeWidth: isSameBeach(beach, selected) ? 4 : 2,
           ),
     ];
   }
 
   /// Beach geometry with exactly 2 points (an open way) is drawn as a
-  /// simple gold line rather than a polygon.
-  List<Polyline> _polylinesFor(Iterable<Beach> beaches) {
+  /// simple gold line rather than a polygon. See [_polygonsFor] for the
+  /// [selected] highlight.
+  List<Polyline> _polylinesFor(Iterable<Beach> beaches, Beach? selected) {
     return [
       for (final beach in beaches)
         if (beach.geometry?.length == 2)
           Polyline(
             points: beach.geometry!,
-            color: _goldHighlight,
-            strokeWidth: 3,
+            color: isSameBeach(beach, selected) ? Colors.white : _goldHighlight,
+            strokeWidth: isSameBeach(beach, selected) ? 5 : 3,
           ),
     ];
   }

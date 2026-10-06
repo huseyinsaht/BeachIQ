@@ -799,4 +799,193 @@ void main() {
       },
     );
   });
+
+  group('tapping a beach result (#214)', () {
+    testWidgets('tapping a beach card pops the screen with that exact Beach', (
+      tester,
+    ) async {
+      Beach? popped;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return ElevatedButton(
+                onPressed: () async {
+                  popped = await Navigator.of(context).push<Beach>(
+                    MaterialPageRoute(builder: (_) => const SearchScreen()),
+                  );
+                },
+                child: const Text('open'),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(staticBeaches.first.name), findsOneWidget);
+      await tester.tap(find.text(staticBeaches.first.name));
+      await tester.pumpAndSettle();
+
+      expect(popped, same(staticBeaches.first));
+      // The screen itself is gone — popped back to the `open` button.
+      expect(find.byType(SearchScreen), findsNothing);
+    });
+
+    testWidgets(
+      'tapping the favorite heart toggles the favorite and does NOT pop '
+      'the screen',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final favoritesProvider = FavoritesProvider(
+          await SharedPreferences.getInstance(),
+        );
+        addTearDown(favoritesProvider.dispose);
+        Beach? popped;
+        var didPop = false;
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return ElevatedButton(
+                  onPressed: () async {
+                    popped = await Navigator.of(context).push<Beach>(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            SearchScreen(favoritesProvider: favoritesProvider),
+                      ),
+                    );
+                    didPop = true;
+                  },
+                  child: const Text('open'),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byIcon(Icons.favorite_border).first);
+        await tester.pump();
+
+        expect(favoritesProvider.isFavorite(staticBeaches.first), isTrue);
+        expect(didPop, isFalse);
+        expect(popped, isNull);
+        expect(find.byType(SearchScreen), findsOneWidget);
+      },
+    );
+  });
+
+  group(
+    'selecting a "Places" result also moves the Home map camera (#214)',
+    () {
+      testWidgets(
+        'given onLocationPicked, selecting a place calls it with the exact '
+        'point and name, without popping the screen',
+        (tester) async {
+          final geocodingClient = FakeHttpClient()
+            ..queueJson(
+              host: 'geocoding-api.open-meteo.com',
+              json: {
+                'results': [
+                  {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+                ],
+              },
+            );
+          final placeSearchProvider = PlaceSearchProvider(
+            GeocodingService(geocodingClient),
+            debounceDuration: const Duration(milliseconds: 1),
+          );
+          addTearDown(placeSearchProvider.dispose);
+
+          LatLng? pickedPoint;
+          String? pickedName;
+
+          await tester.pumpWidget(
+            wrap(
+              SearchScreen(
+                placeSearchProvider: placeSearchProvider,
+                onLocationPicked: (point, name) {
+                  pickedPoint = point;
+                  pickedName = name;
+                },
+              ),
+            ),
+          );
+          await tester.enterText(find.byType(TextField), 'bodrum');
+          await tester.pump(const Duration(milliseconds: 2));
+          await tester.pump();
+
+          await tester.tap(find.byKey(const ValueKey('place-result-0-Bodrum')));
+          await tester.pump();
+
+          expect(pickedPoint, const LatLng(37.03, 27.43));
+          expect(pickedName, 'Bodrum');
+          // Stays open — unlike a beach-card tap, a place pick doesn't pop.
+          expect(find.byType(SearchScreen), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given no onLocationPicked, selecting a place still re-centers '
+        'nearbyBeachesProvider exactly as before (no behavior change for '
+        'existing callers)',
+        (tester) async {
+          final geocodingClient = FakeHttpClient()
+            ..queueJson(
+              host: 'geocoding-api.open-meteo.com',
+              json: {
+                'results': [
+                  {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+                ],
+              },
+            );
+          final placeSearchProvider = PlaceSearchProvider(
+            GeocodingService(geocodingClient),
+            debounceDuration: const Duration(milliseconds: 1),
+          );
+          addTearDown(placeSearchProvider.dispose);
+
+          SharedPreferences.setMockInitialValues({});
+          final nearbyClient = FakeHttpClient()
+            ..queueJson(
+              host: 'overpass-api.de',
+              json: {'elements': <Object?>[]},
+            )
+            ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
+          final nearbyBeachesProvider = NearbyBeachesProvider(
+            OverpassService(nearbyClient),
+            BeachCache(await SharedPreferences.getInstance()),
+            MarineBatchService(nearbyClient),
+            debounceDuration: const Duration(milliseconds: 1),
+          );
+          addTearDown(nearbyBeachesProvider.dispose);
+
+          await tester.pumpWidget(
+            wrap(
+              SearchScreen(
+                placeSearchProvider: placeSearchProvider,
+                nearbyBeachesProvider: nearbyBeachesProvider,
+              ),
+            ),
+          );
+          await tester.enterText(find.byType(TextField), 'bodrum');
+          await tester.pump(const Duration(milliseconds: 2));
+          await tester.pump();
+
+          await tester.tap(find.byKey(const ValueKey('place-result-0-Bodrum')));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pump(const Duration(milliseconds: 10));
+
+          final overpassRequest = nearbyClient.requests.single as http.Request;
+          expect(overpassRequest.body, contains('37.03'));
+          expect(overpassRequest.body, contains('27.43'));
+        },
+      );
+    },
+  );
 }

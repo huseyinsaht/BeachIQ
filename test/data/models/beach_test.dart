@@ -77,4 +77,45 @@ void main() {
       expect(BeachFee.values, [BeachFee.free, BeachFee.paid, BeachFee.unknown]);
     });
   });
+
+  group('isSameBeach (#214)', () {
+    Beach beach({
+      String name = 'Fixture Beach',
+      double lat = 38.3,
+      double lon = 26.3,
+    }) {
+      return Beach(name: name, city: 'Cesme', latitude: lat, longitude: lon);
+    }
+
+    test('given the same name and coordinates on different instances -> '
+        'true', () {
+      final a = beach();
+      final b = beach();
+
+      expect(isSameBeach(a, b), isTrue);
+      expect(identical(a, b), isFalse);
+    });
+
+    test('an instance is the same beach as itself', () {
+      final a = beach();
+
+      expect(isSameBeach(a, a), isTrue);
+    });
+
+    test('given a different name -> false', () {
+      expect(isSameBeach(beach(), beach(name: 'Other Beach')), isFalse);
+    });
+
+    test('given a different latitude -> false', () {
+      expect(isSameBeach(beach(), beach(lat: 38.4)), isFalse);
+    });
+
+    test('given a different longitude -> false', () {
+      expect(isSameBeach(beach(), beach(lon: 26.4)), isFalse);
+    });
+
+    test('given null -> false', () {
+      expect(isSameBeach(beach(), null), isFalse);
+    });
+  });
 }

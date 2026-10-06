@@ -123,6 +123,8 @@ class BeachResultCard extends StatelessWidget {
     this.isFavorite = false,
     this.onFavoriteToggle,
     this.unitSystem = UnitSystem.metric,
+    this.onTap,
+    this.borderRadius = const BorderRadius.vertical(top: Radius.circular(32)),
   });
 
   /// The beach/location name shown bold in the result row (e.g. "Altinkum
@@ -176,6 +178,19 @@ class BeachResultCard extends StatelessWidget {
   /// output exactly.
   final UnitSystem unitSystem;
 
+  /// Called when the card itself (anywhere outside the favorite heart's own
+  /// tap target) is tapped — e.g. to show this beach on the Home map. Null
+  /// (the default) renders a plain, non-interactive card, unchanged from
+  /// before.
+  final VoidCallback? onTap;
+
+  /// The card's corner rounding. Defaults to the bottom-sheet-style
+  /// top-only radius `SearchScreen`'s result sheet needs; a caller that
+  /// shows this card elsewhere (e.g. `HomeScreen`'s compact selected-beach
+  /// row, #214, not anchored to a screen edge) can pass a fully rounded
+  /// shape instead.
+  final BorderRadius borderRadius;
+
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
   static const _textSecondary = Color(0xFF8B93A6);
@@ -216,95 +231,124 @@ class BeachResultCard extends StatelessWidget {
     ];
 
     return Container(
-      decoration: const BoxDecoration(
+      // The outer Container (rather than Material/InkWell directly) stays
+      // the single ancestor "box" of this card's content — matching
+      // docs/design.md's "not chips or pills" direction for the info lines
+      // inside it, and what beach_result_card_test.dart's "no Container
+      // wraps an individual info line" check asserts. ClipRRect clips
+      // InkWell's ripple to the same rounded corners; Material's
+      // `transparency` type means it paints no background of its own,
+      // leaving this Container's `color` as the one visible surface.
+      decoration: BoxDecoration(
         color: _surfacePaper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+        borderRadius: borderRadius,
       ),
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Icon(Icons.location_on, size: 20, color: _textOnPaper),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      placeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+      child: ClipRRect(
+        borderRadius: borderRadius,
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        size: 20,
                         color: _textOnPaper,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
                       ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              placeName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _textOnPaper,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              areaSubtitle,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Icon(weatherIcon, size: 20, color: _iconSun),
+                      const SizedBox(width: 4),
+                      Text(
+                        temperature,
+                        style: const TextStyle(
+                          color: _textOnPaper,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      if (onFavoriteToggle != null)
+                        IconButton(
+                          icon: Icon(
+                            isFavorite ? Icons.favorite : Icons.favorite_border,
+                            size: 20,
+                            color: isFavorite
+                                ? _favoriteActive
+                                : _textSecondary,
+                          ),
+                          onPressed: onFavoriteToggle,
+                          tooltip: isFavorite
+                              ? 'Remove from favorites'
+                              : 'Add to favorites',
+                          // Default IconButton padding/constraints give a 48x48
+                          // tap target (Material's minimum), rather than shrinking
+                          // it down to the icon's own visual size.
+                        ),
+                    ],
+                  ),
+                  if (_hasBeachInfo) ...[
+                    const SizedBox(height: 16),
+                    const Divider(
+                      height: 1,
+                      thickness: 1,
+                      color: _dividerColor,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      areaSubtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: _textSecondary,
-                        fontSize: 13,
-                      ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Beaches Near',
+                      style: TextStyle(color: _textSecondary, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: _InfoColumn(lines: leftLines)),
+                        const SizedBox(width: 16),
+                        Expanded(child: _InfoColumn(lines: rightLines)),
+                      ],
                     ),
                   ],
-                ),
+                ],
               ),
-              const SizedBox(width: 12),
-              Icon(weatherIcon, size: 20, color: _iconSun),
-              const SizedBox(width: 4),
-              Text(
-                temperature,
-                style: const TextStyle(
-                  color: _textOnPaper,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
-              ),
-              if (onFavoriteToggle != null)
-                IconButton(
-                  icon: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    size: 20,
-                    color: isFavorite ? _favoriteActive : _textSecondary,
-                  ),
-                  onPressed: onFavoriteToggle,
-                  tooltip: isFavorite
-                      ? 'Remove from favorites'
-                      : 'Add to favorites',
-                  // Default IconButton padding/constraints give a 48x48
-                  // tap target (Material's minimum), rather than shrinking
-                  // it down to the icon's own visual size.
-                ),
-            ],
+            ),
           ),
-          if (_hasBeachInfo) ...[
-            const SizedBox(height: 16),
-            const Divider(height: 1, thickness: 1, color: _dividerColor),
-            const SizedBox(height: 16),
-            const Text(
-              'Beaches Near',
-              style: TextStyle(color: _textSecondary, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: _InfoColumn(lines: leftLines)),
-                const SizedBox(width: 16),
-                Expanded(child: _InfoColumn(lines: rightLines)),
-              ],
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }

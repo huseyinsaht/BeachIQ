@@ -31,6 +31,7 @@ import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/hourly_metric_chart.dart';
+import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
@@ -1236,6 +1237,92 @@ void main() {
       expect(find.text('99°'), findsNothing);
       expect(weatherProvider.currentData!.temperature, 31);
       expect(marineProvider.currentData!.waveHeight, 1.8);
+    },
+  );
+
+  testWidgets(
+    'Search-to-map flow (#214): tapping a beach card in Search returns to '
+    'Home with it as the selected location — highlighted on the map, '
+    'shown in a compact info row, and used for the next nearby-beaches '
+    'fetch',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _FixtureNetworkClient();
+      final overpassService = OverpassService(client);
+      final marineBatchService = MarineBatchService(client);
+      final beachCache = BeachCache(await SharedPreferences.getInstance());
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        beachCache,
+        marineBatchService,
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(provider.dispose);
+
+      // Fixture providers keep Home off the real network: with MarineApp's
+      // real defaults the fetch never completes/errors out, and HomeScreen
+      // never leaves its full-screen loading/error shell (#228) — the
+      // "More" button (inside LocationMapCard, which that shell doesn't
+      // render) would never even be reachable.
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+          nearbyBeachesProvider: provider,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(provider.status, NearbyBeachesStatus.loaded);
+
+      // No compact info row yet — nothing has been picked from Search.
+      expect(find.byType(BeachResultCard), findsNothing);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SearchScreen), findsOneWidget);
+      expect(find.text('Fixture Beach'), findsOneWidget);
+      await tester.tap(find.text('Fixture Beach'));
+      await tester.pumpAndSettle();
+
+      // Back on Home.
+      expect(find.byType(SearchScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+
+      // Highlighted on the map: `LocationMapCard` is handed the exact
+      // picked `Beach` (its own highlight/camera-fit behavior is covered
+      // by location_map_card_test.dart).
+      final mapCard = tester.widget<LocationMapCard>(
+        find.byType(LocationMapCard),
+      );
+      expect(mapCard.selectedBeach?.name, 'Fixture Beach');
+
+      // Shown in a compact info row below the map, without another tap,
+      // reusing BeachResultCard's own fields/formatting.
+      expect(find.byType(BeachResultCard), findsOneWidget);
+      final infoCard = tester.widget<BeachResultCard>(
+        find.byType(BeachResultCard),
+      );
+      expect(infoCard.placeName, 'Fixture Beach');
+      expect(infoCard.fee, BeachFee.free);
+      expect(infoCard.waveHeightMeters, closeTo(0.7, 0.001));
+      expect(infoCard.waterTemperatureCelsius, closeTo(24.5, 0.001));
+      expect(infoCard.hasParking, isTrue);
+
+      // The pick also re-fetches nearby beaches for the beach's own
+      // location — same behavior as any other location pick (#157).
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches, isNotEmpty);
     },
   );
 }
