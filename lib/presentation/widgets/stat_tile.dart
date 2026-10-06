@@ -4,10 +4,10 @@ import 'package:flutter/material.dart';
 enum StatTrendDirection { up, down }
 
 /// A single stat card used in the home screen's 2x2 stat grid (wind speed,
-/// rain chance, pressure, UV index): a small icon at the left, a label
+/// rain chance, water depth, UV index): a small icon at the left, a label
 /// above a large value (with its unit as a visually secondary run next to
-/// it), an optional short colored status word (e.g. "Calm", "High"), and a
-/// muted trend indicator at the bottom-right.
+/// it), an optional short colored status word (e.g. "Calm", "High"), and an
+/// optional muted trend indicator at the bottom-right.
 ///
 /// Per docs/design.md's "Stat grid", the grid has no tile background — it
 /// sits directly on the screen's gradient.
@@ -23,14 +23,21 @@ class StatTile extends StatelessWidget {
     this.unit,
     this.statusLabel,
     this.statusColor,
-    required this.trendDirection,
-    required this.trendDelta,
+    this.trendDirection,
+    this.trendDelta,
     this.onTap,
   }) : assert(
          (statusLabel == null) == (statusColor == null),
          'statusLabel and statusColor must be supplied together, or not '
          'at all — a status word with no color (or vice versa) is never a '
          'valid state.',
+       ),
+       assert(
+         (trendDirection == null) == (trendDelta == null),
+         'trendDirection and trendDelta must be supplied together, or not '
+         'at all — a metric with no meaningful delta (e.g. a spatial '
+         'reading like water depth, issue #217) omits the trend row '
+         'entirely rather than showing a fabricated one.',
        );
 
   final IconData icon;
@@ -62,8 +69,16 @@ class StatTile extends StatelessWidget {
   /// [statusLabel].
   final Color? statusColor;
 
-  final StatTrendDirection trendDirection;
-  final String trendDelta;
+  /// The trend row's arrow direction, shown at the tile's bottom-right.
+  /// Null (together with [trendDelta]) omits the whole trend row — for a
+  /// metric with no meaningful delta to show (e.g. water depth, issue
+  /// #217, a spatial reading rather than a time series). Must be supplied
+  /// together with [trendDelta].
+  final StatTrendDirection? trendDirection;
+
+  /// The trend row's delta text (e.g. "2 km/h"). Must be supplied together
+  /// with [trendDirection].
+  final String? trendDelta;
 
   /// Opens this metric's own detail screen (issue #165) when set. Null
   /// (the default) keeps today's behavior exactly: no `InkWell`/ripple, no
@@ -74,8 +89,10 @@ class StatTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isUp = trendDirection == StatTrendDirection.up;
-    final trendWord = isUp ? 'up' : 'down';
+    final direction = trendDirection;
+    final delta = trendDelta;
+    final hasTrend = direction != null && delta != null;
+    final trendWord = direction == StatTrendDirection.up ? 'up' : 'down';
     // A percent sign attaches directly to its number ("55%"); every other
     // unit this app shows ("km/h", "hPa", "mph") reads as a separate word,
     // so it needs a space before it ("18 km/h"). This one rule covers both
@@ -83,9 +100,10 @@ class StatTile extends StatelessWidget {
     // string it passes in.
     final unitSeparator = unit != null && unit!.startsWith('%') ? '' : ' ';
     final valuePart = unit == null ? value : '$value$unitSeparator$unit';
+    final trendSuffix = hasTrend ? ', trend $trendWord $delta' : '';
     final semanticsLabel = statusLabel == null
-        ? '$label, $valuePart, trend $trendWord $trendDelta'
-        : '$label, $valuePart, $statusLabel, trend $trendWord $trendDelta';
+        ? '$label, $valuePart$trendSuffix'
+        : '$label, $valuePart, $statusLabel$trendSuffix';
 
     final content = Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -161,28 +179,34 @@ class StatTile extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                size: 16,
-                color: _textSecondary,
-              ),
-              Flexible(
-                child: Text(
-                  trendDelta,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: _textSecondary, fontSize: 12),
+        // No trend row at all (not an empty one) when this metric has no
+        // meaningful delta to show — see [trendDirection]'s doc comment.
+        if (hasTrend) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  direction == StatTrendDirection.up
+                      ? Icons.arrow_drop_up
+                      : Icons.arrow_drop_down,
+                  size: 16,
+                  color: _textSecondary,
                 ),
-              ),
-            ],
+                Flexible(
+                  child: Text(
+                    delta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _textSecondary, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
 

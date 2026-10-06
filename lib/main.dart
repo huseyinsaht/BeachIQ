@@ -9,13 +9,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'data/repositories/marine_repository.dart';
 import 'data/repositories/weather_repository.dart';
 import 'data/services/api_service.dart';
+import 'data/services/bathymetry_service.dart';
 import 'data/services/beach_cache.dart';
+import 'data/services/depth_cache.dart';
 import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/condition_alert_dispatcher.dart';
+import 'logic/providers/depth_provider.dart';
 import 'logic/providers/marine_provider.dart';
 import 'logic/providers/nearby_beaches_provider.dart';
 import 'logic/providers/place_search_provider.dart';
@@ -34,6 +37,10 @@ void main() async {
     OverpassService(httpClient),
     BeachCache(prefs),
     MarineBatchService(httpClient),
+  );
+  final depthProvider = DepthProvider(
+    BathymetryService(httpClient),
+    DepthCache(prefs),
   );
 
   // Built here (rather than left to MarineApp's own default) so the
@@ -70,6 +77,7 @@ void main() async {
       unitPreferencesProvider: UnitPreferencesProvider(prefs),
       nearbyBeachesProvider: nearbyBeachesProvider,
       placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
+      depthProvider: depthProvider,
     ),
   );
 }
@@ -83,6 +91,7 @@ class MarineApp extends StatelessWidget {
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
+    this.depthProvider,
   });
 
   /// Overridable so integration tests can avoid the real tile network.
@@ -118,6 +127,12 @@ class MarineApp extends StatelessWidget {
   /// section, unchanged from before.
   final PlaceSearchProvider? placeSearchProvider;
 
+  /// Drives `HomeScreen`'s water-depth / shallow-entry stat tile (issue
+  /// #217). Null (the default for any existing call site that doesn't
+  /// pass one, e.g. most widget/integration tests) renders that tile as
+  /// "No data", unchanged from before.
+  final DepthProvider? depthProvider;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -149,6 +164,7 @@ class MarineApp extends StatelessWidget {
             unitPreferencesProvider: unitPreferencesProvider,
             nearbyBeachesProvider: nearbyBeachesProvider,
             placeSearchProvider: placeSearchProvider,
+            depthProvider: depthProvider,
           ),
         ),
       ),

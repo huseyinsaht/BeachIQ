@@ -38,3 +38,27 @@ String formatWindSpeed(double kmh, UnitSystem unitSystem) {
   }
   return '${kmh.round()} km/h';
 }
+
+/// Formats a depth given in meters for display under [unitSystem], one
+/// decimal place (e.g. `"1.2 m"` or `"3.9 ft"`) — the same precision
+/// [formatWaveHeight] uses, since a nearshore depth needs the same
+/// resolution (issue #217's water-depth tile/detail screen).
+String formatDepthMeters(double meters, UnitSystem unitSystem) {
+  if (unitSystem == UnitSystem.imperial) {
+    return '${metersToFeet(meters).toStringAsFixed(1)} ft';
+  }
+  return '${meters.toStringAsFixed(1)} m';
+}
+
+/// Formats a distance along a depth transect ("how far from shore") for
+/// display under [unitSystem], rounded to a whole number (e.g. `"180 m"`
+/// or `"591 ft"`). Unlike [formatDepthMeters], transect distances are
+/// always whole multiples of 100 m (see
+/// `lib/logic/transect.dart`'s `defaultTransectDistancesMeters`), so a
+/// decimal would only add false precision.
+String formatDistanceMeters(double meters, UnitSystem unitSystem) {
+  if (unitSystem == UnitSystem.imperial) {
+    return '${metersToFeet(meters).round()} ft';
+  }
+  return '${meters.round()} m';
+}

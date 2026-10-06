@@ -10,6 +10,7 @@ import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/forecast_alerts.dart';
+import '../../logic/providers/depth_provider.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
@@ -17,6 +18,8 @@ import '../../logic/providers/place_search_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
 import '../../logic/rain_status.dart';
+import '../../logic/shallow_entry.dart';
+import '../../logic/shallow_entry_status.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
 import '../../logic/uv_band.dart';
@@ -182,15 +185,6 @@ String _formatPercentValue(double? percent) {
 /// The rain chance stat tile's unit, or null when there is no reading.
 String? _percentUnit(double? percent) => percent == null ? null : '%';
 
-/// The pressure stat tile's headline number alone (no "hPa" unit).
-String _formatPressureValue(double? hpa) {
-  if (hpa == null) return _noData;
-  return hpa.round().toString();
-}
-
-/// The pressure stat tile's unit, or null when there is no reading.
-String? _pressureUnit(double? hpa) => hpa == null ? null : 'hPa';
-
 /// The UV index stat tile's headline number — UV index has no unit,
 /// matching `uv_index_detail_screen.dart`'s own hero value.
 String _formatUvIndex(double? uv) {
@@ -264,6 +258,7 @@ class HomeScreen extends StatefulWidget {
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
+    this.depthProvider,
     this.now,
   });
 
@@ -295,6 +290,12 @@ class HomeScreen extends StatefulWidget {
   /// section). Null (the default) hides that section on Search, unchanged
   /// from before.
   final PlaceSearchProvider? placeSearchProvider;
+
+  /// Drives the water-depth / shallow-entry stat tile (issue #217) and its
+  /// detail screen. Null (the default for any existing call site that
+  /// doesn't pass one) renders the tile as "No data" and disables the
+  /// underlying fetch, unchanged from any other optional provider here.
+  final DepthProvider? depthProvider;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -354,6 +355,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// visible) instead of tearing the whole screen down again (#213).
   bool _hasLoadedOnce = false;
 
+  /// The beach [widget.depthProvider] was last asked to fetch a depth
+  /// profile for (via [_maybeFetchDepthProfile], called every [build]) —
+  /// `null` covers both "nothing picked yet" and "no beach to key a
+  /// transect off of". Tracked so a fetch is only actually kicked off once
+  /// per distinct beach rather than once per rebuild; [DepthProvider]
+  /// itself also de-dupes by the same `isSameBeach` identity as a second
+  /// line of defense.
+  Beach? _depthRequestedBeach;
+
   @override
   void initState() {
     super.initState();
@@ -364,8 +374,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // nearbyBeachesProvider.beaches, see seawardBearingDegrees below)
     // actually appears once the beaches list resolves — without this,
     // HomeScreen never rebuilds after the async pickLocation() call below
-    // completes.
+    // completes. The same resolved beach list is also what the water-depth
+    // tile (#217) keys its own fetch off of (see
+    // [_maybeFetchDepthProfile]).
     widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    widget.depthProvider?.addListener(_onProviderChanged);
     // Deferred to after the first frame: HomeScreen is built inside the
     // Consumer2<MarineProvider, WeatherProvider> that also listens to
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
@@ -495,6 +508,10 @@ class _HomeScreenState extends State<HomeScreen> {
       oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
       widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.depthProvider != widget.depthProvider) {
+      oldWidget.depthProvider?.removeListener(_onProviderChanged);
+      widget.depthProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
@@ -503,7 +520,32 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.weatherProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+    widget.depthProvider?.removeListener(_onProviderChanged);
     super.dispose();
+  }
+
+  /// Kicks off (or skips, when nothing changed) [widget.depthProvider]'s
+  /// fetch for [depthBeach] — the beach the water-depth tile/detail screen
+  /// should show data for (see [build]'s own `depthBeach` local). Called
+  /// once per [build] (after [_depthRequestedBeach] is compared against
+  /// it), but the actual provider call is deferred to a post-frame
+  /// callback: [DepthProvider.fetchForBeach] clears its `profile`
+  /// synchronously and calls `notifyListeners()` before awaiting the
+  /// network, and doing that *during* this screen's own build would
+  /// trigger "setState()/markNeedsBuild() called during build" exactly
+  /// like `initState`'s own deferred fetches above.
+  void _maybeFetchDepthProfile(Beach? depthBeach) {
+    final previouslyRequested = _depthRequestedBeach;
+    final changed = depthBeach == null
+        ? previouslyRequested != null
+        : !isSameBeach(depthBeach, previouslyRequested);
+    if (!changed) return;
+
+    _depthRequestedBeach = depthBeach;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(widget.depthProvider?.fetchForBeach(depthBeach));
+    });
   }
 
   /// Rebuilds whenever the (optional) [MarineProvider] or [WeatherProvider]
@@ -583,6 +625,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final seawardBearingDegrees = nearestBeach == null
         ? null
         : seawardBearingFromGeometry(nearestBeach);
+    // #217: the water-depth tile keys off whichever beach the rest of Home
+    // already treats as "the" selected beach for beach-specific data —
+    // the one explicitly picked from Search when there is one, otherwise
+    // the same nearest-fetched-beach the Sea section's shore-relation
+    // above already uses. Triggering the actual fetch (deferred to a
+    // post-frame callback) is handled separately so this stays a pure
+    // computation, safe to run on every build.
+    final depthBeach = _selectedBeach ?? nearestBeach;
+    _maybeFetchDepthProfile(depthBeach);
     // Once data has loaded once, a pull-to-refresh re-fetch must not tear
     // down this screen (and the RefreshIndicator/scroll view driving that
     // very refresh) back to a full-screen shell — only the *first* load
@@ -673,6 +724,23 @@ class _HomeScreenState extends State<HomeScreen> {
     final rainStatus = rainChanceStatusFor(weatherData?.rainChancePercent);
     final uvIndex = weatherData?.uvIndex;
     final uvBand = uvIndex == null ? null : uvBandFor(uvIndex);
+    // #217: the water-depth tile's own status word/color, from the #216
+    // shallow-entry classification — null profile (not fetched/no
+    // DepthProvider) and [ShallowEntrySteepness.unknown] (not enough data)
+    // both fall back to "No data" below, never a fabricated reading.
+    final depthProfile = widget.depthProvider?.profile;
+    final depthClassification = depthProfile == null
+        ? null
+        : classifyShallowEntry(depthProfile);
+    final depthValue = depthClassification == null
+        ? _noData
+        : formatShallowEntrySummary(depthClassification, unitSystem);
+    final depthStatusLabel = depthClassification == null
+        ? null
+        : shallowEntryStatusLabel(depthClassification.steepness);
+    final depthStatusColor = depthClassification == null
+        ? null
+        : shallowEntryStatusColor(depthClassification.steepness);
     // #169: upcoming heads-ups for the selected location, computed fresh on
     // every build from the same WeatherProvider/MarineProvider hourly data
     // the stat grid and Sea section already use — never a hard-coded list.
@@ -905,20 +973,33 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           StatTile(
-                            icon: Icons.speed,
-                            label: 'Pressure',
-                            value: _formatPressureValue(
-                              weatherData?.pressureHpa,
-                            ),
-                            unit: _pressureUnit(weatherData?.pressureHpa),
-                            trendDirection: StatTrendDirection.up,
-                            trendDelta: '1 hPa',
+                            icon: Icons.waves,
+                            label: 'Water depth',
+                            value: depthValue,
+                            statusLabel: depthStatusLabel,
+                            statusColor: depthStatusColor,
+                            // No trend row: a nearshore depth profile is a
+                            // spatial reading, not a time series — there is
+                            // no meaningful "delta since last hour" to show
+                            // (unlike wind/rain/UV above), and StatTile
+                            // omits the row entirely rather than showing a
+                            // fabricated one (see its own doc comment).
                             onTap: () => Navigator.of(context).push(
                               buildDetailRoute(
-                                DetailMetric.pressure,
-                                hourly: weatherData?.hourly ?? const [],
-                                currentValue: weatherData?.pressureHpa,
-                                now: widget.now,
+                                DetailMetric.depth,
+                                hourly: const [],
+                                depthProfile: depthProfile,
+                                beach: depthBeach,
+                                currentWaveHeightMeters:
+                                    marineProvider?.currentData?.waveHeight,
+                                currentValue: marineProvider
+                                    ?.currentData
+                                    ?.currentVelocity,
+                                currentDirectionValue: marineProvider
+                                    ?.currentData
+                                    ?.currentDirection,
+                                seawardBearingDegrees: seawardBearingDegrees,
+                                unitSystem: unitSystem,
                               ),
                             ),
                           ),

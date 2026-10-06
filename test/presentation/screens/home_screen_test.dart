@@ -1,13 +1,20 @@
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
+import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/rain_status.dart';
+import 'package:beachiq/logic/shallow_entry.dart';
+import 'package:beachiq/logic/shallow_entry_status.dart';
+import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
+import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/cloud_backdrop.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
+import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -532,5 +539,144 @@ void main() {
       expect(find.byType(SearchScreen), findsNothing);
       expect(find.byType(BeachResultCard), findsNothing);
     });
+  });
+
+  group('HomeScreen water depth tile (issue #217)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    const gentleProfile = DepthProfile(
+      available: true,
+      samples: [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+        DepthSample(distanceMeters: 200, depthMeters: 1.5),
+      ],
+    );
+
+    testWidgets('shows a water-depth tile where pressure used to be, and no '
+        'pressure tile at all', (tester) async {
+      await pumpApp(tester, const HomeScreen());
+
+      expect(find.text('Water depth'), findsOneWidget);
+      expect(find.text('Pressure'), findsNothing);
+    });
+
+    testWidgets(
+      'given no DepthProvider, the water-depth tile shows "No data" and '
+      'does not crash',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        expect(tester.takeException(), isNull);
+        await tester.ensureVisible(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        final depthTile = find.ancestor(
+          of: find.text('Water depth'),
+          matching: find.byType(StatTile),
+        );
+        expect(
+          find.descendant(of: depthTile, matching: find.text('No data')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('given a loaded DepthProvider with a gentle profile, shows the '
+        'formatted value and the Gentle status word in its matching color', (
+      tester,
+    ) async {
+      final depthProvider = await aLoadedDepthProvider(gentleProfile);
+
+      await pumpApp(tester, HomeScreen(depthProvider: depthProvider));
+      await tester.ensureVisible(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('<= 1.2 m for 200 m'), findsOneWidget);
+      final statusText = tester.widget<Text>(find.text('Gentle'));
+      expect(
+        statusText.style!.color,
+        shallowEntryStatusColor(ShallowEntrySteepness.gentle),
+      );
+    });
+
+    testWidgets(
+      'given an imperial unit preference, the water-depth tile value is '
+      'formatted in feet',
+      (tester) async {
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+        final unitPreferencesProvider = UnitPreferencesProvider(
+          await SharedPreferences.getInstance(),
+        );
+        await unitPreferencesProvider.setUnitSystem(UnitSystem.imperial);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            depthProvider: depthProvider,
+            unitPreferencesProvider: unitPreferencesProvider,
+          ),
+        );
+        await tester.ensureVisible(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('<= 3.9 ft for 656 ft'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping the water-depth tile opens DepthDetailScreen, and the back '
+      'button returns to Home',
+      (tester) async {
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+
+        await pumpApp(tester, HomeScreen(depthProvider: depthProvider));
+        await tester.ensureVisible(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(DepthDetailScreen), findsOneWidget);
+        expect(find.byType(HomeScreen), findsNothing);
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(DepthDetailScreen), findsNothing);
+        expect(find.byType(HomeScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the water-depth tile does not overflow at a narrow (360dp) width '
+      'with a large text scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: HomeScreen(depthProvider: depthProvider),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 }

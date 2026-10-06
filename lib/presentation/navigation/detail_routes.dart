@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../data/models/beach.dart';
+import '../../data/models/depth_profile.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/unit_preferences.dart';
 import '../screens/detail/current_detail_screen.dart';
+import '../screens/detail/depth_detail_screen.dart';
 import '../screens/detail/pressure_detail_screen.dart';
 import '../screens/detail/rain_chance_detail_screen.dart';
 import '../screens/detail/uv_index_detail_screen.dart';
@@ -15,7 +18,10 @@ import '../screens/detail/wind_detail_screen.dart';
 /// #165 builds the shared foundation and [pressure]; issue #178 adds
 /// [uvIndex]; issue #167 adds [waveHeight]; issue #166 adds [wind]; issue
 /// #179 adds [rainChance]; issue #180 adds [waterTemperature]; issue #181
-/// adds [current], the last one).
+/// adds [current]; issue #217 adds [depth], replacing [pressure] in the
+/// Home stat grid — [pressure] and its screen/route stay in place and
+/// working, just unreachable from that grid; re-surfacing it there is a
+/// one-line change).
 enum DetailMetric {
   pressure,
   uvIndex,
@@ -24,6 +30,7 @@ enum DetailMetric {
   waveHeight,
   waterTemperature,
   current,
+  depth,
 }
 
 /// Builds the [Route] for a tapped Home stat tile's [DetailMetric].
@@ -55,6 +62,14 @@ enum DetailMetric {
 /// "flowing toward" bearing) and [seawardBearingDegrees] (the selected
 /// beach's shore-normal bearing, from `wave_shore_relation.dart`, null when
 /// no beach geometry is available) for its drift-out warning.
+///
+/// [DetailMetric.depth] instead reads [depthProfile] (the fetched nearshore
+/// profile), [beach] (for its context row's lifeguard-presence fact), and
+/// [currentWaveHeightMeters] (the context row's current wave-height fact) —
+/// plus, for its own drift-out warning, the same [currentValue] (read as a
+/// current speed in km/h)/[currentDirectionValue]/[seawardBearingDegrees]
+/// trio [DetailMetric.current] uses. It ignores [hourly]/[seaHourly]: a
+/// depth profile has no time dimension.
 Route<void> buildDetailRoute(
   DetailMetric metric, {
   required List<WeatherHourly> hourly,
@@ -62,6 +77,9 @@ Route<void> buildDetailRoute(
   double? currentValue,
   double? currentDirectionValue,
   double? seawardBearingDegrees,
+  DepthProfile? depthProfile,
+  Beach? beach,
+  double? currentWaveHeightMeters,
   UnitSystem unitSystem = UnitSystem.metric,
   DateTime Function()? now,
 }) {
@@ -133,6 +151,19 @@ Route<void> buildDetailRoute(
           seawardBearingDegrees: seawardBearingDegrees,
           unitSystem: unitSystem,
           now: now,
+        ),
+      );
+    case DetailMetric.depth:
+      return MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/detail/depth'),
+        builder: (_) => DepthDetailScreen(
+          profile: depthProfile,
+          beach: beach,
+          currentWaveHeightMeters: currentWaveHeightMeters,
+          currentSpeedKmh: currentValue,
+          currentDirectionDegrees: currentDirectionValue,
+          seawardBearingDegrees: seawardBearingDegrees,
+          unitSystem: unitSystem,
         ),
       );
   }
