@@ -351,9 +351,19 @@ void main() {
       );
       addTearDown(provider.dispose);
 
+      // Fixture providers keep Home off the real network (#228).
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
       await tester.pumpWidget(
         MarineApp(
           tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           nearbyBeachesProvider: provider,
         ),
       );
