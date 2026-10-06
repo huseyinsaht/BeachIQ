@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../logic/beach_gear_advisor.dart';
 import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
@@ -19,6 +20,7 @@ import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
 import '../../logic/wave_shore_relation.dart';
 import '../navigation/detail_routes.dart';
+import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
@@ -307,6 +309,13 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng _selectedLocation = _cesmeDefault;
   String _placeName = _cesmeDefaultName;
 
+  /// The beach last picked from `SearchScreen`'s results (#214), shown
+  /// highlighted on the map and as a compact info row below it. Cleared by
+  /// any other kind of pick (a bare map tap, an in-map-card place search) —
+  /// see [_handleLocationPicked] — since those no longer point at this
+  /// specific beach.
+  Beach? _selectedBeach;
+
   /// Guards [_openSearch] against a fast double-tap pushing two
   /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
   /// await is still pending.
@@ -409,12 +418,37 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _selectedLocation = point;
       _placeName = displayName;
+      // Neither a bare map tap nor an in-map-card place search names a
+      // specific beach — #214's highlight/info row is only for a beach
+      // explicitly picked from `SearchScreen`'s results (_handleBeachPicked
+      // below), so any other kind of pick must drop it.
+      _selectedBeach = null;
     });
     unawaited(_fetchWeatherAndMarine(point));
     unawaited(_persistSelectedLocation(point, displayName));
     // nearbyBeachesProvider.pickLocation(point) is already called directly
     // by LocationMapCard's own tap handler (it holds the provider itself);
     // calling it again here would just restart its debounce for no reason.
+  }
+
+  /// Treats a beach tapped in `SearchScreen`'s results (#214) exactly like
+  /// a map pick: selected location, name, data fetch and persistence all
+  /// follow the same path as [_handleLocationPicked], plus it records
+  /// [_selectedBeach] so the map highlights it and a compact info row
+  /// shows its details without another tap. Unlike a map tap,
+  /// `nearbyBeachesProvider.pickLocation` must be called explicitly here —
+  /// this pick didn't come from `LocationMapCard`'s own tap handler, which
+  /// is the thing that normally does that.
+  void _handleBeachPicked(Beach beach) {
+    final point = LatLng(beach.latitude, beach.longitude);
+    setState(() {
+      _selectedLocation = point;
+      _placeName = beach.name;
+      _selectedBeach = beach;
+    });
+    unawaited(_fetchWeatherAndMarine(point));
+    unawaited(_persistSelectedLocation(point, beach.name));
+    widget.nearbyBeachesProvider?.pickLocation(point);
   }
 
   @override
@@ -476,19 +510,24 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Obtains a [FavoritesProvider] (async: it needs `SharedPreferences`)
   /// and pushes [SearchScreen] with it, so the favorite hearts and the
   /// favorites-only star toggle are live on the real navigation path.
+  /// Tapping a beach result pops [SearchScreen] back with that [Beach]
+  /// (#214), handled below exactly like a map pick; selecting a "Places"
+  /// result instead calls [_handleLocationPicked] directly (via
+  /// [SearchScreen.onLocationPicked]) while [SearchScreen] stays open.
   Future<void> _openSearch(BuildContext context) async {
     if (_openingSearch) return;
     _openingSearch = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!context.mounted) return;
-      await Navigator.of(context).push(
+      final pickedBeach = await Navigator.of(context).push<Beach>(
         MaterialPageRoute(
           builder: (context) => SearchScreen(
             favoritesProvider: FavoritesProvider(prefs),
             unitPreferencesProvider: widget.unitPreferencesProvider,
             nearbyBeachesProvider: widget.nearbyBeachesProvider,
             placeSearchProvider: widget.placeSearchProvider,
+            onLocationPicked: _handleLocationPicked,
             onRefresh: widget.nearbyBeachesProvider == null
                 ? null
                 : () async => widget.nearbyBeachesProvider!.pickLocation(
@@ -497,6 +536,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+      if (pickedBeach != null) _handleBeachPicked(pickedBeach);
     } finally {
       _openingSearch = false;
     }
@@ -701,6 +741,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       nearbyBeachesProvider: widget.nearbyBeachesProvider,
                       placeSearchProvider: widget.placeSearchProvider,
                       onLocationPicked: _handleLocationPicked,
+                      selectedBeach: _selectedBeach,
                       // #158: the standalone, non-editable "Enter cities"
                       // entry point below the map card is gone — the map
                       // card's own search icon is now the only place-search
@@ -713,6 +754,18 @@ class _HomeScreenState extends State<HomeScreen> {
                         unitPreferencesProvider: widget.unitPreferencesProvider,
                       ),
                     ),
+                    // #214: the beach picked in `SearchScreen`'s results is
+                    // already highlighted on the map above (`selectedBeach`
+                    // flows into `LocationMapCard`); this is its compact
+                    // info row, visible without another tap. Reuses
+                    // `BeachResultCard`'s own fields/formatting — sourced
+                    // from `nearbyBeachesProvider`'s re-fetched marine data
+                    // once it resolves, "No data" until then, matching
+                    // `SearchScreen`'s own cards exactly.
+                    if (_selectedBeach != null) ...[
+                      const SizedBox(height: 16),
+                      _buildSelectedBeachInfo(_selectedBeach!, unitSystem),
+                    ],
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),
                     // #169: sits between the smart suggestion pill and the
@@ -882,6 +935,45 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The compact info row for [beach] shown under the map card once it has
+  /// been picked from `SearchScreen`'s results (#214) — the same fields
+  /// (price, wave height, water temperature, shoes advice, parking, beach
+  /// club, cafe) `BeachResultCard` already renders for a search result, so
+  /// this reuses that widget rather than duplicating its formatting.
+  ///
+  /// [_handleBeachPicked] also re-fetches nearby beaches for [beach]'s own
+  /// location, which replaces [NearbyBeachesProvider.beaches] (and its
+  /// `seaConditionFor` lookup, keyed by instance) with fresh [Beach]
+  /// instances — so [beach] itself (handed down from `SearchScreen`,
+  /// before that re-fetch) would never match and always render "No data"
+  /// once it resolves. [isSameBeach] resolves the live instance for that
+  /// lookup instead, the same value-based matching `LocationMapCard` uses
+  /// for its highlight.
+  Widget _buildSelectedBeachInfo(Beach beach, UnitSystem unitSystem) {
+    final liveBeach = (widget.nearbyBeachesProvider?.beaches ?? const [])
+        .firstWhere((b) => isSameBeach(b, beach), orElse: () => beach);
+    final seaCondition = widget.nearbyBeachesProvider?.seaConditionFor(
+      liveBeach,
+    );
+    return BeachResultCard(
+      placeName: liveBeach.name,
+      areaSubtitle: liveBeach.city,
+      temperature: _formatTemperature(
+        widget.weatherProvider?.currentData?.temperature,
+        unitSystem,
+      ),
+      fee: liveBeach.fee,
+      waveHeightMeters: seaCondition?.waveHeight,
+      waterTemperatureCelsius: seaCondition?.seaSurfaceTemperature,
+      shoeAdvice: adviseOnShoes(liveBeach.surface),
+      hasParking: liveBeach.hasParking,
+      hasBeachResort: liveBeach.hasBeachResort,
+      hasCafe: liveBeach.hasCafe,
+      unitSystem: unitSystem,
+      borderRadius: BorderRadius.circular(24),
     );
   }
 
