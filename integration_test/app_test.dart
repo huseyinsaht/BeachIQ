@@ -1389,13 +1389,13 @@ void main() {
       // 1.2 m) the whole way out -> a "gentle" classification.
       final bathymetryClient = FakeHttpClient()
         ..queueJson(
-          host: 'tiles.emodnet-bathymetry.eu',
+          host: 'ows.emodnet-bathymetry.eu',
           json: {
             'type': 'FeatureCollection',
             'features': [
               {
                 'type': 'Feature',
-                'properties': {'GRAY_INDEX': -1.0},
+                'properties': {'Depth': -1.0},
               },
             ],
           },

@@ -109,7 +109,7 @@ is cached yet.
   channel. A no-op if the permission was denied. Used by `ConditionAlertDispatcher`.
 - `BathymetryService` (`lib/data/services/bathymetry_service.dart`) — fetches a beach's
   nearshore depth profile (#216) from EMODnet Bathymetry's public WMS `GetFeatureInfo`
-  endpoint (`tiles.emodnet-bathymetry.eu`, the `emodnet:mean_atlas_land` layer, no API
+  endpoint (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer, no API
   key): one small request per point on the beach's seaward transect (see
   `lib/logic/transect.dart`), up to 5 per beach. Tolerantly parses either a JSON or
   GeoServer plain-text response body and never throws — any failure (no geometry/
@@ -578,8 +578,8 @@ favorable for the currently selected location.
 - **OpenStreetMap tiles** (`tile.openstreetmap.org`) — used by `flutter_map` in
   `HomeScreen`'s `LocationMapCard`; credited via the `OsmAttribution` widget as
   required by OSM's ODbL license.
-- **EMODnet Bathymetry WMS** (`tiles.emodnet-bathymetry.eu`, `GetFeatureInfo` on the
-  `emodnet:mean_atlas_land` layer) — nearshore depth samples for the water-depth tile
+- **EMODnet Bathymetry WMS** (`ows.emodnet-bathymetry.eu/wms`, `GetFeatureInfo` on the
+  `emodnet:mean` layer) — nearshore depth samples for the water-depth tile
   (#216/#217), queried by `BathymetryService`, cached 90 days by `DepthCache`.
   Credited on the depth detail screen.
 
