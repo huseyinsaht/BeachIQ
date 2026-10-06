@@ -79,6 +79,15 @@ const waveRiseThresholdM = 0.3;
 /// other rise thresholds above.
 const currentRiseThresholdKmh = 2.0;
 
+/// How old the hourly entry [buildNextHourNote] anchors "the current hour"
+/// to may be before that note is suppressed instead of built from stale
+/// data. Hourly data covering `now` should normally have an entry within
+/// the last hour; a larger gap means the cached weather/marine data is
+/// stale (e.g. the app was backgrounded for a while), and a "Next hour"
+/// label built from it would describe a transition that already happened,
+/// not what is about to happen.
+const _maxCurrentHourStaleness = Duration(hours: 1);
+
 // --- Public API -------------------------------------------------------------
 
 /// Builds human-readable forecast heads-ups from hourly weather and sea
@@ -115,6 +124,7 @@ const currentRiseThresholdKmh = 2.0;
 /// Per this repo's "never invent a value" rule (see #164's own acceptance
 /// criteria), that half is deferred to a follow-up PR once #164 lands,
 /// rather than guessed at here.
+///
 /// Issue #229: when [daylight] is non-empty, drops any alert whose window
 /// is not entirely inside one of its sunrise-sunset pairs — a night-time
 /// window (e.g. 00:00-04:00) is never reported, and once today's sunset has
@@ -210,10 +220,12 @@ bool _isInsideAnyDaylightWindow(
 /// right now", so it stays visible after sunset too.
 ///
 /// Returns null when there is no hourly entry at or before [now] (nothing
-/// to compare "the next hour" against yet), when there's no following
-/// entry, or when nothing notable changes. When more than one rule fires
-/// for the same hour pair, the most severe one wins; a tie keeps
-/// evaluation order (wind, clouds, rain, waves, current).
+/// to compare "the next hour" against yet), when the latest such entry is
+/// more than [_maxCurrentHourStaleness] old (stale cached data — e.g. the
+/// app was backgrounded for hours — must not be relabelled "Next hour"),
+/// when there's no following entry, or when nothing notable changes. When
+/// more than one rule fires for the same hour pair, the most severe one
+/// wins; a tie keeps evaluation order (wind, clouds, rain, waves, current).
 ForecastAlert? buildNextHourNote({
   required List<WeatherHourly> weather,
   required List<SeaHourly> sea,
@@ -230,6 +242,10 @@ ForecastAlert? buildNextHourNote({
   }) {
     final currentIndex = _indexOfCurrentHour(hourly, timeOf, effectiveNow);
     if (currentIndex == null || currentIndex + 1 >= hourly.length) return;
+    if (effectiveNow.difference(timeOf(hourly[currentIndex])) >=
+        _maxCurrentHourStaleness) {
+      return;
+    }
 
     final twoBack = currentIndex >= 1 ? hourly[currentIndex - 1] : null;
     final current = hourly[currentIndex];
