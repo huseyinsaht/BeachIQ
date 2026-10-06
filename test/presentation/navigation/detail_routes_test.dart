@@ -1,6 +1,8 @@
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -237,11 +239,54 @@ void main() {
       },
     );
 
-    // Today every metric has a screen (issue #181 wired up the last one),
-    // so the loop below skips all of them and registers no test. It stays
-    // so that a metric added to the enum later but left unimplemented is
-    // covered here: it loops over every DetailMetric value rather than
-    // naming them.
+    testWidgets('given DetailMetric.depth, builds a named MaterialPageRoute to '
+        'DepthDetailScreen carrying the profile, beach, context-row data and '
+        'unit system', (tester) async {
+      const profile = DepthProfile(
+        available: true,
+        samples: [
+          DepthSample(distanceMeters: 0, depthMeters: 0.3),
+          DepthSample(distanceMeters: 100, depthMeters: 1.0),
+        ],
+      );
+      final beach = aBeach(hasLifeguard: true);
+
+      final route = buildDetailRoute(
+        DetailMetric.depth,
+        hourly: const [],
+        depthProfile: profile,
+        beach: beach,
+        currentWaveHeightMeters: 0.6,
+        currentValue: 5,
+        currentDirectionValue: 120,
+        seawardBearingDegrees: 90,
+        unitSystem: UnitSystem.imperial,
+      );
+
+      expect(route, isA<MaterialPageRoute<void>>());
+      expect(route.settings.name, '/detail/depth');
+
+      await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DepthDetailScreen), findsOneWidget);
+      final screen = tester.widget<DepthDetailScreen>(
+        find.byType(DepthDetailScreen),
+      );
+      expect(screen.profile, profile);
+      expect(screen.beach, beach);
+      expect(screen.currentWaveHeightMeters, 0.6);
+      expect(screen.currentSpeedKmh, 5);
+      expect(screen.currentDirectionDegrees, 120);
+      expect(screen.seawardBearingDegrees, 90);
+      expect(screen.unitSystem, UnitSystem.imperial);
+    });
+
+    // Today every metric has a screen (issue #181 wired up the second to
+    // last; #217 wired up depth, the last one), so the loop below skips
+    // all of them and registers no test. It stays so that a metric added
+    // to the enum later but left unimplemented is covered here: it loops
+    // over every DetailMetric value rather than naming them.
     for (final metric in DetailMetric.values) {
       if (metric == DetailMetric.pressure) continue;
       if (metric == DetailMetric.uvIndex) continue;
@@ -250,6 +295,7 @@ void main() {
       if (metric == DetailMetric.rainChance) continue;
       if (metric == DetailMetric.waterTemperature) continue;
       if (metric == DetailMetric.current) continue;
+      if (metric == DetailMetric.depth) continue;
 
       test('given DetailMetric.$metric (not yet implemented), buildDetailRoute '
           '-> throws UnimplementedError', () {
@@ -260,9 +306,9 @@ void main() {
       });
     }
 
-    test('DetailMetric lists exactly the 7 Home stat tiles this foundation '
+    test('DetailMetric lists exactly the 8 Home stat tiles this foundation '
         'was built to cover', () {
-      expect(DetailMetric.values, hasLength(7));
+      expect(DetailMetric.values, hasLength(8));
       expect(DetailMetric.values, contains(DetailMetric.pressure));
       expect(DetailMetric.values, contains(DetailMetric.uvIndex));
       expect(DetailMetric.values, contains(DetailMetric.rainChance));
@@ -270,6 +316,7 @@ void main() {
       expect(DetailMetric.values, contains(DetailMetric.waveHeight));
       expect(DetailMetric.values, contains(DetailMetric.waterTemperature));
       expect(DetailMetric.values, contains(DetailMetric.current));
+      expect(DetailMetric.values, contains(DetailMetric.depth));
     });
   });
 }

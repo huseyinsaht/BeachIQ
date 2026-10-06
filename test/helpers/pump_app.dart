@@ -1,14 +1,19 @@
 import 'dart:convert';
 
+import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/bathymetry_service.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
+import 'package:beachiq/logic/providers/depth_provider.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
@@ -17,6 +22,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'builders.dart';
 import 'fake_http_client.dart';
 
 /// A minimal valid 1x1 transparent PNG, used so [FakeTileProvider] can
@@ -107,4 +113,33 @@ Future<NearbyBeachesProvider> fakeNearbyBeachesProvider({
     MarineBatchService(client),
     debounceDuration: debounceDuration,
   );
+}
+
+/// A [BathymetryService] that resolves instantly to a fixed [DepthProfile]
+/// instead of calling the network (issue #217), mirroring
+/// [FakeMarineRepository]/[FakeWeatherRepository] above.
+class FakeBathymetryService extends BathymetryService {
+  FakeBathymetryService({this.profile}) : super(FakeHttpClient());
+
+  final DepthProfile? profile;
+
+  @override
+  Future<DepthProfile> fetchProfile(Beach beach) async {
+    return profile ?? const DepthProfile.unavailable();
+  }
+}
+
+/// Builds a [DepthProvider] whose [DepthProvider.profile] is already
+/// [profile] (the fetch has already resolved for a throwaway beach), for a
+/// widget test that wants a loaded water-depth tile/detail screen without
+/// going through a real transect/HTTP fetch.
+Future<DepthProvider> aLoadedDepthProvider(DepthProfile profile) async {
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
+  final provider = DepthProvider(
+    FakeBathymetryService(profile: profile),
+    DepthCache(prefs),
+  );
+  await provider.fetchForBeach(aBeach());
+  return provider;
 }

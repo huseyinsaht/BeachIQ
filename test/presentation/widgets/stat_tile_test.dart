@@ -251,6 +251,28 @@ void main() {
       expect(find.byIcon(Icons.arrow_drop_up), findsNothing);
       expect(find.text('3 hPa'), findsOneWidget);
     });
+
+    testWidgets(
+      'given no trendDirection/trendDelta (issue #217: a spatial reading '
+      'with no meaningful delta), renders no trend row and does not crash',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const StatTile(
+              icon: Icons.waves,
+              label: 'Water depth',
+              value: '<= 1.2 m for 180 m',
+              statusLabel: 'Gentle',
+              statusColor: Color(0xFF2E7D32),
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(find.byIcon(Icons.arrow_drop_up), findsNothing);
+        expect(find.byIcon(Icons.arrow_drop_down), findsNothing);
+      },
+    );
   });
 
   group('semantics', () {
@@ -300,6 +322,28 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets(
+      'given no trend, the semantic label omits the trend clause entirely',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const StatTile(
+              icon: Icons.waves,
+              label: 'Water depth',
+              value: '<= 1.2 m for 180 m',
+              statusLabel: 'Gentle',
+              statusColor: Color(0xFF2E7D32),
+            ),
+          ),
+        );
+
+        expect(
+          find.bySemanticsLabel('Water depth, <= 1.2 m for 180 m, Gentle'),
+          findsOneWidget,
+        );
+      },
+    );
   });
 
   group('no overflow at narrow width and large text scale', () {
@@ -375,8 +419,11 @@ void main() {
       expect(richText.overflow, isNot(TextOverflow.ellipsis));
     });
 
-    testWidgets("given the real stat grid's four tiles with realistic content, "
-        'renders with no overflow', (tester) async {
+    testWidgets("given the real stat grid's four tiles with realistic content "
+        '(wind speed, rain chance, water depth, UV index — issue #217 '
+        'replaced pressure with water depth), renders with no overflow', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
@@ -403,12 +450,11 @@ void main() {
             trendDelta: '3%',
           ),
           StatTile(
-            icon: Icons.speed,
-            label: 'Pressure',
-            value: '1013',
-            unit: 'hPa',
-            trendDirection: StatTrendDirection.up,
-            trendDelta: '1 hPa',
+            icon: Icons.waves,
+            label: 'Water depth',
+            value: '<= 1.2 m for 180 m',
+            statusLabel: 'Gentle',
+            statusColor: Color(0xFF2E7D32),
           ),
           StatTile(
             icon: Icons.wb_sunny_outlined,

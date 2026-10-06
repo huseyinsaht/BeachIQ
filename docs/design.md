@@ -165,20 +165,33 @@ Top to bottom:
    (land-side amenities as an anchor), not a guaranteed fact; when no geometry/amenities are
    available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
    labels and never an invented relation.
-7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
-   tile: small line icon at the left, `text.secondary`-style label above a large value (with its unit as
-   a secondary run — see "Typography"), and a small trend indicator (▴/▾ + delta) at the bottom-right of
-   the tile. Use sea-level pressure in hPa (~1000–1030), not the mockup's 720. UV uses a decimal comma
-   in the mockup (locale formatting).
+7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, water depth, UV index
+   (issue #217 replaces the mockup's pressure tile with water depth — see below). Each tile: small line
+   icon at the left, `text.secondary`-style label above a large value (with its unit as a secondary run
+   — see "Typography"), and, for wind speed/rain chance/UV index, a small trend indicator (▴/▾ + delta)
+   at the bottom-right of the tile. UV uses a decimal comma in the mockup (locale formatting).
    **Status word (issue #215)** — not in the mockup; this extends it. Wind speed (Calm/Moderate/Strong,
    `lib/logic/wind_status.dart`, reusing `swim_suitability.dart`'s own moderate/high thresholds), rain
-   chance (Low/Medium/High, `lib/logic/rain_status.dart`, same thresholds) and UV index (its band —
-   Low/Moderate/High/Very high/Extreme, `lib/logic/uv_band.dart`) each show a short colored status word
-   under the value: a small dot plus the word, in green/orange/red (wind, rain) or the UV band's own
-   color (the same color the UV index detail screen's chart bands use). Pressure has no defined status
-   word (`pressure_trend.dart` only exposes a rising/steady/falling trend, not a color), so its tile
-   simply has no chip — never an empty placeholder. `MetricDetailScaffold` shows the same word/color
-   under its hero value on the matching detail screen, so Home and the detail screen never disagree.
+   chance (Low/Medium/High, `lib/logic/rain_status.dart`, same thresholds), UV index (its band —
+   Low/Moderate/High/Very high/Extreme, `lib/logic/uv_band.dart`) and water depth (its steepness —
+   Gentle/Moderate/Steep, `lib/logic/shallow_entry_status.dart`) each show a short colored status word
+   under the value: a small dot plus the word, in green/orange/red (wind, rain, water depth) or the UV
+   band's own color (the same color the UV index detail screen's chart bands use). `MetricDetailScaffold`
+   shows the same word/color under its hero value on the matching detail screen, so Home and the detail
+   screen never disagree.
+   **Water depth (issue #217)** — not in the mockup; this extends it, replacing the mockup's pressure
+   tile (which has no defined status word of its own — `pressure_trend.dart` only exposes a
+   rising/steady/falling trend, not a color). A rough, approximate, non-swimmer "how gentle is this
+   beach?" indication, built on issue #216's `BathymetryService`/`classifyShallowEntry`: the tile's value
+   reads how far out from shore the water stays shallow (at or under `shallow_entry.dart`'s
+   `shallowLimitMeters`), e.g. "<= 1.2 m for 180 m" (unit per the metric/imperial preference), with the
+   Gentle/Moderate/Steep status word below it. Shows "No data" (never a fabricated number) whenever the
+   selected beach has no usable geometry/transect, every sample request failed, or the location is
+   outside EMODnet's coverage. Tapping it opens its own detail screen (below) exactly like every other
+   stat tile; it has **no trend indicator** — a nearshore depth profile is a spatial reading with no time
+   dimension, so `StatTile`'s trend row is omitted entirely rather than showing an invented delta. The
+   pressure tile/its detail screen/route stay in the codebase, just unreachable from this grid — see
+   `lib/presentation/navigation/detail_routes.dart`'s own doc comment.
 8. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
@@ -189,10 +202,10 @@ Top to bottom:
 ## Screen: Metric detail
 
 Not in the mockup — the mockup only covers Home/location-detail and Search (see the top of this
-doc). Each Home stat tile (wind speed, rain chance, pressure, UV index) opens its own detail screen
+doc). Each Home stat tile (wind speed, rain chance, water depth, UV index) opens its own detail screen
 when tapped, on its own route, with a back button to Home (issue #165 and the per-metric issues that
 follow it: #178 UV index, #179 rain chance, #166 wind, #167 wave height, #180 water temperature, #181
-current).
+current, #217 water depth).
 
 All of these screens share one layout (`MetricDetailScaffold`, not a shared screen — each metric still
 gets its own screen file/route) on the same `bg.base`/`bg.gradientBottom` gradient as Home, so they read
@@ -205,6 +218,14 @@ as part of the same app:
    the metric has one) a short trend line, e.g. Pressure's "Rising — ...".
 3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
    band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
+   **Water depth (issue #217) deviates here**: it has no hourly/time series at all, so its chart slot is
+   `DepthProfileChart` instead — a distance-vs-depth profile (x = distance from shore, y = depth, drawn
+   increasing *downward*, with horizontal lines at `shallow_entry.dart`'s `shallowLimitMeters`/
+   `deepLimitMeters`) — followed by a context row of plain info facts (lifeguard presence, current wave
+   height, and, only when it applies, the issue #164 drift-out warning), and its explanation paragraph
+   (below) also carries an EMODnet attribution line. Its Min/Max/Now summary row (next) is repurposed to
+   the shallowest/deepest valid reading along the transect and the reading at the classification's own
+   100 m reference distance, since there is no literal "now" for a spatial reading.
 4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
    stat-grid's label/value styling.
 5. **Explanation paragraph** — one short `text.secondary` paragraph on what the metric means for the

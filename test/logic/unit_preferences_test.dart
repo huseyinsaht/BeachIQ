@@ -87,4 +87,34 @@ void main() {
       expect(formatWindSpeed(0, UnitSystem.imperial), '0 mph');
     });
   });
+
+  group('formatDepthMeters', () {
+    test('metric renders meters with one decimal', () {
+      expect(formatDepthMeters(1.2, UnitSystem.metric), '1.2 m');
+    });
+
+    test('imperial renders feet with one decimal', () {
+      expect(formatDepthMeters(1, UnitSystem.imperial), '3.3 ft');
+    });
+
+    test('zero renders cleanly in both systems', () {
+      expect(formatDepthMeters(0, UnitSystem.metric), '0.0 m');
+      expect(formatDepthMeters(0, UnitSystem.imperial), '0.0 ft');
+    });
+  });
+
+  group('formatDistanceMeters', () {
+    test('metric renders meters rounded to a whole number', () {
+      expect(formatDistanceMeters(180, UnitSystem.metric), '180 m');
+    });
+
+    test('imperial renders feet rounded to a whole number', () {
+      expect(formatDistanceMeters(400, UnitSystem.imperial), '1312 ft');
+    });
+
+    test('zero renders cleanly in both systems', () {
+      expect(formatDistanceMeters(0, UnitSystem.metric), '0 m');
+      expect(formatDistanceMeters(0, UnitSystem.imperial), '0 ft');
+    });
+  });
 }
