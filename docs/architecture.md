@@ -464,9 +464,8 @@ Reusable widgets built against `docs/design.md`:
   depth/deepest valid reading, rather than a time series), a context list (lifeguard
   presence, current wave height, and the Ocean Current screen's drift-out warning
   when the current is heading offshore above its threshold — each item renders only
-  when its data exists), and an EMODnet attribution line. The attribution text itself
-  is one written for this screen (no pre-existing wording was found elsewhere in the
-  repo to quote). Pushed from `HomeScreen`'s water-depth `StatTile`.
+  when its data exists), and an EMODnet attribution line. The attribution text follows
+  EMODnet's terms of use (EU-owned, CC BY 4.0, not for navigation). Pushed from `HomeScreen`'s water-depth `StatTile`.
 - `UvIndexDetailScreen` (`detail/uv_index_detail_screen.dart`) — the day's hourly UV
   index as an `HourlyMetricChart` with the five `uv_band.dart` risk bands colored in
   via `valueBands`, a "Now" marker, a min/max/now summary, and `uvProtectionHint` for

@@ -17,15 +17,14 @@ import 'current_detail_screen.dart' show driftOutWarningSpeedKmh;
 const Color _textSecondary = Color(0xFF8B93A6);
 const Color _warning = Color(0xFFEF5350);
 
-/// EMODnet Bathymetry's attribution line. No exact wording for this was
-/// found recorded anywhere else in this repo (issue #216/PR #239 added no
-/// attribution text of its own — see `bathymetry_service.dart`'s doc
-/// comments, which only link to the dataset's catalog entry); this is a
-/// reasonable attribution written for this screen, not a quote of
-/// anything pre-existing.
+/// EMODnet Bathymetry's attribution line. Follows EMODnet's terms of use
+/// (https://emodnet.ec.europa.eu/en/terms-use-emodnet-online-services-data-and-data-products):
+/// data products are owned by the EU and licensed CC BY 4.0, and the
+/// dataset's catalog entry says not to use it for navigation.
 const String depthDataAttribution =
-    'Depth data: EMODnet Bathymetry (emodnet.ec.europa.eu), ~115 m grid '
-    'resolution.';
+    'Depth data: EMODnet Bathymetry (https://emodnet.ec.europa.eu/en/), '
+    '© European Union, CC BY 4.0. ~115 m grid resolution. Approximate, not '
+    'for navigation.';
 
 String _formatDepth(double? meters, UnitSystem unitSystem) =>
     meters == null ? '--' : formatDepthMeters(meters, unitSystem);
