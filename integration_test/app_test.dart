@@ -261,7 +261,23 @@ void main() {
   testWidgets('app boots, provides MarineProvider and shows the map', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
+    // Fixture providers keep Home off the real network: with MarineApp's
+    // real defaults the fetch can stay pending, the loading spinner
+    // animates forever and pumpAndSettle times out (#228).
+    final weatherProvider = await aLoadedWeatherProvider(
+      WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+    );
+    final marineProvider = await aLoadedMarineProvider(
+      SeaCondition(waveHeight: 0.3),
+    );
+
+    await tester.pumpWidget(
+      MarineApp(
+        tileProvider: _FakeTileProvider(),
+        weatherProvider: weatherProvider,
+        marineProvider: marineProvider,
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -277,7 +293,22 @@ void main() {
     'Home to Search navigation: opening Search via the map card overflow '
     "menu's \"Beaches\" entry (#158), the back chevron returns to Home",
     (WidgetTester tester) async {
-      await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
+      // Fixture providers keep Home off the real network (see the boot
+      // test above, #228).
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);
