@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.8] - 2026-10-06
+
 ### Added
 
 - Tapping a beach in the Search screen now shows it on the Home map: the camera frames
