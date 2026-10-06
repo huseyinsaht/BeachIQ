@@ -8,7 +8,10 @@ plugins {
 android {
     namespace = "io.beachiq.beachiq"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    // Plugins (flutter_local_notifications, path_provider_android,
+    // shared_preferences_android, url_launcher_android) require NDK 27;
+    // Flutter 3.32 defaults to 26.3 and warns on every build.
+    ndkVersion = "27.0.12077973"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

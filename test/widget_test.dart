@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
@@ -16,7 +17,7 @@ import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/wave_shore_relation.dart';
-import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
@@ -526,10 +527,13 @@ void main() {
       expect(find.text('Mainly Clear'), findsOneWidget);
       expect(find.text('H:29° L:15°'), findsOneWidget);
 
-      // Stat grid: real wind speed/rain chance/pressure/UV index.
+      // Stat grid: real wind speed/rain chance/UV index. (Pressure was
+      // replaced by the water-depth tile, issue #217 — see
+      // depth_detail_screen_test.dart/home_screen_test.dart for that
+      // tile's own coverage; this fixture carries no DepthProvider, so it
+      // simply shows "No data" and isn't asserted on here.)
       expect(find.text('12 km/h'), findsOneWidget);
       expect(find.text('10%'), findsOneWidget);
-      expect(find.text('1013 hPa'), findsOneWidget);
       expect(find.text('6.5'), findsOneWidget);
 
       // Hourly row: real fixture entries instead of the old hardcoded
@@ -743,7 +747,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('No data'), findsOneWidget);
+    // Scoped to the UV index tile specifically: with no DepthProvider
+    // supplied, the water-depth tile (issue #217) also shows "No data"
+    // (never a fabricated value), so a bare, unscoped "No data" count
+    // would no longer be exactly one.
+    final uvTile = find.ancestor(
+      of: find.text('UV index'),
+      matching: find.byType(StatTile),
+    );
+    expect(
+      find.descendant(of: uvTile, matching: find.text('No data')),
+      findsOneWidget,
+    );
     expect(find.text('6.5'), findsNothing);
   });
 
@@ -1150,41 +1165,56 @@ void main() {
   );
 
   testWidgets(
-    'tapping the pressure stat tile opens PressureDetailScreen with the '
-    'real weather data, and the back button returns to HomeScreen',
+    'tapping the water-depth stat tile opens DepthDetailScreen with the '
+    'real DepthProvider data, and the back button returns to HomeScreen '
+    '(issue #217 — this replaces the old pressure-tile reachability test: '
+    'pressure itself stays fully covered by pressure_detail_screen_test.dart '
+    'and detail_routes_test.dart, just unreachable from this grid)',
     (WidgetTester tester) async {
       final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+      final depthProvider = await aLoadedDepthProvider(
+        const DepthProfile(
+          available: true,
+          samples: [
+            DepthSample(distanceMeters: 0, depthMeters: 0.3),
+            DepthSample(distanceMeters: 100, depthMeters: 1.0),
+            DepthSample(distanceMeters: 200, depthMeters: 1.5),
+          ],
+        ),
+      );
 
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
             tileProvider: _FakeTileProvider(),
             weatherProvider: weatherProvider,
+            depthProvider: depthProvider,
             now: () => DateTime(2026, 1, 1, 12, 30),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.byType(PressureDetailScreen), findsNothing);
+      expect(find.byType(DepthDetailScreen), findsNothing);
 
-      // The pressure tile sits below the fold on the test surface's fixed
-      // 800x600 size, so it needs scrolling into view before it can be hit.
-      await tester.ensureVisible(find.text('1013 hPa'));
+      // The water-depth tile sits below the fold on the test surface's
+      // fixed 800x600 size, so it needs scrolling into view before it can
+      // be hit.
+      await tester.ensureVisible(find.text('Water depth'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('1013 hPa'));
+      await tester.tap(find.text('Water depth'));
       await tester.pumpAndSettle();
 
-      expect(find.byType(PressureDetailScreen), findsOneWidget);
+      expect(find.byType(DepthDetailScreen), findsOneWidget);
       expect(find.byType(HomeScreen), findsNothing);
-      // The hero value carries over the real current pressure reading.
-      expect(find.text('1013'), findsOneWidget);
+      // The hero value carries over the real profile's classification.
+      expect(find.text('<= 1.2 m for 200 m'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(PressureDetailScreen), findsNothing);
+      expect(find.byType(DepthDetailScreen), findsNothing);
     },
   );
 

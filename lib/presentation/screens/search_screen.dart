@@ -48,6 +48,7 @@ class SearchScreen extends StatefulWidget {
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
+    this.onLocationPicked,
   });
 
   /// Forwarded to [SearchField]'s `onChanged`, alongside the local
@@ -100,6 +101,18 @@ class SearchScreen extends StatefulWidget {
   /// existing callers render exactly as before — the name/city filter over
   /// [nearbyBeachesProvider]/[staticBeaches] still works either way.
   final PlaceSearchProvider? placeSearchProvider;
+
+  /// Reports a selected "Places" result upward — the same signature (and
+  /// the same display-name/camera contract) as `LocationMapCard`'s own
+  /// `onLocationPicked`, so a caller (`HomeScreen`) can move its map camera
+  /// to a place picked from this screen's "Places" section exactly as it
+  /// would a direct map tap or an in-map-card search pick (#214). Called
+  /// alongside (not instead of) this screen's own [nearbyBeachesProvider]
+  /// re-centering — [SearchScreen] itself stays open afterward (unlike
+  /// tapping a beach result, which pops this screen with that [Beach]).
+  /// Null (the default) leaves place selection exactly as before: it only
+  /// re-centers [nearbyBeachesProvider] for this screen's own beach list.
+  final void Function(LatLng point, String displayName)? onLocationPicked;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -207,12 +220,21 @@ class _SearchScreenState extends State<SearchScreen> {
   /// search field/place results, so the (now re-centered) beach list shows
   /// unfiltered once it loads.
   void _selectPlace(Place place) {
-    widget.nearbyBeachesProvider?.pickLocation(
-      LatLng(place.latitude, place.longitude),
-    );
+    final point = LatLng(place.latitude, place.longitude);
+    widget.nearbyBeachesProvider?.pickLocation(point);
+    widget.onLocationPicked?.call(point, place.name);
     widget.placeSearchProvider?.search('');
     _searchController.clear();
     setState(() => _query = '');
+  }
+
+  /// Pops this screen with the tapped [beach], so a caller (`HomeScreen`)
+  /// can show it on the Home map (camera, highlight, info) exactly as
+  /// #214 asks for. Does not itself call [NearbyBeachesProvider.pickLocation]
+  /// — the caller treats a returned [Beach] like any other location pick,
+  /// which already re-fetches nearby beaches for the new point.
+  void _selectBeach(Beach beach) {
+    Navigator.of(context).pop<Beach>(beach);
   }
 
   /// A short "City, Country"-style subtitle for [place], or null when
@@ -495,6 +517,7 @@ class _SearchScreenState extends State<SearchScreen> {
               ? null
               : () => favoritesProvider.toggleFavorite(beach),
           unitSystem: unitSystem,
+          onTap: () => _selectBeach(beach),
         );
       },
     );

@@ -428,4 +428,281 @@ void main() {
       expect(alerts, isEmpty);
     });
   });
+
+  group('buildForecastAlerts daylight filter (issue #229)', () {
+    test('given an alert window entirely outside every daylight window, '
+        'buildForecastAlerts -> drops it', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          // A night-time wind crossing: 23:00 -> 00:00, well outside the
+          // day's 06:00-20:00 daylight window below.
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 10),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), windSpeed: 45),
+        ],
+        sea: const [],
+        daylight: [
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 1, 6),
+            sunset: DateTime(2024, 1, 1, 20),
+          ),
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 2, 6),
+            sunset: DateTime(2024, 1, 2, 20),
+          ),
+        ],
+        now: now,
+      );
+
+      expect(alerts, isEmpty);
+    });
+
+    test('given an alert window entirely inside a daylight window, '
+        'buildForecastAlerts -> keeps it', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: h(9), windSpeed: 10),
+          aWeatherHourly(time: h(10), windSpeed: 45),
+        ],
+        sea: const [],
+        daylight: [
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 1, 6),
+            sunset: DateTime(2024, 1, 1, 20),
+          ),
+        ],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+    });
+
+    test('given an alert window exactly at the sunrise/sunset boundary, '
+        'buildForecastAlerts -> keeps it (inclusive bounds)', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 6), windSpeed: 10),
+          aWeatherHourly(time: DateTime(2024, 1, 1, 7), windSpeed: 45),
+        ],
+        sea: const [],
+        daylight: [
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 1, 6),
+            sunset: DateTime(2024, 1, 1, 20),
+          ),
+        ],
+        now: DateTime(2024, 1, 1, 5, 30),
+      );
+
+      expect(alerts, hasLength(1));
+    });
+
+    test('given today\'s sunset has already passed, buildForecastAlerts -> '
+        'still matches an alert inside the next day\'s daylight window', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          // 05:00 -> 06:00 the next day, inside day 2's 06:00-20:00
+          // window below (day 1's window ended at 20:00 the day before).
+          aWeatherHourly(time: DateTime(2024, 1, 2, 6), windSpeed: 10),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 7), windSpeed: 45),
+        ],
+        sea: const [],
+        daylight: [
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 1, 6),
+            sunset: DateTime(2024, 1, 1, 20),
+          ),
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 2, 6),
+            sunset: DateTime(2024, 1, 2, 20),
+          ),
+        ],
+        // Already past day 1's sunset.
+        now: DateTime(2024, 1, 1, 21),
+      );
+
+      expect(alerts, hasLength(1));
+    });
+
+    test('given an empty daylight list (API returned no sunrise/sunset), '
+        'buildForecastAlerts -> falls back to unfiltered behaviour', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 10),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), windSpeed: 45),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+    });
+  });
+
+  group('buildNextHourNote (issue #229)', () {
+    test('given a wind crossing between the current hour and the next, '
+        'buildNextHourNote -> a note for it', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(8), windSpeed: 10),
+          aWeatherHourly(time: h(9), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNotNull);
+      expect(note!.type, ForecastAlertType.wind);
+      expect(note.start, h(8));
+      expect(note.end, h(9));
+    });
+
+    test('given no notable change between the current hour and the next, '
+        'buildNextHourNote -> null', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(8), windSpeed: 10),
+          aWeatherHourly(time: h(9), windSpeed: 11),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given no hourly entry at or before now, buildNextHourNote -> null '
+        '(nothing to anchor "the next hour" to yet)', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(9), windSpeed: 10),
+          aWeatherHourly(time: h(10), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given the only hourly entry at or before now is more than an hour '
+        'stale, buildNextHourNote -> null instead of relabelling an old '
+        'transition "Next hour"', () {
+      final note = buildNextHourNote(
+        weather: [
+          // 2 hours before `now` — stale cached data, not "the current
+          // hour". The crossing itself would otherwise fire (10 -> 45).
+          aWeatherHourly(time: h(6), windSpeed: 10),
+          aWeatherHourly(time: h(7), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 9),
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given the only hourly entry at or before now is exactly one hour '
+        'stale, buildNextHourNote -> null (the boundary counts as stale)', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(7), windSpeed: 10),
+          aWeatherHourly(time: h(8), windSpeed: 45),
+        ],
+        sea: const [],
+        now: h(8), // exactly 1h after the "current" entry at h(7)
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given the only hourly entry at or before now is just under an hour '
+        'old, buildNextHourNote -> still builds the note (not stale)', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(7), windSpeed: 10),
+          aWeatherHourly(time: h(8), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 7, 59),
+      );
+
+      expect(note, isNotNull);
+    });
+
+    test('given a null reading on either side of the current/next hour pair, '
+        'buildNextHourNote -> that rule is skipped, never treated as 0', () {
+      final note = buildNextHourNote(
+        weather: const [],
+        sea: [
+          aSeaHourly(time: h(8), waveHeight: null),
+          aSeaHourly(time: h(9), waveHeight: 2.0),
+        ],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given both a wind and a wave change for the same hour pair, '
+        'buildNextHourNote -> picks the most severe one', () {
+      final note = buildNextHourNote(
+        weather: [
+          // Moderate: rises by >= windRiseThresholdKmh without crossing.
+          aWeatherHourly(time: h(8), windSpeed: 5),
+          aWeatherHourly(time: h(9), windSpeed: 16),
+        ],
+        sea: [
+          // High: crosses highWaveHeightM.
+          aSeaHourly(time: h(8), waveHeight: 0.5),
+          aSeaHourly(time: h(9), waveHeight: highWaveHeightM + 0.5),
+        ],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNotNull);
+      expect(note!.type, ForecastAlertType.waves);
+      expect(note.severity, ForecastAlertSeverity.high);
+    });
+
+    test(
+      'given the same inputs and now, buildNextHourNote -> is deterministic',
+      () {
+        final weather = [
+          aWeatherHourly(time: h(8), windSpeed: 10),
+          aWeatherHourly(time: h(9), windSpeed: 45),
+        ];
+
+        final first = buildNextHourNote(
+          weather: weather,
+          sea: const [],
+          now: DateTime(2024, 1, 1, 8, 30),
+        );
+        final second = buildNextHourNote(
+          weather: weather,
+          sea: const [],
+          now: DateTime(2024, 1, 1, 8, 30),
+        );
+
+        expect(first!.message, second!.message);
+        expect(first.start, second.start);
+        expect(first.end, second.end);
+      },
+    );
+
+    test('given it is still shown after sunset, buildNextHourNote -> does not '
+        'take a daylight parameter and is unaffected by time of day', () {
+      // 22:00 -> 23:00, well after any plausible sunset, still produces a
+      // note — buildNextHourNote has no daylight filtering at all.
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 22), windSpeed: 10),
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 22, 15),
+      );
+
+      expect(note, isNotNull);
+    });
+  });
 }

@@ -64,3 +64,18 @@ class Beach {
     this.amenities = const [],
   });
 }
+
+/// Whether [a] and [b] are the same real-world beach, compared by name and
+/// coordinates rather than identity: a fresh fetch (Overpass, a cache
+/// refresh) creates new [Beach] instances for the same place, so a [Beach]
+/// handed from one fetch/screen is never `identical` to its counterpart in
+/// a later one even when it is, in every way that matters, the same beach
+/// (e.g. #214's map highlight and selected-beach info row, which must
+/// still match after the pick's own re-fetch replaces the provider's
+/// `beaches` list with new instances). Always false when [b] is null.
+bool isSameBeach(Beach a, Beach? b) {
+  if (b == null) return false;
+  return a.name == b.name &&
+      a.latitude == b.latitude &&
+      a.longitude == b.longitude;
+}

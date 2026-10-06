@@ -251,4 +251,110 @@ void main() {
       expect(find.text('0.4 m'), findsNothing);
     },
   );
+
+  group('onTap (#214)', () {
+    testWidgets('tapping the card calls onTap', (tester) async {
+      var tapCount = 0;
+      await tester.pumpWidget(
+        wrap(
+          BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            onTap: () => tapCount++,
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Altinkum Beach'));
+      await tester.pump();
+
+      expect(tapCount, 1);
+    });
+
+    testWidgets(
+      'tapping the favorite heart calls onFavoriteToggle and does NOT call '
+      'onTap',
+      (tester) async {
+        var tapCount = 0;
+        var favoriteToggleCount = 0;
+        await tester.pumpWidget(
+          wrap(
+            BeachResultCard(
+              placeName: 'Altinkum Beach',
+              areaSubtitle: 'Cesme, Izmir',
+              temperature: '27°',
+              onTap: () => tapCount++,
+              onFavoriteToggle: () => favoriteToggleCount++,
+            ),
+          ),
+        );
+
+        await tester.tap(find.byIcon(Icons.favorite_border));
+        await tester.pump();
+
+        expect(favoriteToggleCount, 1);
+        expect(tapCount, 0);
+      },
+    );
+
+    testWidgets('no onTap means the card has no tap target of its own', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+          ),
+        ),
+      );
+
+      final inkWell = tester.widget<InkWell>(find.byType(InkWell));
+      expect(inkWell.onTap, isNull);
+    });
+  });
+
+  group('borderRadius (#214)', () {
+    testWidgets('defaults to the bottom-sheet-style top-only radius', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+          ),
+        ),
+      );
+
+      final container = tester.widget<Container>(find.byType(Container));
+      final decoration = container.decoration as BoxDecoration;
+      expect(
+        decoration.borderRadius,
+        const BorderRadius.vertical(top: Radius.circular(32)),
+      );
+    });
+
+    testWidgets('a caller can override it to a fully rounded shape', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            borderRadius: BorderRadius.circular(24),
+          ),
+        ),
+      );
+
+      final container = tester.widget<Container>(find.byType(Container));
+      final decoration = container.decoration as BoxDecoration;
+      expect(decoration.borderRadius, BorderRadius.circular(24));
+    });
+  });
 }

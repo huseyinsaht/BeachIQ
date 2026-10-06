@@ -42,13 +42,39 @@ IconData _iconForType(ForecastAlertType type) {
 String _formatHour(DateTime time) =>
     '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
+const _weekdayAbbreviations = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+bool _isSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// Issue #229: a short prefix ("Tomorrow", "Wed", ...) for an alert whose
+/// [time] is not the same calendar day as [now], so two alerts that land on
+/// the same hour on different days (e.g. two "09:00 - 10:00" windows) never
+/// read as identical. Null when [time] is today — the existing bare
+/// "09:00 - 10:00" label already reads correctly for that case.
+String? _dayLabelFor(DateTime time, DateTime now) {
+  if (_isSameDay(time, now)) return null;
+  final today = DateTime(now.year, now.month, now.day);
+  final target = DateTime(time.year, time.month, time.day);
+  if (target.difference(today).inDays == 1) return 'Tomorrow';
+  return _weekdayAbbreviations[time.weekday - 1];
+}
+
 /// A compact "09:00 - 10:00" label, distinct from [ForecastAlert.message]
 /// (which already spells the same window out as a sentence, e.g. "Wind
 /// picks up between 09:00 and 10:00.") — this is the scannable summary the
 /// issue's "icon + one line + time window" layout asks for underneath that
-/// sentence.
-String _timeWindowLabel(ForecastAlert alert) =>
-    '${_formatHour(alert.start)} - ${_formatHour(alert.end)}';
+/// sentence. Prefixed with a day label (see [_dayLabelFor]) when [alert]
+/// does not fall on [now]'s calendar day. [now] is only used for that day
+/// label: when the caller doesn't supply it (no real-world caller omits
+/// it, but a test might not care about day labels), the bare window is
+/// shown with no label rather than falling back to the real system clock.
+String _timeWindowLabel(ForecastAlert alert, DateTime? now) {
+  final window = '${_formatHour(alert.start)} - ${_formatHour(alert.end)}';
+  if (now == null) return window;
+  final dayLabel = _dayLabelFor(alert.start, now);
+  return dayLabel == null ? window : '$dayLabel · $window';
+}
 
 /// Sorts [alerts] most severe first ([ForecastAlertSeverity.high] before
 /// [ForecastAlertSeverity.moderate]), keeping `buildForecastAlerts`' own
@@ -66,41 +92,64 @@ List<ForecastAlert> sortAlertsBySeverity(List<ForecastAlert> alerts) {
   return sorted;
 }
 
-/// The Home screen's upcoming-forecast-alerts list (issue #169), per
-/// docs/design.md "Home: alert list": sits between the smart suggestion
-/// pill and the stat grid, one row per [ForecastAlert] — a type icon
-/// (colored by [ForecastAlert.severity] via [_colorForSeverity]), the
+/// The Home screen's upcoming-forecast-alerts list (issue #169, extended by
+/// #229), per docs/design.md "Home: alert list": sits between the smart
+/// suggestion pill and the stat grid. [nextHourNote] (issue #229), when
+/// non-null, renders first as a visually distinct "Next hour" row — it is
+/// based on the current time rather than daylight, so it can still show
+/// after sunset while [alerts] (already daylight-filtered by the caller)
+/// is empty. Below it, one row per [ForecastAlert] in [alerts] — a type
+/// icon (colored by [ForecastAlert.severity] via [_colorForSeverity]), the
 /// alert's one-line [ForecastAlert.message], and a compact time-window
-/// label underneath — sorted most severe first via [sortAlertsBySeverity].
+/// label underneath, prefixed with a day label when the alert is not on
+/// [now]'s calendar day — sorted most severe first via
+/// [sortAlertsBySeverity].
 ///
 /// Renders nothing — `const SizedBox.shrink()`, not a gap-leaving spacer —
-/// when [alerts] is empty, so the Home screen never shows a dangling blank
-/// space when there is nothing to warn about. `home_screen.dart` mirrors
-/// this by only inserting its own spacing before this widget when
-/// [alerts] is non-empty.
+/// when both [alerts] and [nextHourNote] are empty/null, so the Home
+/// screen never shows a dangling blank space when there is nothing to warn
+/// about. `home_screen.dart` mirrors this by only inserting its own
+/// spacing before this widget when there is something to show.
 ///
 /// Pure presentational widget: no network, provider, or clock dependency.
-/// The caller (`home_screen.dart`) computes [alerts] via
-/// `buildForecastAlerts` from the real `WeatherProvider`/`MarineProvider`
-/// data, the same pattern `SeaConditionsRow` and `StatTile` already follow.
+/// [now] only decides the day-label text; `home_screen.dart` always passes
+/// it (the same `effectiveNow` it feeds `buildForecastAlerts`), and a test
+/// that doesn't care about day labels can simply omit it — a bare time
+/// window is shown instead of falling back to the real system clock. The
+/// caller computes [alerts] and
+/// [nextHourNote] via `buildForecastAlerts`/`buildNextHourNote` from the
+/// real `WeatherProvider`/`MarineProvider` data, the same pattern
+/// `SeaConditionsRow` and `StatTile` already follow.
 class ForecastAlertList extends StatelessWidget {
-  const ForecastAlertList({super.key, required this.alerts});
+  const ForecastAlertList({
+    super.key,
+    required this.alerts,
+    this.nextHourNote,
+    this.now,
+  });
 
   final List<ForecastAlert> alerts;
+  final ForecastAlert? nextHourNote;
+  final DateTime? now;
 
   @override
   Widget build(BuildContext context) {
-    if (alerts.isEmpty) return const SizedBox.shrink();
+    if (alerts.isEmpty && nextHourNote == null) {
+      return const SizedBox.shrink();
+    }
 
     final sorted = sortAlertsBySeverity(alerts);
+    final note = nextHourNote;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (note != null) _NextHourRow(alert: note),
+        if (note != null && sorted.isNotEmpty) const SizedBox(height: 10),
         for (var i = 0; i < sorted.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _ForecastAlertRow(alert: sorted[i]),
+          _ForecastAlertRow(alert: sorted[i], now: now),
         ],
       ],
     );
@@ -112,14 +161,15 @@ class ForecastAlertList extends StatelessWidget {
 /// `StatTile`/`SwimSuggestionPill`'s own single-line treatment) and its
 /// compact time-window label underneath.
 class _ForecastAlertRow extends StatelessWidget {
-  const _ForecastAlertRow({required this.alert});
+  const _ForecastAlertRow({required this.alert, required this.now});
 
   final ForecastAlert alert;
+  final DateTime? now;
 
   @override
   Widget build(BuildContext context) {
     final color = _colorForSeverity(alert.severity);
-    final windowLabel = _timeWindowLabel(alert);
+    final windowLabel = _timeWindowLabel(alert, now);
 
     return Semantics(
       label: '${alert.message} $windowLabel',
@@ -144,6 +194,67 @@ class _ForecastAlertRow extends StatelessWidget {
                 Text(
                   windowLabel,
                   style: const TextStyle(color: _textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Issue #229's "next hour" row: visually distinct from [_ForecastAlertRow]
+/// via a small "Next hour" label above the message (instead of a time
+/// window underneath — the note is always about right now -> the next
+/// hour, so a window label would be redundant) and the type icon inside a
+/// soft tinted circle rather than bare, so it reads as a different kind of
+/// row at a glance.
+class _NextHourRow extends StatelessWidget {
+  const _NextHourRow({required this.alert});
+
+  final ForecastAlert alert;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _colorForSeverity(alert.severity);
+
+    return Semantics(
+      label: 'Next hour: ${alert.message}',
+      excludeSemantics: true,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.18),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Icon(_iconForType(alert.type), size: 15, color: color),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Next hour',
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  alert.message,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
               ],
             ),

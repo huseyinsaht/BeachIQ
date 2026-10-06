@@ -7,18 +7,21 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/bathymetry_service.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
+import 'package:beachiq/logic/providers/depth_provider.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/main.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
-import 'package:beachiq/presentation/screens/detail/pressure_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/rain_chance_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
@@ -30,7 +33,7 @@ import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
-import 'package:beachiq/presentation/widgets/hourly_metric_chart.dart';
+import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
@@ -43,6 +46,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
+import '../test/helpers/fake_http_client.dart' show FakeHttpClient;
 import '../test/helpers/pump_app.dart'
     show aLoadedMarineProvider, aLoadedWeatherProvider;
 
@@ -257,7 +261,23 @@ void main() {
   testWidgets('app boots, provides MarineProvider and shows the map', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
+    // Fixture providers keep Home off the real network: with MarineApp's
+    // real defaults the fetch can stay pending, the loading spinner
+    // animates forever and pumpAndSettle times out (#228).
+    final weatherProvider = await aLoadedWeatherProvider(
+      WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+    );
+    final marineProvider = await aLoadedMarineProvider(
+      SeaCondition(waveHeight: 0.3),
+    );
+
+    await tester.pumpWidget(
+      MarineApp(
+        tileProvider: _FakeTileProvider(),
+        weatherProvider: weatherProvider,
+        marineProvider: marineProvider,
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.byType(HomeScreen), findsOneWidget);
@@ -273,7 +293,22 @@ void main() {
     'Home to Search navigation: opening Search via the map card overflow '
     "menu's \"Beaches\" entry (#158), the back chevron returns to Home",
     (WidgetTester tester) async {
-      await tester.pumpWidget(MarineApp(tileProvider: _FakeTileProvider()));
+      // Fixture providers keep Home off the real network (see the boot
+      // test above, #228).
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.byType(HomeScreen), findsOneWidget);
@@ -316,9 +351,19 @@ void main() {
       );
       addTearDown(provider.dispose);
 
+      // Fixture providers keep Home off the real network (#228).
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
       await tester.pumpWidget(
         MarineApp(
           tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           nearbyBeachesProvider: provider,
         ),
       );
@@ -341,76 +386,6 @@ void main() {
       expect(card.waveHeightMeters, closeTo(0.7, 0.001));
       expect(card.waterTemperatureCelsius, closeTo(24.5, 0.001));
       expect(card.hasParking, isTrue);
-    },
-  );
-
-  testWidgets(
-    'Pressure detail flow: tapping the pressure stat tile on Home opens '
-    'PressureDetailScreen with the real WeatherProvider data, and the back '
-    "button returns to Home (no real network: WeatherProvider's repository "
-    'is faked via test/helpers/pump_app.dart)',
-    (WidgetTester tester) async {
-      final weatherProvider = await aLoadedWeatherProvider(
-        WeatherCondition(
-          temperature: 27,
-          windSpeed: 12,
-          weatherCode: 1,
-          pressureHpa: 1013,
-          hourly: [
-            WeatherHourly(
-              time: DateTime(2026, 1, 1, 12),
-              temperature: 26,
-              weatherCode: 1,
-              pressureHpa: 1013,
-            ),
-          ],
-        ),
-      );
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            tileProvider: _FakeTileProvider(),
-            weatherProvider: weatherProvider,
-            now: () => DateTime(2026, 1, 1, 12, 30),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byType(PressureDetailScreen), findsNothing);
-
-      // The pressure tile sits below the fold on the test surface's fixed
-      // size, so it needs scrolling into view before it can be hit.
-      await tester.ensureVisible(find.text('1013 hPa'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('1013 hPa'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(PressureDetailScreen), findsOneWidget);
-      expect(find.byType(HomeScreen), findsNothing);
-
-      // Issue #212: the chart now draws a value scale (y-axis) and hour
-      // labels (x-axis). Those are canvas-painted (not Text widgets), so
-      // assert on the painter's own computed ticks/labels, the same way
-      // this chart's other widget tests already inspect its fields
-      // instead of rendered pixels.
-      final chartPainter = tester
-          .widgetList<CustomPaint>(find.byType(CustomPaint))
-          .map((w) => w.painter)
-          .whereType<HourlyMetricChartPainter>()
-          .first;
-      expect(chartPainter.yTicks.length, greaterThanOrEqualTo(3));
-      expect(chartPainter.yTickLabels, isNotEmpty);
-      expect(chartPainter.yTickLabels.every((l) => l.endsWith('hPa')), isTrue);
-      expect(chartPainter.xAxisLabels, isNotEmpty);
-      expect(chartPainter.xAxisLabels.any((l) => l.text == 'Now'), isTrue);
-
-      await tester.tap(find.byTooltip('Back'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(PressureDetailScreen), findsNothing);
     },
   );
 
@@ -1026,6 +1001,63 @@ void main() {
   });
 
   testWidgets(
+    'Forecast alert daylight filter and next-hour note flow (#229): a '
+    'night-time crossing outside the location\'s real sunrise/sunset '
+    'window (from WeatherProvider) is hidden, while a change between the '
+    'current and next hour still surfaces as a next-hour note even after '
+    'sunset',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 22,
+          windSpeed: 10,
+          weatherCode: 1,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 21),
+              temperature: 20,
+              weatherCode: 1,
+              windSpeed: 10,
+            ),
+            WeatherHourly(
+              // Crosses the 40 km/h "high" threshold, but 21:00 -> 22:00 is
+              // after the 20:00 sunset below, so it must not appear as a
+              // daylight alert row — only as the next-hour note.
+              time: DateTime(2026, 1, 1, 22),
+              temperature: 19,
+              weatherCode: 1,
+              windSpeed: 45,
+            ),
+          ],
+          daylightWindows: [
+            DaylightWindow(
+              sunrise: DateTime(2026, 1, 1, 6),
+              sunset: DateTime(2026, 1, 1, 20),
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 21),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForecastAlertList), findsOneWidget);
+      expect(find.text('Next hour'), findsOneWidget);
+      // findsOneWidget also proves the daylight-filtered alert pipeline did
+      // not additionally render this as a second, duplicate row.
+      expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Pick-a-location flow (#157): tapping the map re-fetches weather, '
     'marine and nearby-beaches data for the tapped point and updates the '
     'header, and the pick survives a restart',
@@ -1236,6 +1268,185 @@ void main() {
       expect(find.text('99°'), findsNothing);
       expect(weatherProvider.currentData!.temperature, 31);
       expect(marineProvider.currentData!.waveHeight, 1.8);
+    },
+  );
+
+  testWidgets(
+    'Search-to-map flow (#214): tapping a beach card in Search returns to '
+    'Home with it as the selected location — highlighted on the map, '
+    'shown in a compact info row, and used for the next nearby-beaches '
+    'fetch',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _FixtureNetworkClient();
+      final overpassService = OverpassService(client);
+      final marineBatchService = MarineBatchService(client);
+      final beachCache = BeachCache(await SharedPreferences.getInstance());
+      final provider = NearbyBeachesProvider(
+        overpassService,
+        beachCache,
+        marineBatchService,
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(provider.dispose);
+
+      // Fixture providers keep Home off the real network: with MarineApp's
+      // real defaults the fetch never completes/errors out, and HomeScreen
+      // never leaves its full-screen loading/error shell (#228) — the
+      // "More" button (inside LocationMapCard, which that shell doesn't
+      // render) would never even be reachable.
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+          nearbyBeachesProvider: provider,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(provider.status, NearbyBeachesStatus.loaded);
+
+      // No compact info row yet — nothing has been picked from Search.
+      expect(find.byType(BeachResultCard), findsNothing);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SearchScreen), findsOneWidget);
+      expect(find.text('Fixture Beach'), findsOneWidget);
+      await tester.tap(find.text('Fixture Beach'));
+      await tester.pumpAndSettle();
+
+      // Back on Home.
+      expect(find.byType(SearchScreen), findsNothing);
+      expect(find.byType(HomeScreen), findsOneWidget);
+
+      // Highlighted on the map: `LocationMapCard` is handed the exact
+      // picked `Beach` (its own highlight/camera-fit behavior is covered
+      // by location_map_card_test.dart).
+      final mapCard = tester.widget<LocationMapCard>(
+        find.byType(LocationMapCard),
+      );
+      expect(mapCard.selectedBeach?.name, 'Fixture Beach');
+
+      // Shown in a compact info row below the map, without another tap,
+      // reusing BeachResultCard's own fields/formatting.
+      expect(find.byType(BeachResultCard), findsOneWidget);
+      final infoCard = tester.widget<BeachResultCard>(
+        find.byType(BeachResultCard),
+      );
+      expect(infoCard.placeName, 'Fixture Beach');
+      expect(infoCard.fee, BeachFee.free);
+      expect(infoCard.waveHeightMeters, closeTo(0.7, 0.001));
+      expect(infoCard.waterTemperatureCelsius, closeTo(24.5, 0.001));
+      expect(infoCard.hasParking, isTrue);
+
+      // The pick also re-fetches nearby beaches for the beach's own
+      // location — same behavior as any other location pick (#157).
+      expect(provider.status, NearbyBeachesStatus.loaded);
+      expect(provider.beaches, isNotEmpty);
+    },
+  );
+
+  testWidgets(
+    'Water-depth flow (#217): picking up a beach fetches its nearshore '
+    'depth profile from a faked BathymetryService, the Home water-depth '
+    'tile shows the classified value/status, tapping it opens '
+    'DepthDetailScreen, and the back button returns to Home',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final nearbyClient = _FixtureNetworkClient();
+      final overpassService = OverpassService(nearbyClient);
+      final marineBatchService = MarineBatchService(nearbyClient);
+      final beachCache = BeachCache(await SharedPreferences.getInstance());
+      final nearbyBeachesProvider = NearbyBeachesProvider(
+        overpassService,
+        beachCache,
+        marineBatchService,
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(nearbyBeachesProvider.dispose);
+
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      // A fake transport for BathymetryService's WMS GetFeatureInfo calls
+      // (never the real EMODnet network): every transect point comes back
+      // at a steady 1.0 m depth, which stays shallow (<= shallowLimitMeters,
+      // 1.2 m) the whole way out -> a "gentle" classification.
+      final bathymetryClient = FakeHttpClient()
+        ..queueJson(
+          host: 'tiles.emodnet-bathymetry.eu',
+          json: {
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'properties': {'GRAY_INDEX': -1.0},
+              },
+            ],
+          },
+        );
+      final depthProvider = DepthProvider(
+        BathymetryService(bathymetryClient),
+        DepthCache(await SharedPreferences.getInstance()),
+      );
+
+      await tester.pumpWidget(
+        MarineApp(
+          tileProvider: _FakeTileProvider(),
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+          nearbyBeachesProvider: nearbyBeachesProvider,
+          depthProvider: depthProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
+
+      // The water-depth tile's own fetch is triggered post-frame once the
+      // nearest fetched beach (resolved just above) is known; this extra
+      // settle gives that chained fetch a chance to complete too.
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DepthDetailScreen), findsNothing);
+      await tester.ensureVisible(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      // depth = 1.0 m everywhere on the transect: at the 100 m reference
+      // distance that's <= gentleMaxDepthAtReferenceDistanceMeters (1.5 m)
+      // -> Gentle, and it never exceeds shallowLimitMeters (1.2 m)
+      // anywhere, so the tile reads "beyond" the last transect distance.
+      expect(find.text('<= 1.2 m beyond 400 m'), findsOneWidget);
+      expect(find.text('Gentle'), findsOneWidget);
+
+      await tester.tap(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DepthDetailScreen), findsOneWidget);
+      expect(find.byType(HomeScreen), findsNothing);
+      // The detail screen's own hero value/chip agree with Home's tile.
+      expect(find.text('<= 1.2 m beyond 400 m'), findsOneWidget);
+      expect(find.text('Gentle'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(DepthDetailScreen), findsNothing);
     },
   );
 }

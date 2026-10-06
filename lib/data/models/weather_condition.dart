@@ -1,3 +1,14 @@
+/// One day's sunrise/sunset pair, from Open-Meteo's `daily.sunrise` /
+/// `daily.sunset` arrays (local time — the request uses `timezone=auto`).
+/// A day whose response is missing either value is dropped entirely rather
+/// than paired with a fabricated partner — see [WeatherCondition.fromJson].
+class DaylightWindow {
+  const DaylightWindow({required this.sunrise, required this.sunset});
+
+  final DateTime sunrise;
+  final DateTime sunset;
+}
+
 /// A single hourly forecast entry (used to render the scrollable hourly
 /// row on the Home screen).
 class WeatherHourly {
@@ -58,6 +69,14 @@ class WeatherCondition {
   final double? lowTemperature;
   final List<WeatherHourly> hourly;
 
+  // Issue #229: one entry per forecast day with a parseable sunrise AND
+  // sunset, in the order Open-Meteo's `daily` arrays return them (today
+  // first). Empty when the response has no `daily.sunrise`/`daily.sunset`
+  // (older fixture, or the API omitted them) — callers (e.g.
+  // `buildForecastAlerts`) treat an empty list as "no daylight data" and
+  // fall back to their unfiltered behaviour rather than failing closed.
+  final List<DaylightWindow> daylightWindows;
+
   WeatherCondition({
     required this.temperature,
     required this.windSpeed,
@@ -68,6 +87,7 @@ class WeatherCondition {
     this.highTemperature,
     this.lowTemperature,
     this.hourly = const [],
+    this.daylightWindows = const [],
   });
 
   factory WeatherCondition.fromJson(Map<String, dynamic> json) {
@@ -174,6 +194,7 @@ class WeatherCondition {
 
     double? highTemperature;
     double? lowTemperature;
+    final daylightWindows = <DaylightWindow>[];
     if (dailyJson is Map<String, dynamic>) {
       final highs = dailyJson['temperature_2m_max'];
       final lows = dailyJson['temperature_2m_min'];
@@ -182,6 +203,23 @@ class WeatherCondition {
       }
       if (lows is List && lows.isNotEmpty) {
         lowTemperature = _asDouble(lows.first);
+      }
+
+      final sunrises = dailyJson['sunrise'];
+      final sunsets = dailyJson['sunset'];
+      if (sunrises is List && sunsets is List) {
+        final days = sunrises.length < sunsets.length
+            ? sunrises.length
+            : sunsets.length;
+        for (var i = 0; i < days; i++) {
+          final sunrise = DateTime.tryParse(sunrises[i].toString());
+          final sunset = DateTime.tryParse(sunsets[i].toString());
+          // Skip the day entirely rather than inventing a missing half of
+          // the pair — matches the "no invented values" rule the hourly
+          // fields above already follow.
+          if (sunrise == null || sunset == null) continue;
+          daylightWindows.add(DaylightWindow(sunrise: sunrise, sunset: sunset));
+        }
       }
     }
 
@@ -195,6 +233,7 @@ class WeatherCondition {
       highTemperature: highTemperature,
       lowTemperature: lowTemperature,
       hourly: hourlyList,
+      daylightWindows: daylightWindows,
     );
   }
 }

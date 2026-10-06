@@ -189,6 +189,108 @@ void main() {
           }
         },
       );
+
+      testWidgets(
+        'given an alert on a different calendar day than now, build -> '
+        'prefixes the time window with a day label',
+        (tester) async {
+          final tomorrow = alert(
+            start: DateTime(2026, 1, 2, 9),
+            end: DateTime(2026, 1, 2, 10),
+          );
+
+          await tester.pumpWidget(
+            wrap(
+              ForecastAlertList(
+                alerts: [tomorrow],
+                now: DateTime(2026, 1, 1, 8),
+              ),
+            ),
+          );
+
+          expect(find.textContaining('Tomorrow'), findsOneWidget);
+          expect(find.textContaining('09:00 - 10:00'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'given an alert on the same calendar day as now, build -> shows the '
+        'bare time window with no day label',
+        (tester) async {
+          final today = alert(
+            start: DateTime(2026, 1, 1, 9),
+            end: DateTime(2026, 1, 1, 10),
+          );
+
+          await tester.pumpWidget(
+            wrap(
+              ForecastAlertList(alerts: [today], now: DateTime(2026, 1, 1, 8)),
+            ),
+          );
+
+          expect(find.text('09:00 - 10:00'), findsOneWidget);
+        },
+      );
+    });
+
+    group('nextHourNote', () {
+      testWidgets(
+        'given only a nextHourNote and no alerts, build -> renders it, '
+        'distinct from a regular alert row',
+        (tester) async {
+          final note = alert(message: 'Wind picks up in the next hour.');
+
+          await tester.pumpWidget(
+            wrap(ForecastAlertList(alerts: const [], nextHourNote: note)),
+          );
+
+          expect(find.text('Next hour'), findsOneWidget);
+          expect(find.text('Wind picks up in the next hour.'), findsOneWidget);
+          final size = tester.getSize(find.byType(ForecastAlertList));
+          expect(size, isNot(Size.zero));
+        },
+      );
+
+      testWidgets(
+        'given both a nextHourNote and regular alerts, build -> renders the '
+        'note first',
+        (tester) async {
+          final note = alert(message: 'Next-hour change.');
+          final regular = alert(
+            start: DateTime(2026, 1, 1, 11),
+            end: DateTime(2026, 1, 1, 12),
+            message: 'Regular alert.',
+          );
+
+          await tester.pumpWidget(
+            wrap(ForecastAlertList(alerts: [regular], nextHourNote: note)),
+          );
+
+          final texts = tester
+              .widgetList<Text>(find.byType(Text))
+              .map((t) => t.data)
+              .where((data) => data != null)
+              .toList();
+
+          expect(
+            texts.indexOf('Next-hour change.'),
+            lessThan(texts.indexOf('Regular alert.')),
+          );
+        },
+      );
+
+      testWidgets(
+        'given neither alerts nor a nextHourNote, build -> renders nothing '
+        'and leaves no gap',
+        (tester) async {
+          await tester.pumpWidget(
+            wrap(const ForecastAlertList(alerts: [], nextHourNote: null)),
+          );
+
+          final size = tester.getSize(find.byType(ForecastAlertList));
+          expect(size, Size.zero);
+        },
+      );
     });
   });
 }

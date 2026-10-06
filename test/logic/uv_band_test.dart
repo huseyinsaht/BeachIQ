@@ -82,6 +82,17 @@ void main() {
     });
   });
 
+  group('uvBandColor', () {
+    test('every band has a distinct, opaque color', () {
+      final colors = UvBand.values.map(uvBandColor).toList();
+
+      for (final color in colors) {
+        expect(color.a, 1.0);
+      }
+      expect(colors.toSet(), hasLength(UvBand.values.length));
+    });
+  });
+
   group('uvProtectionHint', () {
     test('every band has a non-empty, distinct hint', () {
       final hints = UvBand.values.map(uvProtectionHint).toList();

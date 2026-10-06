@@ -8,17 +8,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../logic/beach_gear_advisor.dart';
 import '../../logic/forecast_alerts.dart';
+import '../../logic/providers/depth_provider.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
 import '../../logic/providers/place_search_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
+import '../../logic/rain_status.dart';
+import '../../logic/shallow_entry.dart';
+import '../../logic/shallow_entry_status.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
+import '../../logic/uv_band.dart';
 import '../../logic/wave_shore_relation.dart';
+import '../../logic/wind_status.dart';
 import '../navigation/detail_routes.dart';
+import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
@@ -71,9 +79,20 @@ String _formatTemperature(double? celsius, UnitSystem unitSystem) {
   return '${celsius.round()}°';
 }
 
-String _formatWindSpeed(double? kmh, UnitSystem unitSystem) {
+/// The wind speed stat tile's headline number alone (no unit) — the unit
+/// is a separate [StatTile.unit] run (see [_windSpeedUnit]).
+String _formatWindSpeedValue(double? kmh, UnitSystem unitSystem) {
   if (kmh == null) return _noData;
-  return formatWindSpeed(kmh, unitSystem);
+  final displayValue = unitSystem == UnitSystem.imperial ? kmhToMph(kmh) : kmh;
+  return displayValue.round().toString();
+}
+
+/// The wind speed stat tile's unit, or null when there is no reading to
+/// attach it to (the tile then shows the bare "No data" placeholder with
+/// no unit at all).
+String? _windSpeedUnit(double? kmh, UnitSystem unitSystem) {
+  if (kmh == null) return null;
+  return unitSystem == UnitSystem.imperial ? 'mph' : 'km/h';
 }
 
 /// Opens the Home screen's map-card overflow ("...") menu (#158): a
@@ -156,16 +175,18 @@ Future<void> _showUnitSystemSheet(
   );
 }
 
-String _formatPercent(double? percent) {
+/// The rain chance stat tile's headline number alone (no "%" unit — that
+/// is a separate [StatTile.unit] run).
+String _formatPercentValue(double? percent) {
   if (percent == null) return _noData;
-  return '${percent.round()}%';
+  return percent.round().toString();
 }
 
-String _formatPressure(double? hpa) {
-  if (hpa == null) return _noData;
-  return '${hpa.round()} hPa';
-}
+/// The rain chance stat tile's unit, or null when there is no reading.
+String? _percentUnit(double? percent) => percent == null ? null : '%';
 
+/// The UV index stat tile's headline number — UV index has no unit,
+/// matching `uv_index_detail_screen.dart`'s own hero value.
 String _formatUvIndex(double? uv) {
   if (uv == null) return _noData;
   return uv.toStringAsFixed(1);
@@ -237,6 +258,7 @@ class HomeScreen extends StatefulWidget {
     this.unitPreferencesProvider,
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
+    this.depthProvider,
     this.now,
   });
 
@@ -268,6 +290,12 @@ class HomeScreen extends StatefulWidget {
   /// section). Null (the default) hides that section on Search, unchanged
   /// from before.
   final PlaceSearchProvider? placeSearchProvider;
+
+  /// Drives the water-depth / shallow-entry stat tile (issue #217) and its
+  /// detail screen. Null (the default for any existing call site that
+  /// doesn't pass one) renders the tile as "No data" and disables the
+  /// underlying fetch, unchanged from any other optional provider here.
+  final DepthProvider? depthProvider;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -307,6 +335,13 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng _selectedLocation = _cesmeDefault;
   String _placeName = _cesmeDefaultName;
 
+  /// The beach last picked from `SearchScreen`'s results (#214), shown
+  /// highlighted on the map and as a compact info row below it. Cleared by
+  /// any other kind of pick (a bare map tap, an in-map-card place search) —
+  /// see [_handleLocationPicked] — since those no longer point at this
+  /// specific beach.
+  Beach? _selectedBeach;
+
   /// Guards [_openSearch] against a fast double-tap pushing two
   /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
   /// await is still pending.
@@ -320,6 +355,15 @@ class _HomeScreenState extends State<HomeScreen> {
   /// visible) instead of tearing the whole screen down again (#213).
   bool _hasLoadedOnce = false;
 
+  /// The beach [widget.depthProvider] was last asked to fetch a depth
+  /// profile for (via [_maybeFetchDepthProfile], called every [build]) —
+  /// `null` covers both "nothing picked yet" and "no beach to key a
+  /// transect off of". Tracked so a fetch is only actually kicked off once
+  /// per distinct beach rather than once per rebuild; [DepthProvider]
+  /// itself also de-dupes by the same `isSameBeach` identity as a second
+  /// line of defense.
+  Beach? _depthRequestedBeach;
+
   @override
   void initState() {
     super.initState();
@@ -330,8 +374,11 @@ class _HomeScreenState extends State<HomeScreen> {
     // nearbyBeachesProvider.beaches, see seawardBearingDegrees below)
     // actually appears once the beaches list resolves — without this,
     // HomeScreen never rebuilds after the async pickLocation() call below
-    // completes.
+    // completes. The same resolved beach list is also what the water-depth
+    // tile (#217) keys its own fetch off of (see
+    // [_maybeFetchDepthProfile]).
     widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
+    widget.depthProvider?.addListener(_onProviderChanged);
     // Deferred to after the first frame: HomeScreen is built inside the
     // Consumer2<MarineProvider, WeatherProvider> that also listens to
     // WeatherProvider (see MarineApp), so calling fetchData synchronously
@@ -409,12 +456,37 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _selectedLocation = point;
       _placeName = displayName;
+      // Neither a bare map tap nor an in-map-card place search names a
+      // specific beach — #214's highlight/info row is only for a beach
+      // explicitly picked from `SearchScreen`'s results (_handleBeachPicked
+      // below), so any other kind of pick must drop it.
+      _selectedBeach = null;
     });
     unawaited(_fetchWeatherAndMarine(point));
     unawaited(_persistSelectedLocation(point, displayName));
     // nearbyBeachesProvider.pickLocation(point) is already called directly
     // by LocationMapCard's own tap handler (it holds the provider itself);
     // calling it again here would just restart its debounce for no reason.
+  }
+
+  /// Treats a beach tapped in `SearchScreen`'s results (#214) exactly like
+  /// a map pick: selected location, name, data fetch and persistence all
+  /// follow the same path as [_handleLocationPicked], plus it records
+  /// [_selectedBeach] so the map highlights it and a compact info row
+  /// shows its details without another tap. Unlike a map tap,
+  /// `nearbyBeachesProvider.pickLocation` must be called explicitly here —
+  /// this pick didn't come from `LocationMapCard`'s own tap handler, which
+  /// is the thing that normally does that.
+  void _handleBeachPicked(Beach beach) {
+    final point = LatLng(beach.latitude, beach.longitude);
+    setState(() {
+      _selectedLocation = point;
+      _placeName = beach.name;
+      _selectedBeach = beach;
+    });
+    unawaited(_fetchWeatherAndMarine(point));
+    unawaited(_persistSelectedLocation(point, beach.name));
+    widget.nearbyBeachesProvider?.pickLocation(point);
   }
 
   @override
@@ -436,6 +508,10 @@ class _HomeScreenState extends State<HomeScreen> {
       oldWidget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
       widget.nearbyBeachesProvider?.addListener(_onProviderChanged);
     }
+    if (oldWidget.depthProvider != widget.depthProvider) {
+      oldWidget.depthProvider?.removeListener(_onProviderChanged);
+      widget.depthProvider?.addListener(_onProviderChanged);
+    }
   }
 
   @override
@@ -444,7 +520,32 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.weatherProvider?.removeListener(_onProviderChanged);
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
+    widget.depthProvider?.removeListener(_onProviderChanged);
     super.dispose();
+  }
+
+  /// Kicks off (or skips, when nothing changed) [widget.depthProvider]'s
+  /// fetch for [depthBeach] — the beach the water-depth tile/detail screen
+  /// should show data for (see [build]'s own `depthBeach` local). Called
+  /// once per [build] (after [_depthRequestedBeach] is compared against
+  /// it), but the actual provider call is deferred to a post-frame
+  /// callback: [DepthProvider.fetchForBeach] clears its `profile`
+  /// synchronously and calls `notifyListeners()` before awaiting the
+  /// network, and doing that *during* this screen's own build would
+  /// trigger "setState()/markNeedsBuild() called during build" exactly
+  /// like `initState`'s own deferred fetches above.
+  void _maybeFetchDepthProfile(Beach? depthBeach) {
+    final previouslyRequested = _depthRequestedBeach;
+    final changed = depthBeach == null
+        ? previouslyRequested != null
+        : !isSameBeach(depthBeach, previouslyRequested);
+    if (!changed) return;
+
+    _depthRequestedBeach = depthBeach;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(widget.depthProvider?.fetchForBeach(depthBeach));
+    });
   }
 
   /// Rebuilds whenever the (optional) [MarineProvider] or [WeatherProvider]
@@ -476,19 +577,24 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Obtains a [FavoritesProvider] (async: it needs `SharedPreferences`)
   /// and pushes [SearchScreen] with it, so the favorite hearts and the
   /// favorites-only star toggle are live on the real navigation path.
+  /// Tapping a beach result pops [SearchScreen] back with that [Beach]
+  /// (#214), handled below exactly like a map pick; selecting a "Places"
+  /// result instead calls [_handleLocationPicked] directly (via
+  /// [SearchScreen.onLocationPicked]) while [SearchScreen] stays open.
   Future<void> _openSearch(BuildContext context) async {
     if (_openingSearch) return;
     _openingSearch = true;
     try {
       final prefs = await SharedPreferences.getInstance();
       if (!context.mounted) return;
-      await Navigator.of(context).push(
+      final pickedBeach = await Navigator.of(context).push<Beach>(
         MaterialPageRoute(
           builder: (context) => SearchScreen(
             favoritesProvider: FavoritesProvider(prefs),
             unitPreferencesProvider: widget.unitPreferencesProvider,
             nearbyBeachesProvider: widget.nearbyBeachesProvider,
             placeSearchProvider: widget.placeSearchProvider,
+            onLocationPicked: _handleLocationPicked,
             onRefresh: widget.nearbyBeachesProvider == null
                 ? null
                 : () async => widget.nearbyBeachesProvider!.pickLocation(
@@ -497,6 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+      if (pickedBeach != null) _handleBeachPicked(pickedBeach);
     } finally {
       _openingSearch = false;
     }
@@ -518,6 +625,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final seawardBearingDegrees = nearestBeach == null
         ? null
         : seawardBearingFromGeometry(nearestBeach);
+    // #217: the water-depth tile keys off whichever beach the rest of Home
+    // already treats as "the" selected beach for beach-specific data —
+    // the one explicitly picked from Search when there is one, otherwise
+    // the same nearest-fetched-beach the Sea section's shore-relation
+    // above already uses. Triggering the actual fetch (deferred to a
+    // post-frame callback) is handled separately so this stays a pure
+    // computation, safe to run on every build.
+    final depthBeach = _selectedBeach ?? nearestBeach;
+    _maybeFetchDepthProfile(depthBeach);
     // Once data has loaded once, a pull-to-refresh re-fetch must not tear
     // down this screen (and the RefreshIndicator/scroll view driving that
     // very refresh) back to a full-screen shell — only the *first* load
@@ -596,10 +712,51 @@ class _HomeScreenState extends State<HomeScreen> {
       weatherData?.hourly ?? const [],
       effectiveNow,
     );
-    // #169: upcoming heads-ups for the selected location, computed fresh on
-    // every build from the same WeatherProvider/MarineProvider hourly data
-    // the stat grid and Sea section already use — never a hard-coded list.
+    // #215: a short status word + color per stat-grid metric, computed
+    // once here (not per-tile) so the Wind speed/Rain chance/UV index
+    // tiles and their detail screens can never disagree on the thresholds
+    // behind "Calm"/"Moderate"/etc. — every classifier is reused as-is
+    // from `swim_suitability.dart`'s own thresholds
+    // (`wind_status.dart`/`rain_status.dart`) or from `uv_band.dart`.
+    // Pressure has no defined status word (only a trend arrow), so its
+    // tile omits the chip entirely, per the issue.
+    final windStatus = windStatusFor(weatherData?.windSpeed);
+    final rainStatus = rainChanceStatusFor(weatherData?.rainChancePercent);
+    final uvIndex = weatherData?.uvIndex;
+    final uvBand = uvIndex == null ? null : uvBandFor(uvIndex);
+    // #217: the water-depth tile's own status word/color, from the #216
+    // shallow-entry classification — null profile (not fetched/no
+    // DepthProvider) and [ShallowEntrySteepness.unknown] (not enough data)
+    // both fall back to "No data" below, never a fabricated reading.
+    final depthProfile = widget.depthProvider?.profile;
+    final depthClassification = depthProfile == null
+        ? null
+        : classifyShallowEntry(depthProfile);
+    final depthValue = depthClassification == null
+        ? _noData
+        : formatShallowEntrySummary(depthClassification, unitSystem);
+    final depthStatusLabel = depthClassification == null
+        ? null
+        : shallowEntryStatusLabel(depthClassification.steepness);
+    final depthStatusColor = depthClassification == null
+        ? null
+        : shallowEntryStatusColor(depthClassification.steepness);
+    // #169/#229: upcoming heads-ups for the selected location, computed
+    // fresh on every build from the same WeatherProvider/MarineProvider
+    // hourly data the stat grid and Sea section already use — never a
+    // hard-coded list. Restricted to the selected location's own daylight
+    // (sunrise-sunset) windows when the API returned them; an empty
+    // `daylightWindows` (missing from the response) leaves the list
+    // unfiltered instead of dropping every alert.
     final forecastAlerts = buildForecastAlerts(
+      weather: weatherData?.hourly ?? const [],
+      sea: marineProvider?.currentData?.hourly ?? const [],
+      daylight: weatherData?.daylightWindows ?? const [],
+      now: effectiveNow,
+    );
+    // #229: a single "what changes in the next hour" note, based on the
+    // current time rather than daylight — still shown after sunset.
+    final nextHourNote = buildNextHourNote(
       weather: weatherData?.hourly ?? const [],
       sea: marineProvider?.currentData?.hourly ?? const [],
       now: effectiveNow,
@@ -701,6 +858,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       nearbyBeachesProvider: widget.nearbyBeachesProvider,
                       placeSearchProvider: widget.placeSearchProvider,
                       onLocationPicked: _handleLocationPicked,
+                      selectedBeach: _selectedBeach,
                       // #158: the standalone, non-editable "Enter cities"
                       // entry point below the map card is gone — the map
                       // card's own search icon is now the only place-search
@@ -713,15 +871,32 @@ class _HomeScreenState extends State<HomeScreen> {
                         unitPreferencesProvider: widget.unitPreferencesProvider,
                       ),
                     ),
+                    // #214: the beach picked in `SearchScreen`'s results is
+                    // already highlighted on the map above (`selectedBeach`
+                    // flows into `LocationMapCard`); this is its compact
+                    // info row, visible without another tap. Reuses
+                    // `BeachResultCard`'s own fields/formatting — sourced
+                    // from `nearbyBeachesProvider`'s re-fetched marine data
+                    // once it resolves, "No data" until then, matching
+                    // `SearchScreen`'s own cards exactly.
+                    if (_selectedBeach != null) ...[
+                      const SizedBox(height: 16),
+                      _buildSelectedBeachInfo(_selectedBeach!, unitSystem),
+                    ],
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),
-                    // #169: sits between the smart suggestion pill and the
-                    // Sea section/stat grid, hidden entirely (no gap) when
-                    // there are no upcoming alerts — see
-                    // ForecastAlertList's own doc comment.
-                    if (forecastAlerts.isNotEmpty) ...[
+                    // #169/#229: sits between the smart suggestion pill and
+                    // the Sea section/stat grid, hidden entirely (no gap)
+                    // when there is neither an upcoming alert nor a
+                    // next-hour note — see ForecastAlertList's own doc
+                    // comment.
+                    if (forecastAlerts.isNotEmpty || nextHourNote != null) ...[
                       const SizedBox(height: 16),
-                      ForecastAlertList(alerts: forecastAlerts),
+                      ForecastAlertList(
+                        alerts: forecastAlerts,
+                        nextHourNote: nextHourNote,
+                        now: effectiveNow,
+                      ),
                     ],
                     // #213: a fetch in flight for a new pick (no data for
                     // it yet) shows a loading placeholder here instead of
@@ -757,15 +932,25 @@ class _HomeScreenState extends State<HomeScreen> {
                         physics: const NeverScrollableScrollPhysics(),
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 16,
-                        childAspectRatio: 2.6,
+                        childAspectRatio: 1.5,
                         children: [
                           StatTile(
                             icon: Icons.air,
                             label: 'Wind speed',
-                            value: _formatWindSpeed(
+                            value: _formatWindSpeedValue(
                               weatherData?.windSpeed,
                               unitSystem,
                             ),
+                            unit: _windSpeedUnit(
+                              weatherData?.windSpeed,
+                              unitSystem,
+                            ),
+                            statusLabel: windStatus == null
+                                ? null
+                                : windStatusLabel(windStatus),
+                            statusColor: windStatus == null
+                                ? null
+                                : windStatusColor(windStatus),
                             trendDirection: StatTrendDirection.up,
                             trendDelta: unitSystem == UnitSystem.imperial
                                 ? '1 mph'
@@ -783,9 +968,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           StatTile(
                             icon: Icons.water_drop_outlined,
                             label: 'Rain chance',
-                            value: _formatPercent(
+                            value: _formatPercentValue(
                               weatherData?.rainChancePercent,
                             ),
+                            unit: _percentUnit(weatherData?.rainChancePercent),
+                            statusLabel: rainStatus == null
+                                ? null
+                                : rainChanceStatusLabel(rainStatus),
+                            statusColor: rainStatus == null
+                                ? null
+                                : rainChanceStatusColor(rainStatus),
                             trendDirection: StatTrendDirection.down,
                             trendDelta: '3%',
                             onTap: () => Navigator.of(context).push(
@@ -798,17 +990,33 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                           StatTile(
-                            icon: Icons.speed,
-                            label: 'Pressure',
-                            value: _formatPressure(weatherData?.pressureHpa),
-                            trendDirection: StatTrendDirection.up,
-                            trendDelta: '1 hPa',
+                            icon: Icons.waves,
+                            label: 'Water depth',
+                            value: depthValue,
+                            statusLabel: depthStatusLabel,
+                            statusColor: depthStatusColor,
+                            // No trend row: a nearshore depth profile is a
+                            // spatial reading, not a time series — there is
+                            // no meaningful "delta since last hour" to show
+                            // (unlike wind/rain/UV above), and StatTile
+                            // omits the row entirely rather than showing a
+                            // fabricated one (see its own doc comment).
                             onTap: () => Navigator.of(context).push(
                               buildDetailRoute(
-                                DetailMetric.pressure,
-                                hourly: weatherData?.hourly ?? const [],
-                                currentValue: weatherData?.pressureHpa,
-                                now: widget.now,
+                                DetailMetric.depth,
+                                hourly: const [],
+                                depthProfile: depthProfile,
+                                beach: depthBeach,
+                                currentWaveHeightMeters:
+                                    marineProvider?.currentData?.waveHeight,
+                                currentValue: marineProvider
+                                    ?.currentData
+                                    ?.currentVelocity,
+                                currentDirectionValue: marineProvider
+                                    ?.currentData
+                                    ?.currentDirection,
+                                seawardBearingDegrees: seawardBearingDegrees,
+                                unitSystem: unitSystem,
                               ),
                             ),
                           ),
@@ -816,6 +1024,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Icons.wb_sunny_outlined,
                             label: 'UV index',
                             value: _formatUvIndex(weatherData?.uvIndex),
+                            statusLabel: uvBand == null
+                                ? null
+                                : uvBandLabel(uvBand),
+                            statusColor: uvBand == null
+                                ? null
+                                : uvBandColor(uvBand),
                             trendDirection: StatTrendDirection.up,
                             trendDelta: '0.5',
                             onTap: () => Navigator.of(context).push(
@@ -882,6 +1096,45 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// The compact info row for [beach] shown under the map card once it has
+  /// been picked from `SearchScreen`'s results (#214) — the same fields
+  /// (price, wave height, water temperature, shoes advice, parking, beach
+  /// club, cafe) `BeachResultCard` already renders for a search result, so
+  /// this reuses that widget rather than duplicating its formatting.
+  ///
+  /// [_handleBeachPicked] also re-fetches nearby beaches for [beach]'s own
+  /// location, which replaces [NearbyBeachesProvider.beaches] (and its
+  /// `seaConditionFor` lookup, keyed by instance) with fresh [Beach]
+  /// instances — so [beach] itself (handed down from `SearchScreen`,
+  /// before that re-fetch) would never match and always render "No data"
+  /// once it resolves. [isSameBeach] resolves the live instance for that
+  /// lookup instead, the same value-based matching `LocationMapCard` uses
+  /// for its highlight.
+  Widget _buildSelectedBeachInfo(Beach beach, UnitSystem unitSystem) {
+    final liveBeach = (widget.nearbyBeachesProvider?.beaches ?? const [])
+        .firstWhere((b) => isSameBeach(b, beach), orElse: () => beach);
+    final seaCondition = widget.nearbyBeachesProvider?.seaConditionFor(
+      liveBeach,
+    );
+    return BeachResultCard(
+      placeName: liveBeach.name,
+      areaSubtitle: liveBeach.city,
+      temperature: _formatTemperature(
+        widget.weatherProvider?.currentData?.temperature,
+        unitSystem,
+      ),
+      fee: liveBeach.fee,
+      waveHeightMeters: seaCondition?.waveHeight,
+      waterTemperatureCelsius: seaCondition?.seaSurfaceTemperature,
+      shoeAdvice: adviseOnShoes(liveBeach.surface),
+      hasParking: liveBeach.hasParking,
+      hasBeachResort: liveBeach.hasBeachResort,
+      hasCafe: liveBeach.hasCafe,
+      unitSystem: unitSystem,
+      borderRadius: BorderRadius.circular(24),
     );
   }
 

@@ -5,6 +5,37 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.8] - 2026-10-06
+
+### Added
+
+- Tapping a beach in the Search screen now shows it on the Home map: the camera frames
+  it, it's highlighted among the other beach outlines, and a compact info row appears
+  below the map without leaving Search (#238)
+- A nearshore depth-profile data layer (`BathymetryService`, querying EMODnet's public
+  bathymetry WMS) and a non-swimmer "shallow entry" steepness classification
+  (gentle/moderate/steep), cached on-device for 90 days — groundwork for the Home
+  water-depth tile below, no UI yet on its own (#239)
+- Home's stat tiles (wind speed, rain chance, pressure, UV index) now show a larger
+  value with its unit as a separate, smaller run, plus a short colored status word
+  (e.g. "Calm", "High") for wind speed and rain chance (#240)
+- Home's pressure tile is replaced by a water depth / shallow-entry tile and its own
+  detail screen: how far out the water stays comfortably shallow before the seabed
+  drops away, with a depth-vs-distance chart, an EMODnet attribution line, and
+  lifeguard/wave-height/drift-out context — an approximate, non-swimmer indication,
+  never a safety guarantee (#241)
+- Home's forecast alerts are now limited to daylight hours (using the location's
+  sunrise/sunset), and a new "Next hour" row above the list always flags an imminent
+  wind/wave/current/cloud/rain change, even after sunset (#242)
+- Additional unit tests for the `BeachAmenity` model, bringing it in line with this
+  repo's one-test-file-per-model convention (#244)
+
+### Fixed
+
+- `buildNextHourNote` no longer builds a "Next hour" alert from an hourly reading that
+  is over an hour stale, which could mislabel an already-passed change as upcoming
+  (#243)
+
 ## [2026.10.7] - 2026-10-05
 
 ### Added

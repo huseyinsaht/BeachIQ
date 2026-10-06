@@ -92,7 +92,7 @@ void main() {
         );
         expect(
           uri.queryParameters['daily'],
-          'temperature_2m_max,temperature_2m_min',
+          'temperature_2m_max,temperature_2m_min,sunrise,sunset',
         );
       }, () => mockClient);
     });

@@ -67,8 +67,12 @@ hourly row have **no card background at all** — they sit directly on the gradi
 - Screen title ("My Location", "Search"): bold, ~20pt, white.
 - Section labels ("Hourly forecast", "Beaches Near"): regular, ~13pt, `text.secondary`, often paired
   with a small leading icon.
-- Card values (wind speed, pressure, etc.): bold, ~16–18pt, white.
-- Card labels / units: regular, ~12pt, `text.secondary`.
+- Home stat-grid card values (wind speed, rain chance, pressure, UV index — issue #215): bold, ~26–28pt,
+  white, with the unit as a separate, visually smaller/secondary run right next to it (~14pt,
+  `text.secondary`), never concatenated into the same string. Deviates from this doc's earlier
+  ~16–18pt figure, which read too small on a phone screen (Vaen's 2026-10-03 feedback); metric detail
+  screens (below) are unchanged — they already show a 44pt hero value.
+- Card labels: regular, ~12pt, `text.secondary`.
 
 ## Screen: Home / location detail
 
@@ -122,21 +126,36 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
-5. **Home: alert list** (issue #169) — not in the mockup; this extends it. Sits directly under the
-   smart suggestion pill and above the Sea section/stat grid: one row per upcoming
-   `ForecastAlert` (`lib/logic/forecast_alerts.dart`'s `buildForecastAlerts`, fed the selected
-   location's real `WeatherProvider`/`MarineProvider` hourly series), each a small type icon (wind,
-   waves, clouds, rain or current), the alert's one-line message, and a compact time-window label
-   underneath (e.g. "09:00 - 10:00"). The icon's color follows severity, not type: amber
-   (`#FFB74D`) for `moderate`, `color.warning`'s red (`#EF5350`) for `high` — the same red the Sea
-   section's away-from-shore label uses, since both mean "pay attention". Alerts are sorted most
-   severe first, with an earlier time window breaking a tie between two alerts of the same
-   severity. The whole list (`ForecastAlertList`) renders nothing — no spacer, no gap — when there
-   are no upcoming alerts, exactly like the Sea section's own "no data yet" treatment. Muted,
-   list-style rows, no card background or border, matching the rest of Home's "no tile background"
-   direction. Tapping a row does nothing yet (optional per the issue) — this is a heads-up list,
-   not a notification: pushing these as device notifications is explicitly out of scope (see the
-   follow-up note in `lib/logic/condition_alert_service.dart`).
+5. **Home: alert list** (issue #169, extended by #229) — not in the mockup; this extends it. Sits
+   directly under the smart suggestion pill and above the Sea section/stat grid. Two kinds of row,
+   `ForecastAlertList`:
+   - **Daylight alerts** — one row per upcoming `ForecastAlert` from
+     `lib/logic/forecast_alerts.dart`'s `buildForecastAlerts`, fed the selected location's real
+     `WeatherProvider`/`MarineProvider` hourly series plus its `WeatherCondition.daylightWindows`
+     (Open-Meteo's daily `sunrise`/`sunset`, local time). An alert is only shown when its whole
+     window falls inside the location's sunrise-sunset window for that day — a night-time window
+     (e.g. 00:00 or 04:00) is dropped, and once today's sunset has passed only a later day's window
+     can still match. When the API returns no sunrise/sunset at all, the list falls back to the
+     unfiltered behaviour instead of showing nothing. Each row: a small type icon (wind, waves,
+     clouds, rain or current), the alert's one-line message, and a compact time-window label
+     underneath (e.g. "09:00 - 10:00", prefixed "Tomorrow · " or a weekday abbreviation when the
+     alert is not on today's calendar date, so two alerts sharing an hour on different days never
+     read as duplicates). The icon's color follows severity, not type: amber (`#FFB74D`) for
+     `moderate`, `color.warning`'s red (`#EF5350`) for `high` — the same red the Sea section's
+     away-from-shore label uses, since both mean "pay attention". Sorted most severe first, with an
+     earlier time window breaking a tie between two alerts of the same severity.
+   - **Next-hour note** (`lib/logic/forecast_alerts.dart`'s `buildNextHourNote`) — at most one row,
+     always first and visually distinct (a "Next hour" label above the message, its icon inside a
+     soft tinted circle instead of bare), comparing only the current hour to the next one with the
+     same rules/thresholds as the alerts above. Based on the current time, not daylight, so it still
+     shows after sunset even when the daylight alert list below it is empty. No time-window label
+     underneath — it is always "right now -> the next hour", so one would be redundant.
+   The whole list (`ForecastAlertList`) renders nothing — no spacer, no gap — when there are no
+   daylight alerts AND no next-hour note, exactly like the Sea section's own "no data yet"
+   treatment. Muted, list-style rows, no card background or border, matching the rest of Home's "no
+   tile background" direction. Tapping a row does nothing yet (optional per the issue) — this is a
+   heads-up list, not a notification: pushing these as device notifications is explicitly out of
+   scope (see the follow-up note in `lib/logic/condition_alert_service.dart`).
 6. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
    extends it. Sits under the smart suggestion pill and above the stat grid: a "Sea" section label
    (small wave icon, matching the "Hourly forecast" label's styling) over a horizontally scrollable
@@ -161,10 +180,33 @@ Top to bottom:
    (land-side amenities as an anchor), not a guaranteed fact; when no geometry/amenities are
    available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
    labels and never an invented relation.
-7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
-   tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
-   trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
-   (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
+7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, water depth, UV index
+   (issue #217 replaces the mockup's pressure tile with water depth — see below). Each tile: small line
+   icon at the left, `text.secondary`-style label above a large value (with its unit as a secondary run
+   — see "Typography"), and, for wind speed/rain chance/UV index, a small trend indicator (▴/▾ + delta)
+   at the bottom-right of the tile. UV uses a decimal comma in the mockup (locale formatting).
+   **Status word (issue #215)** — not in the mockup; this extends it. Wind speed (Calm/Moderate/Strong,
+   `lib/logic/wind_status.dart`, reusing `swim_suitability.dart`'s own moderate/high thresholds), rain
+   chance (Low/Medium/High, `lib/logic/rain_status.dart`, same thresholds), UV index (its band —
+   Low/Moderate/High/Very high/Extreme, `lib/logic/uv_band.dart`) and water depth (its steepness —
+   Gentle/Moderate/Steep, `lib/logic/shallow_entry_status.dart`) each show a short colored status word
+   under the value: a small dot plus the word, in green/orange/red (wind, rain, water depth) or the UV
+   band's own color (the same color the UV index detail screen's chart bands use). `MetricDetailScaffold`
+   shows the same word/color under its hero value on the matching detail screen, so Home and the detail
+   screen never disagree.
+   **Water depth (issue #217)** — not in the mockup; this extends it, replacing the mockup's pressure
+   tile (which has no defined status word of its own — `pressure_trend.dart` only exposes a
+   rising/steady/falling trend, not a color). A rough, approximate, non-swimmer "how gentle is this
+   beach?" indication, built on issue #216's `BathymetryService`/`classifyShallowEntry`: the tile's value
+   reads how far out from shore the water stays shallow (at or under `shallow_entry.dart`'s
+   `shallowLimitMeters`), e.g. "<= 1.2 m for 180 m" (unit per the metric/imperial preference), with the
+   Gentle/Moderate/Steep status word below it. Shows "No data" (never a fabricated number) whenever the
+   selected beach has no usable geometry/transect, every sample request failed, or the location is
+   outside EMODnet's coverage. Tapping it opens its own detail screen (below) exactly like every other
+   stat tile; it has **no trend indicator** — a nearshore depth profile is a spatial reading with no time
+   dimension, so `StatTile`'s trend row is omitted entirely rather than showing an invented delta. The
+   pressure tile/its detail screen/route stay in the codebase, just unreachable from this grid — see
+   `lib/presentation/navigation/detail_routes.dart`'s own doc comment.
 8. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
@@ -175,10 +217,10 @@ Top to bottom:
 ## Screen: Metric detail
 
 Not in the mockup — the mockup only covers Home/location-detail and Search (see the top of this
-doc). Each Home stat tile (wind speed, rain chance, pressure, UV index) opens its own detail screen
+doc). Each Home stat tile (wind speed, rain chance, water depth, UV index) opens its own detail screen
 when tapped, on its own route, with a back button to Home (issue #165 and the per-metric issues that
 follow it: #178 UV index, #179 rain chance, #166 wind, #167 wave height, #180 water temperature, #181
-current).
+current, #217 water depth).
 
 All of these screens share one layout (`MetricDetailScaffold`, not a shared screen — each metric still
 gets its own screen file/route) on the same `bg.base`/`bg.gradientBottom` gradient as Home, so they read
@@ -186,10 +228,19 @@ as part of the same app:
 
 1. **Header row** — back button (`chevron_left`, same as Search's) + the metric name, `text.primary`.
 2. **Hero value** — the current reading, large and bold like Home's hero temperature, with its unit
-   underneath in `text.secondary` and (where the metric has one) a short trend line, e.g. Pressure's
-   "Rising — ...".
+   underneath in `text.secondary`, then (issue #215, where the metric has a defined status — wind,
+   rain chance, UV index) the same short colored status word/dot its Home stat tile shows, then (where
+   the metric has one) a short trend line, e.g. Pressure's "Rising — ...".
 3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
    band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
+   **Water depth (issue #217) deviates here**: it has no hourly/time series at all, so its chart slot is
+   `DepthProfileChart` instead — a distance-vs-depth profile (x = distance from shore, y = depth, drawn
+   increasing *downward*, with horizontal lines at `shallow_entry.dart`'s `shallowLimitMeters`/
+   `deepLimitMeters`) — followed by a context row of plain info facts (lifeguard presence, current wave
+   height, and, only when it applies, the issue #164 drift-out warning), and its explanation paragraph
+   (below) also carries an EMODnet attribution line. Its Min/Max/Now summary row (next) is repurposed to
+   the shallowest/deepest valid reading along the transect and the reading at the classification's own
+   100 m reference distance, since there is no literal "now" for a spatial reading.
 4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
    stat-grid's label/value styling.
 5. **Explanation paragraph** — one short `text.secondary` paragraph on what the metric means for the
@@ -232,7 +283,8 @@ the marine group.
 
 Reusable widgets worth extracting rather than rebuilding per-screen:
 
-- `StatTile` — icon + label + value + trend, used 4× in the stat grid.
+- `StatTile` — icon + label + value/unit + an optional status word/color + trend, used 4× in the stat
+  grid.
 - `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
   rows, sorted most severe first and rendering nothing when empty.
 - `SeaConditionsRow` — the Sea section's horizontally scrollable row of 5 tiles (wave height, water
