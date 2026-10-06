@@ -83,6 +83,7 @@ WeatherCondition aWeatherCondition({
   double? highTemperature,
   double? lowTemperature,
   List<WeatherHourly> hourly = const [],
+  List<DaylightWindow> daylightWindows = const [],
 }) {
   return WeatherCondition(
     temperature: temperature,
@@ -94,7 +95,15 @@ WeatherCondition aWeatherCondition({
     highTemperature: highTemperature,
     lowTemperature: lowTemperature,
     hourly: hourly,
+    daylightWindows: daylightWindows,
   );
+}
+
+DaylightWindow aDaylightWindow({
+  required DateTime sunrise,
+  required DateTime sunset,
+}) {
+  return DaylightWindow(sunrise: sunrise, sunset: sunset);
 }
 
 SeaHourly aSeaHourly({

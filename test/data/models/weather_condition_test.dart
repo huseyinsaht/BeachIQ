@@ -172,5 +172,81 @@ void main() {
       expect(condition.uvIndex, isNull);
       expect(condition.highTemperature, isNull);
     });
+
+    group('daylightWindows (issue #229)', () {
+      test('parses daily sunrise/sunset pairs into daylightWindows', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'temperature_2m_max': [26.0, 27.0],
+            'temperature_2m_min': [18.0, 19.0],
+            'sunrise': ['2024-01-01T06:30', '2024-01-02T06:31'],
+            'sunset': ['2024-01-01T19:45', '2024-01-02T19:44'],
+          },
+        });
+
+        expect(condition.daylightWindows, hasLength(2));
+        expect(
+          condition.daylightWindows[0].sunrise,
+          DateTime.parse('2024-01-01T06:30'),
+        );
+        expect(
+          condition.daylightWindows[0].sunset,
+          DateTime.parse('2024-01-01T19:45'),
+        );
+        expect(
+          condition.daylightWindows[1].sunrise,
+          DateTime.parse('2024-01-02T06:31'),
+        );
+        expect(
+          condition.daylightWindows[1].sunset,
+          DateTime.parse('2024-01-02T19:44'),
+        );
+      });
+
+      test('defaults to an empty list when daily has no sunrise/sunset', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'temperature_2m_max': [26.0],
+            'temperature_2m_min': [18.0],
+          },
+        });
+
+        expect(condition.daylightWindows, isEmpty);
+      });
+
+      test('defaults to an empty list when daily is absent entirely', () {
+        final condition = WeatherCondition.fromJson({});
+
+        expect(condition.daylightWindows, isEmpty);
+      });
+
+      test('drops a day whose sunrise or sunset is null instead of fabricating '
+          'the missing half of the pair', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'sunrise': ['2024-01-01T06:30', null],
+            'sunset': [null, '2024-01-02T19:44'],
+          },
+        });
+
+        expect(condition.daylightWindows, isEmpty);
+      });
+
+      test('drops a day whose sunrise or sunset is unparseable instead of '
+          'throwing', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'sunrise': ['not a date', '2024-01-02T06:31'],
+            'sunset': ['2024-01-01T19:45', '2024-01-02T19:44'],
+          },
+        });
+
+        expect(condition.daylightWindows, hasLength(1));
+        expect(
+          condition.daylightWindows.single.sunrise,
+          DateTime.parse('2024-01-02T06:31'),
+        );
+      });
+    });
   });
 }

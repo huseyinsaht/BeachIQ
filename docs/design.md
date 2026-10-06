@@ -126,21 +126,36 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
-5. **Home: alert list** (issue #169) — not in the mockup; this extends it. Sits directly under the
-   smart suggestion pill and above the Sea section/stat grid: one row per upcoming
-   `ForecastAlert` (`lib/logic/forecast_alerts.dart`'s `buildForecastAlerts`, fed the selected
-   location's real `WeatherProvider`/`MarineProvider` hourly series), each a small type icon (wind,
-   waves, clouds, rain or current), the alert's one-line message, and a compact time-window label
-   underneath (e.g. "09:00 - 10:00"). The icon's color follows severity, not type: amber
-   (`#FFB74D`) for `moderate`, `color.warning`'s red (`#EF5350`) for `high` — the same red the Sea
-   section's away-from-shore label uses, since both mean "pay attention". Alerts are sorted most
-   severe first, with an earlier time window breaking a tie between two alerts of the same
-   severity. The whole list (`ForecastAlertList`) renders nothing — no spacer, no gap — when there
-   are no upcoming alerts, exactly like the Sea section's own "no data yet" treatment. Muted,
-   list-style rows, no card background or border, matching the rest of Home's "no tile background"
-   direction. Tapping a row does nothing yet (optional per the issue) — this is a heads-up list,
-   not a notification: pushing these as device notifications is explicitly out of scope (see the
-   follow-up note in `lib/logic/condition_alert_service.dart`).
+5. **Home: alert list** (issue #169, extended by #229) — not in the mockup; this extends it. Sits
+   directly under the smart suggestion pill and above the Sea section/stat grid. Two kinds of row,
+   `ForecastAlertList`:
+   - **Daylight alerts** — one row per upcoming `ForecastAlert` from
+     `lib/logic/forecast_alerts.dart`'s `buildForecastAlerts`, fed the selected location's real
+     `WeatherProvider`/`MarineProvider` hourly series plus its `WeatherCondition.daylightWindows`
+     (Open-Meteo's daily `sunrise`/`sunset`, local time). An alert is only shown when its whole
+     window falls inside the location's sunrise-sunset window for that day — a night-time window
+     (e.g. 00:00 or 04:00) is dropped, and once today's sunset has passed only a later day's window
+     can still match. When the API returns no sunrise/sunset at all, the list falls back to the
+     unfiltered behaviour instead of showing nothing. Each row: a small type icon (wind, waves,
+     clouds, rain or current), the alert's one-line message, and a compact time-window label
+     underneath (e.g. "09:00 - 10:00", prefixed "Tomorrow · " or a weekday abbreviation when the
+     alert is not on today's calendar date, so two alerts sharing an hour on different days never
+     read as duplicates). The icon's color follows severity, not type: amber (`#FFB74D`) for
+     `moderate`, `color.warning`'s red (`#EF5350`) for `high` — the same red the Sea section's
+     away-from-shore label uses, since both mean "pay attention". Sorted most severe first, with an
+     earlier time window breaking a tie between two alerts of the same severity.
+   - **Next-hour note** (`lib/logic/forecast_alerts.dart`'s `buildNextHourNote`) — at most one row,
+     always first and visually distinct (a "Next hour" label above the message, its icon inside a
+     soft tinted circle instead of bare), comparing only the current hour to the next one with the
+     same rules/thresholds as the alerts above. Based on the current time, not daylight, so it still
+     shows after sunset even when the daylight alert list below it is empty. No time-window label
+     underneath — it is always "right now -> the next hour", so one would be redundant.
+   The whole list (`ForecastAlertList`) renders nothing — no spacer, no gap — when there are no
+   daylight alerts AND no next-hour note, exactly like the Sea section's own "no data yet"
+   treatment. Muted, list-style rows, no card background or border, matching the rest of Home's "no
+   tile background" direction. Tapping a row does nothing yet (optional per the issue) — this is a
+   heads-up list, not a notification: pushing these as device notifications is explicitly out of
+   scope (see the follow-up note in `lib/logic/condition_alert_service.dart`).
 6. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
    extends it. Sits under the smart suggestion pill and above the stat grid: a "Sea" section label
    (small wave icon, matching the "Hourly forecast" label's styling) over a horizontally scrollable

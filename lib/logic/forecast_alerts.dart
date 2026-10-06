@@ -115,9 +115,17 @@ const currentRiseThresholdKmh = 2.0;
 /// Per this repo's "never invent a value" rule (see #164's own acceptance
 /// criteria), that half is deferred to a follow-up PR once #164 lands,
 /// rather than guessed at here.
+/// Issue #229: when [daylight] is non-empty, drops any alert whose window
+/// is not entirely inside one of its sunrise-sunset pairs — a night-time
+/// window (e.g. 00:00-04:00) is never reported, and once today's sunset has
+/// passed, only a later day's window (already present in [daylight], which
+/// covers several forecast days) can still match. An empty [daylight] (the
+/// API returned no sunrise/sunset, see [DaylightWindow]) disables this
+/// filter entirely rather than dropping every alert.
 List<ForecastAlert> buildForecastAlerts({
   required List<WeatherHourly> weather,
   required List<SeaHourly> sea,
+  List<DaylightWindow> daylight = const [],
   DateTime? now,
 }) {
   final effectiveNow = now ?? DateTime.now();
@@ -168,8 +176,146 @@ List<ForecastAlert> buildForecastAlerts({
     ),
   ];
 
-  alerts.sort((a, b) => a.start.compareTo(b.start));
-  return alerts;
+  final filtered = daylight.isEmpty
+      ? alerts
+      : alerts
+            .where((a) => _isInsideAnyDaylightWindow(a.start, a.end, daylight))
+            .toList();
+
+  filtered.sort((a, b) => a.start.compareTo(b.start));
+  return filtered;
+}
+
+/// True when `[start, end]` falls entirely within at least one of
+/// [daylight]'s sunrise-sunset pairs (inclusive of both boundaries, so an
+/// alert starting exactly at sunrise or ending exactly at sunset still
+/// counts).
+bool _isInsideAnyDaylightWindow(
+  DateTime start,
+  DateTime end,
+  List<DaylightWindow> daylight,
+) {
+  for (final window in daylight) {
+    if (!start.isBefore(window.sunrise) && !end.isAfter(window.sunset)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// Issue #229: a single heads-up comparing the current hour to the next
+/// one, using the exact same rules/thresholds [buildForecastAlerts] uses
+/// (no new thresholds). Unlike [buildForecastAlerts] this is never
+/// filtered by daylight — it answers "what changes in the next hour from
+/// right now", so it stays visible after sunset too.
+///
+/// Returns null when there is no hourly entry at or before [now] (nothing
+/// to compare "the next hour" against yet), when there's no following
+/// entry, or when nothing notable changes. When more than one rule fires
+/// for the same hour pair, the most severe one wins; a tie keeps
+/// evaluation order (wind, clouds, rain, waves, current).
+ForecastAlert? buildNextHourNote({
+  required List<WeatherHourly> weather,
+  required List<SeaHourly> sea,
+  DateTime? now,
+}) {
+  final effectiveNow = now ?? DateTime.now();
+  final candidates = <ForecastAlert>[];
+
+  void collect<T>({
+    required List<T> hourly,
+    required DateTime Function(T) timeOf,
+    required ForecastAlertType type,
+    required _Trigger? Function(T? twoBack, T previous, T current) evaluate,
+  }) {
+    final currentIndex = _indexOfCurrentHour(hourly, timeOf, effectiveNow);
+    if (currentIndex == null || currentIndex + 1 >= hourly.length) return;
+
+    final twoBack = currentIndex >= 1 ? hourly[currentIndex - 1] : null;
+    final current = hourly[currentIndex];
+    final next = hourly[currentIndex + 1];
+    final trigger = evaluate(twoBack, current, next);
+    if (trigger == null) return;
+
+    final start = timeOf(current);
+    final end = timeOf(next);
+    candidates.add(
+      ForecastAlert(
+        type: type,
+        start: start,
+        end: end,
+        severity: trigger.severity,
+        message: _messageFor(trigger.reason, start, end),
+      ),
+    );
+  }
+
+  collect<WeatherHourly>(
+    hourly: weather,
+    timeOf: (h) => h.time,
+    type: ForecastAlertType.wind,
+    evaluate: (twoBack, prev, curr) =>
+        _evaluateWind(twoBack?.windSpeed, prev.windSpeed, curr.windSpeed),
+  );
+  collect<WeatherHourly>(
+    hourly: weather,
+    timeOf: (h) => h.time,
+    type: ForecastAlertType.clouds,
+    evaluate: (twoBack, prev, curr) =>
+        _evaluateClouds(prev.weatherCode, curr.weatherCode),
+  );
+  collect<WeatherHourly>(
+    hourly: weather,
+    timeOf: (h) => h.time,
+    type: ForecastAlertType.rain,
+    evaluate: (twoBack, prev, curr) =>
+        _evaluateRain(prev.rainChancePercent, curr.rainChancePercent),
+  );
+  collect<SeaHourly>(
+    hourly: sea,
+    timeOf: (h) => h.time,
+    type: ForecastAlertType.waves,
+    evaluate: (twoBack, prev, curr) =>
+        _evaluateWaves(prev.waveHeight, curr.waveHeight),
+  );
+  collect<SeaHourly>(
+    hourly: sea,
+    timeOf: (h) => h.time,
+    type: ForecastAlertType.current,
+    evaluate: (twoBack, prev, curr) => _evaluateCurrent(
+      twoBack?.currentVelocity,
+      prev.currentVelocity,
+      curr.currentVelocity,
+    ),
+  );
+
+  if (candidates.isEmpty) return null;
+
+  var best = candidates.first;
+  for (final candidate in candidates.skip(1)) {
+    if (candidate.severity.index > best.severity.index) best = candidate;
+  }
+  return best;
+}
+
+/// The hourly entry whose [timeOf] is the latest one at or before [now] —
+/// "the current hour" — or null when every entry is in the future (nothing
+/// to anchor "the next hour" to yet). Mirrors the latest-at-or-before
+/// lookup `WeatherCondition.fromJson` uses for Open-Meteo's `current.time`.
+int? _indexOfCurrentHour<T>(
+  List<T> hourly,
+  DateTime Function(T) timeOf,
+  DateTime now,
+) {
+  int? bestIndex;
+  for (var i = 0; i < hourly.length; i++) {
+    final t = timeOf(hourly[i]);
+    if (t.isAfter(now)) continue;
+    if (bestIndex == null || t.isAfter(timeOf(hourly[bestIndex]))) {
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
 }
 
 // --- Rule evaluation --------------------------------------------------------
