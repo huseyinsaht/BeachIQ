@@ -584,6 +584,51 @@ void main() {
       expect(note, isNull);
     });
 
+    test('given the only hourly entry at or before now is more than an hour '
+        'stale, buildNextHourNote -> null instead of relabelling an old '
+        'transition "Next hour"', () {
+      final note = buildNextHourNote(
+        weather: [
+          // 2 hours before `now` — stale cached data, not "the current
+          // hour". The crossing itself would otherwise fire (10 -> 45).
+          aWeatherHourly(time: h(6), windSpeed: 10),
+          aWeatherHourly(time: h(7), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 9),
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given the only hourly entry at or before now is exactly one hour '
+        'stale, buildNextHourNote -> null (the boundary counts as stale)', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(7), windSpeed: 10),
+          aWeatherHourly(time: h(8), windSpeed: 45),
+        ],
+        sea: const [],
+        now: h(8), // exactly 1h after the "current" entry at h(7)
+      );
+
+      expect(note, isNull);
+    });
+
+    test('given the only hourly entry at or before now is just under an hour '
+        'old, buildNextHourNote -> still builds the note (not stale)', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: h(7), windSpeed: 10),
+          aWeatherHourly(time: h(8), windSpeed: 45),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 7, 59),
+      );
+
+      expect(note, isNotNull);
+    });
+
     test('given a null reading on either side of the current/next hour pair, '
         'buildNextHourNote -> that rule is skipped, never treated as 0', () {
       final note = buildNextHourNote(
