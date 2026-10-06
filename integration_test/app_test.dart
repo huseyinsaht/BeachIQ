@@ -960,6 +960,63 @@ void main() {
   });
 
   testWidgets(
+    'Forecast alert daylight filter and next-hour note flow (#229): a '
+    'night-time crossing outside the location\'s real sunrise/sunset '
+    'window (from WeatherProvider) is hidden, while a change between the '
+    'current and next hour still surfaces as a next-hour note even after '
+    'sunset',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 22,
+          windSpeed: 10,
+          weatherCode: 1,
+          hourly: [
+            WeatherHourly(
+              time: DateTime(2026, 1, 1, 21),
+              temperature: 20,
+              weatherCode: 1,
+              windSpeed: 10,
+            ),
+            WeatherHourly(
+              // Crosses the 40 km/h "high" threshold, but 21:00 -> 22:00 is
+              // after the 20:00 sunset below, so it must not appear as a
+              // daylight alert row — only as the next-hour note.
+              time: DateTime(2026, 1, 1, 22),
+              temperature: 19,
+              weatherCode: 1,
+              windSpeed: 45,
+            ),
+          ],
+          daylightWindows: [
+            DaylightWindow(
+              sunrise: DateTime(2026, 1, 1, 6),
+              sunset: DateTime(2026, 1, 1, 20),
+            ),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 21),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForecastAlertList), findsOneWidget);
+      expect(find.text('Next hour'), findsOneWidget);
+      // findsOneWidget also proves the daylight-filtered alert pipeline did
+      // not additionally render this as a second, duplicate row.
+      expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
     'Pick-a-location flow (#157): tapping the map re-fetches weather, '
     'marine and nearby-beaches data for the tapped point and updates the '
     'header, and the pick survives a restart',

@@ -741,10 +741,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final depthStatusColor = depthClassification == null
         ? null
         : shallowEntryStatusColor(depthClassification.steepness);
-    // #169: upcoming heads-ups for the selected location, computed fresh on
-    // every build from the same WeatherProvider/MarineProvider hourly data
-    // the stat grid and Sea section already use — never a hard-coded list.
+    // #169/#229: upcoming heads-ups for the selected location, computed
+    // fresh on every build from the same WeatherProvider/MarineProvider
+    // hourly data the stat grid and Sea section already use — never a
+    // hard-coded list. Restricted to the selected location's own daylight
+    // (sunrise-sunset) windows when the API returned them; an empty
+    // `daylightWindows` (missing from the response) leaves the list
+    // unfiltered instead of dropping every alert.
     final forecastAlerts = buildForecastAlerts(
+      weather: weatherData?.hourly ?? const [],
+      sea: marineProvider?.currentData?.hourly ?? const [],
+      daylight: weatherData?.daylightWindows ?? const [],
+      now: effectiveNow,
+    );
+    // #229: a single "what changes in the next hour" note, based on the
+    // current time rather than daylight — still shown after sunset.
+    final nextHourNote = buildNextHourNote(
       weather: weatherData?.hourly ?? const [],
       sea: marineProvider?.currentData?.hourly ?? const [],
       now: effectiveNow,
@@ -873,13 +885,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                     const SizedBox(height: 16),
                     SwimSuggestionPill(verdict: swimVerdict),
-                    // #169: sits between the smart suggestion pill and the
-                    // Sea section/stat grid, hidden entirely (no gap) when
-                    // there are no upcoming alerts — see
-                    // ForecastAlertList's own doc comment.
-                    if (forecastAlerts.isNotEmpty) ...[
+                    // #169/#229: sits between the smart suggestion pill and
+                    // the Sea section/stat grid, hidden entirely (no gap)
+                    // when there is neither an upcoming alert nor a
+                    // next-hour note — see ForecastAlertList's own doc
+                    // comment.
+                    if (forecastAlerts.isNotEmpty || nextHourNote != null) ...[
                       const SizedBox(height: 16),
-                      ForecastAlertList(alerts: forecastAlerts),
+                      ForecastAlertList(
+                        alerts: forecastAlerts,
+                        nextHourNote: nextHourNote,
+                        now: effectiveNow,
+                      ),
                     ],
                     // #213: a fetch in flight for a new pick (no data for
                     // it yet) shows a loading placeholder here instead of

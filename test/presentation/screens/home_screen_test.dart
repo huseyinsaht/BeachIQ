@@ -679,4 +679,98 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen forecast alerts daylight filter and next-hour note '
+      '(issue #229)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    DateTime h(int hour, [int day = 1]) => DateTime(2026, 1, day, hour);
+
+    testWidgets(
+      'given a wind crossing entirely outside the location\'s daylight '
+      'window, build -> does not render it as a daylight alert',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              // 23:00 -> 00:00 next day: outside both days' 06:00-20:00
+              // daylight windows below, and not adjacent to `now` (8:30)
+              // either, so it also can't surface as a next-hour note.
+              aWeatherHourly(time: h(23), windSpeed: 10),
+              aWeatherHourly(time: h(0, 2), windSpeed: 45),
+            ],
+            daylightWindows: [
+              aDaylightWindow(sunrise: h(6), sunset: h(20)),
+              aDaylightWindow(sunrise: h(6, 2), sunset: h(20, 2)),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 8, 30),
+          ),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a daytime wind crossing inside the daylight window, build -> '
+      'still renders it as a daylight alert',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(9), windSpeed: 10),
+              aWeatherHourly(time: h(10), windSpeed: 45),
+            ],
+            daylightWindows: [aDaylightWindow(sunrise: h(6), sunset: h(20))],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => DateTime(2026, 1, 1, 8, 30),
+          ),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a change in the next hour after the location\'s sunset, build '
+      '-> still shows the next-hour note even though the daylight alert '
+      'list is filtered out',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(21), windSpeed: 10),
+              aWeatherHourly(time: h(22), windSpeed: 45),
+            ],
+            daylightWindows: [aDaylightWindow(sunrise: h(6), sunset: h(20))],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => h(21)),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+        expect(find.text('Next hour'), findsOneWidget);
+        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+      },
+    );
+  });
 }
