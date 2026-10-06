@@ -1,4 +1,7 @@
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
+import 'package:beachiq/logic/rain_status.dart';
+import 'package:beachiq/logic/uv_band.dart';
+import 'package:beachiq/logic/wind_status.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -244,6 +247,93 @@ void main() {
           findsOneWidget,
         );
         expect(find.textContaining('Waves cross'), findsOneWidget);
+      },
+    );
+  });
+
+  group('HomeScreen stat grid status words (issue #215)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'given a UV index reading, the UV tile shows its band word in the '
+      "exact color uv_band.dart's uvBandColor returns for that band",
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(uvIndex: 9),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        // UV index 9 falls in the "very high" band (8-10.9).
+        final statusText = tester.widget<Text>(find.text('Very high'));
+        expect(statusText.style!.color, uvBandColor(UvBand.veryHigh));
+      },
+    );
+
+    testWidgets(
+      'given a different UV index reading, the UV tile shows a different '
+      'band word with a different color',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(uvIndex: 4),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        // UV index 4 falls in the "moderate" band (3-5.9).
+        final statusText = tester.widget<Text>(find.text('Moderate'));
+        expect(statusText.style!.color, uvBandColor(UvBand.moderate));
+      },
+    );
+
+    testWidgets(
+      'given a strong wind reading, the wind speed tile shows its status '
+      'word in the matching color',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(windSpeed: 45),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        final statusText = tester.widget<Text>(find.text('Strong'));
+        expect(statusText.style!.color, windStatusColor(WindStatus.strong));
+      },
+    );
+
+    testWidgets(
+      'given a high rain chance reading, the rain chance tile shows its '
+      'status word in the matching color',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(rainChancePercent: 80),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        final statusText = tester.widget<Text>(find.text('High'));
+        expect(
+          statusText.style!.color,
+          rainChanceStatusColor(RainChanceStatus.high),
+        );
+      },
+    );
+
+    testWidgets(
+      'given no weather data loaded yet, the stat grid renders with no '
+      'status chip and no crash',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        expect(tester.takeException(), isNull);
+        expect(find.text('Calm'), findsNothing);
+        expect(find.text('Moderate'), findsNothing);
+        expect(find.text('Strong'), findsNothing);
+        expect(find.text('Low'), findsNothing);
+        expect(find.text('Medium'), findsNothing);
+        expect(find.text('High'), findsNothing);
       },
     );
   });

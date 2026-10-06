@@ -31,26 +31,42 @@ int? nowHourIndex(List<WeatherHourly> hourly, DateTime now) {
 // with UV forecasts, while staying distinguishable from this app's own
 // palette (docs/design.md's `icon.sun` #FFC94D and the swim-verdict pill
 // greens/oranges/reds): violet in particular is not used anywhere else in
-// BeachIQ. Each is drawn at ~20% opacity (hex alpha `33`) so the data line
-// and "Now" marker stay legible on top of them. Boundaries match
-// `uvBandFor`'s cutoffs exactly (3 / 6 / 8 / 11); the top band has no
-// `max`, extending to the top of the chart's visible range.
-const List<HourlyChartValueBand> uvChartBands = [
-  HourlyChartValueBand(min: 0, max: 3, color: Color(0x332E7D32), label: 'Low'),
+// BeachIQ. Each is drawn at ~20% opacity (alpha `0x33`) over `uvBandColor`'s
+// solid hue (the same color the Home stat grid's UV tile shows at full
+// opacity, issue #215) so the data line and "Now" marker stay legible on
+// top of them. Boundaries match `uvBandFor`'s cutoffs exactly (3 / 6 / 8 /
+// 11); the top band has no `max`, extending to the top of the chart's
+// visible range.
+List<HourlyChartValueBand> get uvChartBands => [
+  HourlyChartValueBand(
+    min: 0,
+    max: 3,
+    color: uvBandColor(UvBand.low).withAlpha(0x33),
+    label: 'Low',
+  ),
   HourlyChartValueBand(
     min: 3,
     max: 6,
-    color: Color(0x33F9A825),
+    color: uvBandColor(UvBand.moderate).withAlpha(0x33),
     label: 'Moderate',
   ),
-  HourlyChartValueBand(min: 6, max: 8, color: Color(0x33FB8C00), label: 'High'),
+  HourlyChartValueBand(
+    min: 6,
+    max: 8,
+    color: uvBandColor(UvBand.high).withAlpha(0x33),
+    label: 'High',
+  ),
   HourlyChartValueBand(
     min: 8,
     max: 11,
-    color: Color(0x33E53935),
+    color: uvBandColor(UvBand.veryHigh).withAlpha(0x33),
     label: 'Very high',
   ),
-  HourlyChartValueBand(min: 11, color: Color(0x338E24AA), label: 'Extreme'),
+  HourlyChartValueBand(
+    min: 11,
+    color: uvBandColor(UvBand.extreme).withAlpha(0x33),
+    label: 'Extreme',
+  ),
 ];
 
 /// UV index detail screen (issue #178): the day's hourly UV index
@@ -108,6 +124,8 @@ class UvIndexDetailScreen extends StatelessWidget {
     return MetricDetailScaffold(
       title: 'UV Index',
       heroValue: _formatUv(heroValue),
+      statusLabel: band == null ? null : uvBandLabel(band),
+      statusColor: band == null ? null : uvBandColor(band),
       trendText: band == null
           ? 'Not enough data yet to show a sun-protection tip.'
           : '${uvBandLabel(band)} — ${uvProtectionHint(band)}',

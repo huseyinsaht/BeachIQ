@@ -19,13 +19,19 @@ class MetricDetailScaffold extends StatelessWidget {
     required this.title,
     required this.heroValue,
     this.heroUnit,
+    this.statusLabel,
+    this.statusColor,
     this.trendText,
     required this.chart,
     required this.minValueLabel,
     required this.nowValueLabel,
     required this.maxValueLabel,
     required this.explanation,
-  });
+  }) : assert(
+         (statusLabel == null) == (statusColor == null),
+         'statusLabel and statusColor must be supplied together, or not '
+         'at all.',
+       );
 
   /// The app bar title, e.g. "Pressure".
   final String title;
@@ -35,6 +41,18 @@ class MetricDetailScaffold extends StatelessWidget {
 
   /// A short unit string under the hero value (e.g. "hPa"). Null hides it.
   final String? heroUnit;
+
+  /// A short status word (e.g. "Calm", "Moderate", "High") shown as a
+  /// small colored chip under the hero value/unit — the same status word
+  /// the Home stat grid's tile shows for this metric (issue #215), so the
+  /// two screens never disagree. Null omits the chip entirely (e.g.
+  /// Pressure, which has no defined status word, only a trend). Must be
+  /// supplied together with [statusColor].
+  final String? statusLabel;
+
+  /// The color for [statusLabel]'s dot/chip. Must be supplied together
+  /// with [statusLabel].
+  final Color? statusColor;
 
   /// A one-line trend/status under the hero value (e.g. "Rising — a sign
   /// of improving weather."). Null hides it.
@@ -116,6 +134,10 @@ class MetricDetailScaffold extends StatelessWidget {
                             fontSize: 13,
                           ),
                         ),
+                      if (statusLabel != null) ...[
+                        const SizedBox(height: 8),
+                        _StatusChip(label: statusLabel!, color: statusColor!),
+                      ],
                       if (trendText != null) ...[
                         const SizedBox(height: 6),
                         Text(
@@ -151,6 +173,39 @@ class MetricDetailScaffold extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A short colored status word with a leading dot, matching
+/// `stat_tile.dart`'s own `_StatusChip` (not shared between the two files —
+/// each is a tiny private widget local to its own screen/scaffold).
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }

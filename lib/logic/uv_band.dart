@@ -1,7 +1,9 @@
 /// UV index band classification for the UV index detail screen (issue
-/// #178), in the same small-pure-function-module style as
-/// `lib/logic/pressure_trend.dart`.
+/// #178) and the Home stat grid's UV index tile (issue #215), in the same
+/// small-pure-function-module style as `lib/logic/pressure_trend.dart`.
 library;
+
+import 'package:flutter/material.dart';
 
 /// The standard UV index risk bands (WHO/EPA scale), used to color the UV
 /// index detail screen's hourly chart and to pick a one-line protection
@@ -57,6 +59,28 @@ String uvBandLabel(UvBand band) {
 /// detail screen's hero value (after [uvBandLabel] and a dash, matching
 /// `pressure_trend.dart`'s `pressureTrendLabel`/`pressureTrendExplanation`
 /// pairing).
+/// A solid status color for [band] (e.g. for a status chip/dot), using the
+/// standard WHO/EPA UV-index color scale (green -> yellow -> orange -> red
+/// -> violet). This is the single source for that hue: the UV index detail
+/// screen's chart bands (`uv_index_detail_screen.dart`'s `uvChartBands`)
+/// derive their own (partly transparent) colors from this exact value
+/// rather than redefining it, so the Home stat grid's UV tile and the
+/// detail screen's chart always agree on "what color is Moderate".
+Color uvBandColor(UvBand band) {
+  switch (band) {
+    case UvBand.low:
+      return const Color(0xFF2E7D32);
+    case UvBand.moderate:
+      return const Color(0xFFF9A825);
+    case UvBand.high:
+      return const Color(0xFFFB8C00);
+    case UvBand.veryHigh:
+      return const Color(0xFFE53935);
+    case UvBand.extreme:
+      return const Color(0xFF8E24AA);
+  }
+}
+
 String uvProtectionHint(UvBand band) {
   switch (band) {
     case UvBand.low:
