@@ -16,9 +16,12 @@ import '../../logic/providers/nearby_beaches_provider.dart';
 import '../../logic/providers/place_search_provider.dart';
 import '../../logic/providers/unit_preferences_provider.dart';
 import '../../logic/providers/weather_provider.dart';
+import '../../logic/rain_status.dart';
 import '../../logic/swim_suitability.dart';
 import '../../logic/unit_preferences.dart';
+import '../../logic/uv_band.dart';
 import '../../logic/wave_shore_relation.dart';
+import '../../logic/wind_status.dart';
 import '../navigation/detail_routes.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
@@ -73,9 +76,20 @@ String _formatTemperature(double? celsius, UnitSystem unitSystem) {
   return '${celsius.round()}°';
 }
 
-String _formatWindSpeed(double? kmh, UnitSystem unitSystem) {
+/// The wind speed stat tile's headline number alone (no unit) — the unit
+/// is a separate [StatTile.unit] run (see [_windSpeedUnit]).
+String _formatWindSpeedValue(double? kmh, UnitSystem unitSystem) {
   if (kmh == null) return _noData;
-  return formatWindSpeed(kmh, unitSystem);
+  final displayValue = unitSystem == UnitSystem.imperial ? kmhToMph(kmh) : kmh;
+  return displayValue.round().toString();
+}
+
+/// The wind speed stat tile's unit, or null when there is no reading to
+/// attach it to (the tile then shows the bare "No data" placeholder with
+/// no unit at all).
+String? _windSpeedUnit(double? kmh, UnitSystem unitSystem) {
+  if (kmh == null) return null;
+  return unitSystem == UnitSystem.imperial ? 'mph' : 'km/h';
 }
 
 /// Opens the Home screen's map-card overflow ("...") menu (#158): a
@@ -158,16 +172,27 @@ Future<void> _showUnitSystemSheet(
   );
 }
 
-String _formatPercent(double? percent) {
+/// The rain chance stat tile's headline number alone (no "%" unit — that
+/// is a separate [StatTile.unit] run).
+String _formatPercentValue(double? percent) {
   if (percent == null) return _noData;
-  return '${percent.round()}%';
+  return percent.round().toString();
 }
 
-String _formatPressure(double? hpa) {
+/// The rain chance stat tile's unit, or null when there is no reading.
+String? _percentUnit(double? percent) => percent == null ? null : '%';
+
+/// The pressure stat tile's headline number alone (no "hPa" unit).
+String _formatPressureValue(double? hpa) {
   if (hpa == null) return _noData;
-  return '${hpa.round()} hPa';
+  return hpa.round().toString();
 }
 
+/// The pressure stat tile's unit, or null when there is no reading.
+String? _pressureUnit(double? hpa) => hpa == null ? null : 'hPa';
+
+/// The UV index stat tile's headline number — UV index has no unit,
+/// matching `uv_index_detail_screen.dart`'s own hero value.
 String _formatUvIndex(double? uv) {
   if (uv == null) return _noData;
   return uv.toStringAsFixed(1);
@@ -636,6 +661,18 @@ class _HomeScreenState extends State<HomeScreen> {
       weatherData?.hourly ?? const [],
       effectiveNow,
     );
+    // #215: a short status word + color per stat-grid metric, computed
+    // once here (not per-tile) so the Wind speed/Rain chance/UV index
+    // tiles and their detail screens can never disagree on the thresholds
+    // behind "Calm"/"Moderate"/etc. — every classifier is reused as-is
+    // from `swim_suitability.dart`'s own thresholds
+    // (`wind_status.dart`/`rain_status.dart`) or from `uv_band.dart`.
+    // Pressure has no defined status word (only a trend arrow), so its
+    // tile omits the chip entirely, per the issue.
+    final windStatus = windStatusFor(weatherData?.windSpeed);
+    final rainStatus = rainChanceStatusFor(weatherData?.rainChancePercent);
+    final uvIndex = weatherData?.uvIndex;
+    final uvBand = uvIndex == null ? null : uvBandFor(uvIndex);
     // #169: upcoming heads-ups for the selected location, computed fresh on
     // every build from the same WeatherProvider/MarineProvider hourly data
     // the stat grid and Sea section already use — never a hard-coded list.
@@ -810,15 +847,25 @@ class _HomeScreenState extends State<HomeScreen> {
                         physics: const NeverScrollableScrollPhysics(),
                         mainAxisSpacing: 16,
                         crossAxisSpacing: 16,
-                        childAspectRatio: 2.6,
+                        childAspectRatio: 1.5,
                         children: [
                           StatTile(
                             icon: Icons.air,
                             label: 'Wind speed',
-                            value: _formatWindSpeed(
+                            value: _formatWindSpeedValue(
                               weatherData?.windSpeed,
                               unitSystem,
                             ),
+                            unit: _windSpeedUnit(
+                              weatherData?.windSpeed,
+                              unitSystem,
+                            ),
+                            statusLabel: windStatus == null
+                                ? null
+                                : windStatusLabel(windStatus),
+                            statusColor: windStatus == null
+                                ? null
+                                : windStatusColor(windStatus),
                             trendDirection: StatTrendDirection.up,
                             trendDelta: unitSystem == UnitSystem.imperial
                                 ? '1 mph'
@@ -836,9 +883,16 @@ class _HomeScreenState extends State<HomeScreen> {
                           StatTile(
                             icon: Icons.water_drop_outlined,
                             label: 'Rain chance',
-                            value: _formatPercent(
+                            value: _formatPercentValue(
                               weatherData?.rainChancePercent,
                             ),
+                            unit: _percentUnit(weatherData?.rainChancePercent),
+                            statusLabel: rainStatus == null
+                                ? null
+                                : rainChanceStatusLabel(rainStatus),
+                            statusColor: rainStatus == null
+                                ? null
+                                : rainChanceStatusColor(rainStatus),
                             trendDirection: StatTrendDirection.down,
                             trendDelta: '3%',
                             onTap: () => Navigator.of(context).push(
@@ -853,7 +907,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           StatTile(
                             icon: Icons.speed,
                             label: 'Pressure',
-                            value: _formatPressure(weatherData?.pressureHpa),
+                            value: _formatPressureValue(
+                              weatherData?.pressureHpa,
+                            ),
+                            unit: _pressureUnit(weatherData?.pressureHpa),
                             trendDirection: StatTrendDirection.up,
                             trendDelta: '1 hPa',
                             onTap: () => Navigator.of(context).push(
@@ -869,6 +926,12 @@ class _HomeScreenState extends State<HomeScreen> {
                             icon: Icons.wb_sunny_outlined,
                             label: 'UV index',
                             value: _formatUvIndex(weatherData?.uvIndex),
+                            statusLabel: uvBand == null
+                                ? null
+                                : uvBandLabel(uvBand),
+                            statusColor: uvBand == null
+                                ? null
+                                : uvBandColor(uvBand),
                             trendDirection: StatTrendDirection.up,
                             trendDelta: '0.5',
                             onTap: () => Navigator.of(context).push(

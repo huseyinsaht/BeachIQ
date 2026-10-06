@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../data/models/weather_condition.dart';
 import '../../../logic/swim_suitability.dart';
 import '../../../logic/unit_preferences.dart';
+import '../../../logic/wind_status.dart';
 import '../../widgets/hourly_metric_chart.dart';
 import '../../widgets/metric_detail_scaffold.dart';
 
@@ -134,10 +135,14 @@ class WindDetailScreen extends StatelessWidget {
         .toList();
     final hasGustSeries = presentGusts.isNotEmpty;
 
+    final windStatus = windStatusFor(heroKmh);
+
     return MetricDetailScaffold(
       title: 'Wind Speed',
       heroValue: _formatValue(heroKmh, unitSystem) ?? '--',
       heroUnit: heroKmh == null ? null : _unitLabel(unitSystem),
+      statusLabel: windStatus == null ? null : windStatusLabel(windStatus),
+      statusColor: windStatus == null ? null : windStatusColor(windStatus),
       trendText: _windStatusText(heroKmh, unitSystem),
       chart: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

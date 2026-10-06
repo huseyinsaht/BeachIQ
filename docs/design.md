@@ -67,8 +67,12 @@ hourly row have **no card background at all** — they sit directly on the gradi
 - Screen title ("My Location", "Search"): bold, ~20pt, white.
 - Section labels ("Hourly forecast", "Beaches Near"): regular, ~13pt, `text.secondary`, often paired
   with a small leading icon.
-- Card values (wind speed, pressure, etc.): bold, ~16–18pt, white.
-- Card labels / units: regular, ~12pt, `text.secondary`.
+- Home stat-grid card values (wind speed, rain chance, pressure, UV index — issue #215): bold, ~26–28pt,
+  white, with the unit as a separate, visually smaller/secondary run right next to it (~14pt,
+  `text.secondary`), never concatenated into the same string. Deviates from this doc's earlier
+  ~16–18pt figure, which read too small on a phone screen (Vaen's 2026-10-03 feedback); metric detail
+  screens (below) are unchanged — they already show a 44pt hero value.
+- Card labels: regular, ~12pt, `text.secondary`.
 
 ## Screen: Home / location detail
 
@@ -162,9 +166,19 @@ Top to bottom:
    available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
    labels and never an invented relation.
 7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, pressure, UV index. Each
-   tile: small line icon at the left, `text.secondary`-style label above a bold white value, and a small
-   trend indicator (▴/▾ + delta) at the bottom-right of the tile. Use sea-level pressure in hPa
-   (~1000–1030), not the mockup's 720. UV uses a decimal comma in the mockup (locale formatting).
+   tile: small line icon at the left, `text.secondary`-style label above a large value (with its unit as
+   a secondary run — see "Typography"), and a small trend indicator (▴/▾ + delta) at the bottom-right of
+   the tile. Use sea-level pressure in hPa (~1000–1030), not the mockup's 720. UV uses a decimal comma
+   in the mockup (locale formatting).
+   **Status word (issue #215)** — not in the mockup; this extends it. Wind speed (Calm/Moderate/Strong,
+   `lib/logic/wind_status.dart`, reusing `swim_suitability.dart`'s own moderate/high thresholds), rain
+   chance (Low/Medium/High, `lib/logic/rain_status.dart`, same thresholds) and UV index (its band —
+   Low/Moderate/High/Very high/Extreme, `lib/logic/uv_band.dart`) each show a short colored status word
+   under the value: a small dot plus the word, in green/orange/red (wind, rain) or the UV band's own
+   color (the same color the UV index detail screen's chart bands use). Pressure has no defined status
+   word (`pressure_trend.dart` only exposes a rising/steady/falling trend, not a color), so its tile
+   simply has no chip — never an empty placeholder. `MetricDetailScaffold` shows the same word/color
+   under its hero value on the matching detail screen, so Home and the detail screen never disagree.
 8. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
@@ -186,8 +200,9 @@ as part of the same app:
 
 1. **Header row** — back button (`chevron_left`, same as Search's) + the metric name, `text.primary`.
 2. **Hero value** — the current reading, large and bold like Home's hero temperature, with its unit
-   underneath in `text.secondary` and (where the metric has one) a short trend line, e.g. Pressure's
-   "Rising — ...".
+   underneath in `text.secondary`, then (issue #215, where the metric has a defined status — wind,
+   rain chance, UV index) the same short colored status word/dot its Home stat tile shows, then (where
+   the metric has one) a short trend line, e.g. Pressure's "Rising — ...".
 3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
    band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
 4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
@@ -232,7 +247,8 @@ the marine group.
 
 Reusable widgets worth extracting rather than rebuilding per-screen:
 
-- `StatTile` — icon + label + value + trend, used 4× in the stat grid.
+- `StatTile` — icon + label + value/unit + an optional status word/color + trend, used 4× in the stat
+  grid.
 - `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
   rows, sorted most severe first and rendering nothing when empty.
 - `SeaConditionsRow` — the Sea section's horizontally scrollable row of 5 tiles (wave height, water

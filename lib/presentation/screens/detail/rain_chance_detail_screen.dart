@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/models/weather_condition.dart';
+import '../../../logic/rain_status.dart';
 import '../../../logic/rain_windows.dart';
 import '../../../logic/swim_suitability.dart';
 import '../../widgets/hourly_metric_chart.dart';
@@ -106,9 +107,17 @@ class RainChanceDetailScreen extends StatelessWidget {
     final windows = rainChanceWindows(upcoming);
     final summary = rainChanceSummary(windows);
 
+    final rainStatus = rainChanceStatusFor(heroPercent);
+
     return MetricDetailScaffold(
       title: 'Rain Chance',
       heroValue: _formatPercent(heroPercent),
+      statusLabel: rainStatus == null
+          ? null
+          : rainChanceStatusLabel(rainStatus),
+      statusColor: rainStatus == null
+          ? null
+          : rainChanceStatusColor(rainStatus),
       trendText: summary,
       chart: HourlyMetricChart(
         points: [
