@@ -23,8 +23,9 @@ const Color _warning = Color(0xFFEF5350);
 /// dataset's catalog entry says not to use it for navigation.
 const String depthDataAttribution =
     'Depth data: EMODnet Bathymetry (https://emodnet.ec.europa.eu/en/), '
-    '© European Union, CC BY 4.0. ~115 m grid resolution. Approximate, not '
-    'for navigation.';
+    '© European Union, CC BY 4.0. EMODnet Digital Bathymetry (DTM 2024), '
+    'completed with GEBCO 2024 and IBCAO V4 where survey data is missing. '
+    '~115 m grid resolution. Approximate, not for navigation.';
 
 String _formatDepth(double? meters, UnitSystem unitSystem) =>
     meters == null ? '--' : formatDepthMeters(meters, unitSystem);

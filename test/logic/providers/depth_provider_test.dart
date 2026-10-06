@@ -8,14 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../helpers/builders.dart';
 import '../../helpers/fake_http_client.dart';
 
-const _host = 'tiles.emodnet-bathymetry.eu';
+const _host = 'ows.emodnet-bathymetry.eu';
 
 Object _validDepthFixture(double grayIndex) => {
   'type': 'FeatureCollection',
   'features': [
     {
       'type': 'Feature',
-      'properties': {'GRAY_INDEX': grayIndex},
+      'properties': {'Depth': grayIndex},
     },
   ],
 };
