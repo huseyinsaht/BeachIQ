@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../data/services/device_location_service.dart';
+import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/depth_provider.dart';
@@ -164,6 +166,7 @@ String? _windSpeedUnit(double? kmh, UnitSystem unitSystem) {
 Future<void> _showMapOverflowMenu(
   BuildContext context, {
   required VoidCallback onBeaches,
+  VoidCallback? onUseMyLocation,
   UnitPreferencesProvider? unitPreferencesProvider,
 }) {
   return showModalBottomSheet<void>(
@@ -182,6 +185,22 @@ Future<void> _showMapOverflowMenu(
                 onBeaches();
               },
             ),
+            // Issue #254: an explicit, opt-in action — tapping this is the
+            // *only* thing that ever triggers a location-permission
+            // prompt; it never happens on app start. Null (no
+            // `deviceLocationService` supplied, see `_HomeScreenState`)
+            // hides the entry entirely, the same optional pattern as the
+            // "Units" entry below.
+            if (onUseMyLocation != null)
+              ListTile(
+                key: const Key('map-overflow-use-my-location'),
+                leading: const Icon(Icons.my_location),
+                title: const Text('Use my location'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onUseMyLocation();
+                },
+              ),
             if (unitPreferencesProvider != null)
               ListTile(
                 key: const Key('map-overflow-units'),
@@ -321,6 +340,8 @@ class HomeScreen extends StatefulWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.deviceLocationService,
+    this.reverseGeocodingService,
     this.now,
   });
 
@@ -358,6 +379,20 @@ class HomeScreen extends StatefulWidget {
   /// doesn't pass one) renders the tile as "No data" and disables the
   /// underlying fetch, unchanged from any other optional provider here.
   final DepthProvider? depthProvider;
+
+  /// Drives the map card overflow menu's "Use my location" action (issue
+  /// #254). Null (the default for any existing call site that doesn't
+  /// pass one, e.g. most widget/integration tests) hides that entry
+  /// entirely, unchanged from before this action existed — never prompts
+  /// for location permission on its own.
+  final DeviceLocationService? deviceLocationService;
+
+  /// Resolves a real place name for a device-location pick and for a plain
+  /// map tap (issue #254), replacing `location_map_card.dart`'s coordinate-
+  /// label fallback whenever it succeeds. Null (the default for any
+  /// existing call site that doesn't pass one) leaves both picks showing
+  /// [formatCoordinates], unchanged from before #254.
+  final ReverseGeocodingService? reverseGeocodingService;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -435,6 +470,14 @@ class _HomeScreenState extends State<HomeScreen> {
   /// itself also de-dupes by the same `isSameBeach` identity as a second
   /// line of defense.
   Beach? _depthRequestedBeach;
+
+  /// Bumped on every new pick (map tap, device location, beach pick,
+  /// restore) so [_resolvePlaceName]'s async reverse-geocode result can
+  /// tell whether it's still resolving the *current* pick before applying
+  /// itself — a stale lookup for an earlier point must never overwrite a
+  /// newer pick's name, mirroring [DepthProvider]'s own request-token
+  /// pattern.
+  int _placeNameRequestToken = 0;
 
   @override
   void initState() {
@@ -525,6 +568,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// and nearby-beaches overlay all re-fetch for it instead of staying on
   /// whatever was shown before (#157's main acceptance criterion).
   void _handleLocationPicked(LatLng point, String displayName) {
+    final token = ++_placeNameRequestToken;
     setState(() {
       _selectedLocation = point;
       _placeName = displayName;
@@ -539,6 +583,78 @@ class _HomeScreenState extends State<HomeScreen> {
     // nearbyBeachesProvider.pickLocation(point) is already called directly
     // by LocationMapCard's own tap handler (it holds the provider itself);
     // calling it again here would just restart its debounce for no reason.
+    //
+    // Issue #254: a place-search result already carries a real looked-up
+    // name, so reverse geocoding is only worth attempting when [displayName]
+    // is still the bare coordinate fallback (a plain map tap or a device-
+    // location pick, both of which hand this `formatCoordinates(point)`).
+    if (displayName == formatCoordinates(point)) {
+      unawaited(_resolvePlaceName(point, token));
+    }
+  }
+
+  /// Issue #254: looks up a real display name for [point] via
+  /// [widget.reverseGeocodingService] and, if it resolves to a usable name
+  /// before a newer pick supersedes [token] (see [_placeNameRequestToken]),
+  /// upgrades [_placeName] from its coordinate-label fallback — without
+  /// blocking [_handleLocationPicked]'s own weather/marine fetch, which
+  /// has already started independently of this. A `null` result (any
+  /// failure — see `ReverseGeocodingService`) leaves [_placeName] exactly
+  /// as it was: the coordinate label, never a fabricated name.
+  Future<void> _resolvePlaceName(LatLng point, int token) async {
+    final service = widget.reverseGeocodingService;
+    if (service == null) return;
+    String? resolved;
+    try {
+      resolved = await service.resolveName(point.latitude, point.longitude);
+    } catch (_) {
+      resolved = null;
+    }
+    if (!mounted || resolved == null) return;
+    if (token != _placeNameRequestToken) return; // superseded by a newer pick
+    setState(() => _placeName = resolved!);
+    unawaited(_persistSelectedLocation(point, resolved));
+  }
+
+  /// Issue #254's "Use my location" action: the map card overflow menu's
+  /// only entry that may ever prompt for location permission, and only
+  /// because the user just tapped it. On success, treats the device
+  /// position exactly like a map pick ([_handleLocationPicked]: header,
+  /// weather, marine data, persistence); unlike a map tap, it must also
+  /// call `nearbyBeachesProvider.pickLocation` itself — nothing else does,
+  /// since this pick didn't come from `LocationMapCard`'s own tap handler
+  /// (matching [_handleBeachPicked]'s same explicit call for the same
+  /// reason). On failure (permission denied, service off, or any other
+  /// platform error) keeps the current pick untouched and shows a short,
+  /// non-blocking message instead — never invents a position.
+  Future<void> _handleUseMyLocation(BuildContext context) async {
+    final service = widget.deviceLocationService;
+    if (service == null) return;
+    final result = await service.getCurrentLocation();
+    if (!context.mounted) return;
+    if (!result.isSuccess) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_deviceLocationFailureMessage(result.failure))),
+      );
+      return;
+    }
+    final point = result.position!;
+    _handleLocationPicked(point, formatCoordinates(point));
+    widget.nearbyBeachesProvider?.pickLocation(point);
+  }
+
+  /// The short, non-blocking message [_handleUseMyLocation] shows for each
+  /// [DeviceLocationFailure] reason — never a raw exception message.
+  String _deviceLocationFailureMessage(DeviceLocationFailure? failure) {
+    switch (failure) {
+      case DeviceLocationFailure.serviceDisabled:
+        return 'Location services are turned off. Keeping your last location.';
+      case DeviceLocationFailure.permissionDenied:
+        return 'Location permission denied. Keeping your last location.';
+      case DeviceLocationFailure.unavailable:
+      case null:
+        return "Couldn't get your location right now. Keeping your last location.";
+    }
   }
 
   /// Treats a beach tapped in `SearchScreen`'s results (#214) exactly like
@@ -551,6 +667,11 @@ class _HomeScreenState extends State<HomeScreen> {
   /// is the thing that normally does that.
   void _handleBeachPicked(Beach beach) {
     final point = LatLng(beach.latitude, beach.longitude);
+    // Invalidates any reverse-geocode lookup still in flight for whatever
+    // was selected before (see [_placeNameRequestToken]) — a beach pick
+    // always has a real name already, so there's nothing to resolve, but a
+    // late-arriving result from the previous pick must not overwrite it.
+    _placeNameRequestToken++;
     setState(() {
       _selectedLocation = point;
       _placeName = beach.name;
@@ -974,6 +1095,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       onOverflowPressed: () => _showMapOverflowMenu(
                         context,
                         onBeaches: () => _openSearch(context),
+                        onUseMyLocation: widget.deviceLocationService == null
+                            ? null
+                            : () => unawaited(_handleUseMyLocation(context)),
                         unitPreferencesProvider: widget.unitPreferencesProvider,
                       ),
                     ),

@@ -12,10 +12,13 @@ import 'data/services/api_service.dart';
 import 'data/services/bathymetry_service.dart';
 import 'data/services/beach_cache.dart';
 import 'data/services/depth_cache.dart';
+import 'data/services/device_location_service.dart';
 import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
+import 'data/services/reverse_geocode_cache.dart';
+import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/condition_alert_dispatcher.dart';
 import 'logic/providers/depth_provider.dart';
@@ -41,6 +44,17 @@ void main() async {
   final depthProvider = DepthProvider(
     BathymetryService(httpClient),
     DepthCache(prefs),
+  );
+  // Issue #254: device location (opt-in, "Use my location" only) and
+  // reverse geocoding (device-location/map-tap picks), both behind small
+  // interfaces so no test ever touches real GPS hardware or a real
+  // platform geocoder.
+  final deviceLocationService = DeviceLocationService(
+    GeolocatorDeviceLocationSource(),
+  );
+  final reverseGeocodingService = ReverseGeocodingService(
+    GeocodingPlacemarkLookup(),
+    ReverseGeocodeCache(prefs),
   );
 
   // Built here (rather than left to MarineApp's own default) so the
@@ -78,6 +92,8 @@ void main() async {
       nearbyBeachesProvider: nearbyBeachesProvider,
       placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
       depthProvider: depthProvider,
+      deviceLocationService: deviceLocationService,
+      reverseGeocodingService: reverseGeocodingService,
     ),
   );
 }
@@ -92,6 +108,8 @@ class MarineApp extends StatelessWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.deviceLocationService,
+    this.reverseGeocodingService,
   });
 
   /// Overridable so integration tests can avoid the real tile network.
@@ -133,6 +151,18 @@ class MarineApp extends StatelessWidget {
   /// "No data", unchanged from before.
   final DepthProvider? depthProvider;
 
+  /// Drives `HomeScreen`'s map card overflow "Use my location" action
+  /// (issue #254). Null (the default for any existing call site that
+  /// doesn't pass one, e.g. most widget/integration tests) hides that
+  /// entry entirely, unchanged from before this action existed.
+  final DeviceLocationService? deviceLocationService;
+
+  /// Resolves real place names for device-location/map-tap picks (issue
+  /// #254). Null (the default for any existing call site that doesn't
+  /// pass one) leaves both kinds of pick showing `formatCoordinates`,
+  /// unchanged from before #254.
+  final ReverseGeocodingService? reverseGeocodingService;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -165,6 +195,8 @@ class MarineApp extends StatelessWidget {
             nearbyBeachesProvider: nearbyBeachesProvider,
             placeSearchProvider: placeSearchProvider,
             depthProvider: depthProvider,
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
           ),
         ),
       ),

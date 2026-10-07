@@ -10,9 +10,12 @@ import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/bathymetry_service.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/services/depth_cache.dart';
+import 'package:beachiq/data/services/device_location_service.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
+import 'package:beachiq/data/services/reverse_geocode_cache.dart';
+import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/depth_provider.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
@@ -38,14 +41,19 @@ import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
 import '../test/helpers/fake_http_client.dart' show FakeHttpClient;
+import '../test/helpers/fake_location.dart'
+    show FakeDeviceLocationSource, FakePlacemarkLookup;
 import '../test/helpers/pump_app.dart'
     show aLoadedMarineProvider, aLoadedWeatherProvider;
 
@@ -1445,6 +1453,125 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(DepthDetailScreen), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'Use my location flow (#254): never prompts for location permission on '
+    'launch; tapping the map card overflow\'s "Use my location" action '
+    'selects the device position, re-fetches weather/marine data for it '
+    'exactly like a map pick, and shows its reverse-geocoded city name',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final weatherRepository = _RecordingWeatherRepository([
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+        WeatherCondition(temperature: 31, windSpeed: 8, weatherCode: 1),
+      ]);
+      final marineRepository = _RecordingMarineRepository([
+        SeaCondition(waveHeight: 0.3),
+        SeaCondition(waveHeight: 1.0),
+      ]);
+      final weatherProvider = WeatherProvider(weatherRepository);
+      final marineProvider = MarineProvider(marineRepository);
+
+      // Permission starts denied, so the real opt-in flow (request only
+      // once the user actually taps the action) is exercised too.
+      final locationSource = FakeDeviceLocationSource(
+        permission: LocationPermission.denied,
+        permissionAfterRequest: LocationPermission.whileInUse,
+        position: const LatLng(36.8969, 30.7133),
+      );
+      final deviceLocationService = DeviceLocationService(locationSource);
+      final lookup = FakePlacemarkLookup(
+        result: const [
+          Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+        ],
+      );
+      final reverseGeocodingService = ReverseGeocodingService(
+        lookup,
+        ReverseGeocodeCache(await SharedPreferences.getInstance()),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Nothing about simply launching/rendering the screen ever touched
+      // the location permission — the action is strictly opt-in.
+      expect(locationSource.requestPermissionCallCount, 0);
+      expect(lookup.calls, isEmpty);
+      expect(find.text('Antalya'), findsNothing);
+      expect(weatherRepository.calls, hasLength(1));
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      expect(find.text('Use my location'), findsOneWidget);
+      await tester.tap(find.text('Use my location'));
+      await tester.pumpAndSettle();
+
+      // Permission was requested exactly once, in direct response to the
+      // tap, and the device position was treated exactly like a map pick:
+      // weather/marine re-fetched for the new point, and the header/map
+      // card both show the reverse-geocoded city name instead of a
+      // coordinate label.
+      expect(locationSource.requestPermissionCallCount, 1);
+      expect(weatherRepository.calls, hasLength(2));
+      expect(weatherRepository.calls[1], (36.8969, 30.7133));
+      expect(marineRepository.calls, hasLength(1));
+      expect(marineRepository.calls.single, (36.8969, 30.7133));
+      expect(find.text('Antalya'), findsAtLeastNWidgets(1));
+      expect(find.text('My Location'), findsNothing);
+
+      // Picking the same spot again reuses the cached name instead of
+      // looking it up a second time.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use my location'));
+      await tester.pumpAndSettle();
+      expect(lookup.calls, hasLength(1));
+    },
+  );
+
+  testWidgets(
+    'Use my location flow (#254): permission denied keeps the previous '
+    'place and shows a short, non-blocking SnackBar instead of a crash or '
+    'an invented position',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final deviceLocationService = DeviceLocationService(
+        FakeDeviceLocationSource(
+          permission: LocationPermission.denied,
+          permissionAfterRequest: LocationPermission.denied,
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use my location'));
+      await tester.pump(); // show the SnackBar without waiting it out
+      await tester.pump();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
     },
   );
 }
