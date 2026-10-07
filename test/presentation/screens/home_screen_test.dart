@@ -1,4 +1,10 @@
+import 'dart:async';
+
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/data/models/sea_condition.dart';
+import 'package:beachiq/data/repositories/marine_repository.dart';
+import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
 import 'package:beachiq/logic/rain_status.dart';
@@ -7,7 +13,10 @@ import 'package:beachiq/logic/shallow_entry_status.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
+import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -15,6 +24,7 @@ import 'package:beachiq/presentation/widgets/cloud_backdrop.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
+import 'package:beachiq/presentation/widgets/stat_tile_group.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -773,4 +783,276 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen 3x3 stat grid (issue #251)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    const gentleProfile = DepthProfile(
+      available: true,
+      samples: [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+        DepthSample(distanceMeters: 200, depthMeters: 1.5),
+      ],
+    );
+
+    Future<HomeScreen> loadedHome(WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(windSpeed: 10, rainChancePercent: 20, uvIndex: 2),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          waveHeight: 0.9,
+          seaSurfaceTemperature: 24.0,
+          waveDirection: 315,
+          currentVelocity: 4.0,
+          currentDirection: 135,
+        ),
+      );
+      final depthProvider = await aLoadedDepthProvider(gentleProfile);
+      return HomeScreen(
+        weatherProvider: weatherProvider,
+        marineProvider: marineProvider,
+        depthProvider: depthProvider,
+      );
+    }
+
+    testWidgets('given loaded weather, marine and depth data, build -> renders '
+        'exactly 3 groups (Sea, Current, Air, in that order) of exactly 3 '
+        'StatTiles each — 9 same-size tiles in a 3x3 grid', (tester) async {
+      await pumpApp(tester, await loadedHome(tester));
+
+      final groups = tester
+          .widgetList<StatTileGroup>(find.byType(StatTileGroup))
+          .toList();
+      expect(groups, hasLength(3));
+      expect(groups.map((g) => g.label), ['Sea', 'Current', 'Air']);
+      expect(find.byType(StatTile), findsNWidgets(9));
+
+      expect(groups[0].tiles.map((t) => t.label), [
+        'Wave height',
+        'Water temp',
+        'Water depth',
+      ]);
+      expect(groups[1].tiles.map((t) => t.label), [
+        'Current speed',
+        'Current direction',
+        'Wave direction',
+      ]);
+      expect(groups[2].tiles.map((t) => t.label), [
+        'Wind speed',
+        'Rain chance',
+        'UV index',
+      ]);
+    });
+
+    testWidgets('renders a thin divider between each of the three groups (two '
+        'dividers total)', (tester) async {
+      await pumpApp(tester, await loadedHome(tester));
+
+      expect(find.byType(Divider), findsNWidgets(2));
+    });
+
+    testWidgets('given full data, the 3x3 grid shows no trend row (no up/down '
+        'arrow) on any of the nine tiles — only the detail screens keep one', (
+      tester,
+    ) async {
+      await pumpApp(tester, await loadedHome(tester));
+
+      expect(find.byIcon(Icons.arrow_drop_up), findsNothing);
+      expect(find.byIcon(Icons.arrow_drop_down), findsNothing);
+    });
+
+    testWidgets(
+      'wave direction has no status/third line at all (a metric with no '
+      'defined status), unlike current direction',
+      (tester) async {
+        await pumpApp(tester, await loadedHome(tester));
+
+        final waveDirectionTile = tester.widget<StatTile>(
+          find.widgetWithText(StatTile, 'Wave direction'),
+        );
+        expect(waveDirectionTile.statusLabel, isNull);
+        expect(waveDirectionTile.statusColor, isNull);
+        expect(find.text('from NW'), findsOneWidget);
+      },
+    );
+
+    testWidgets('given no seawardBearingDegrees (no beach geometry for this '
+        'location), the current-direction tile shows the cardinal label only '
+        '— never an invented shore relation', (tester) async {
+      await pumpApp(tester, await loadedHome(tester));
+
+      final currentDirectionTile = tester.widget<StatTile>(
+        find.widgetWithText(StatTile, 'Current direction'),
+      );
+      expect(currentDirectionTile.statusLabel, isNull);
+      expect(find.text('toward SE'), findsOneWidget);
+    });
+
+    testWidgets(
+      'tapping the wave height tile opens WaveHeightDetailScreen with the '
+      'real marine data, and back returns to Home',
+      (tester) async {
+        await pumpApp(tester, await loadedHome(tester));
+
+        await tester.tap(find.byKey(const Key('wave-height-tile')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WaveHeightDetailScreen), findsOneWidget);
+        final screen = tester.widget<WaveHeightDetailScreen>(
+          find.byType(WaveHeightDetailScreen),
+        );
+        expect(screen.currentWaveHeightMeters, 0.9);
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(HomeScreen), findsOneWidget);
+      },
+    );
+
+    testWidgets('tapping the water temperature tile opens '
+        'WaterTemperatureDetailScreen with the real marine data', (
+      tester,
+    ) async {
+      await pumpApp(tester, await loadedHome(tester));
+
+      await tester.tap(find.byKey(const Key('water-temperature-tile')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WaterTemperatureDetailScreen), findsOneWidget);
+      final screen = tester.widget<WaterTemperatureDetailScreen>(
+        find.byType(WaterTemperatureDetailScreen),
+      );
+      expect(screen.currentWaterTemperatureCelsius, 24.0);
+    });
+
+    testWidgets(
+      'tapping the current speed tile and the current direction tile both '
+      'open the same CurrentDetailScreen',
+      (tester) async {
+        await pumpApp(tester, await loadedHome(tester));
+
+        await tester.tap(find.byKey(const Key('current-speed-tile')));
+        await tester.pumpAndSettle();
+        expect(find.byType(CurrentDetailScreen), findsOneWidget);
+        var screen = tester.widget<CurrentDetailScreen>(
+          find.byType(CurrentDetailScreen),
+        );
+        expect(screen.currentSpeedKmh, 4.0);
+
+        await tester.tap(find.byTooltip('Back'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('current-direction-tile')));
+        await tester.pumpAndSettle();
+        expect(find.byType(CurrentDetailScreen), findsOneWidget);
+        screen = tester.widget<CurrentDetailScreen>(
+          find.byType(CurrentDetailScreen),
+        );
+        expect(screen.currentDirectionDegrees, 135);
+      },
+    );
+
+    testWidgets(
+      'given a marine fetch that fails for a newly picked location (after '
+      'an earlier successful load), the error is shown visibly, but the '
+      'independent Water depth and Air tiles keep rendering their own '
+      'real data (issue #213/#228)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(windSpeed: 10),
+        );
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+        final marineProvider = MarineProvider(_ThenFailingMarineRepository());
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            depthProvider: depthProvider,
+          ),
+        );
+        // First (successful) load, so `_hasLoadedOnce` is already true —
+        // a later pick's failure must then show inline, never fall back
+        // to the full-screen error shell reserved for the very first load.
+        await marineProvider.fetchData(38.3, 26.3);
+        await tester.pump();
+        unawaited(marineProvider.fetchData(50, 50));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('Unable to load marine data'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('boom'), findsOneWidget);
+        // Water depth (not marine-driven) and the wind speed tile (Air
+        // group, also not marine-driven) still show their own real data
+        // next to the error, rather than being hidden along with it.
+        expect(find.text('<= 1.2 m for 200 m'), findsOneWidget);
+        expect(find.text('10 km/h'), findsOneWidget);
+        // The marine-driven tiles fall back to "No data", never a
+        // fabricated reading.
+        expect(find.widgetWithText(StatTile, 'Wave height'), findsOneWidget);
+        final waveHeightTile = tester.widget<StatTile>(
+          find.widgetWithText(StatTile, 'Wave height'),
+        );
+        expect(waveHeightTile.value, 'No data');
+      },
+    );
+
+    testWidgets(
+      'the full 3x3 grid does not overflow at a narrow (360dp) width with '
+      'a large text scale, with sea/current/air data all loaded',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        final home = await loadedHome(tester);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: home,
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+}
+
+/// A [MarineRepository] whose first call succeeds (seeding "the previous
+/// pick already loaded") and every later call fails — used to test a later
+/// pick's marine failure without going through the full-screen error shell
+/// reserved for the very first load (see `_hasLoadedOnce` in
+/// `home_screen.dart`).
+class _ThenFailingMarineRepository extends MarineRepository {
+  _ThenFailingMarineRepository() : super(MarineApiService());
+
+  int _calls = 0;
+
+  @override
+  Future<SeaCondition> getMarineData(double lat, double lon) async {
+    _calls++;
+    if (_calls == 1) return SeaCondition(waveHeight: 0.3);
+    throw Exception('boom');
+  }
 }

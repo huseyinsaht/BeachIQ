@@ -31,12 +31,74 @@ import '../widgets/cloud_backdrop.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
-import '../widgets/sea_conditions_row.dart';
 import '../widgets/stat_tile.dart';
+import '../widgets/stat_tile_group.dart';
 import '../widgets/swim_suggestion_pill.dart';
 import 'search_screen.dart';
 
 const String _noData = 'No data';
+
+/// Maps a compass bearing (degrees clockwise from true north, any range —
+/// callers may pass values outside 0-360, e.g. close to a wrap-around like
+/// 350 -> 360) to its nearest 8-point cardinal label, for the Current
+/// group's direction tiles (issue #251, moved here from the pre-#251
+/// `SeaConditionsRow`).
+///
+/// Boundaries sit at the midpoints between points (22.5° wide either side
+/// of N/NE/E/.../NW), so e.g. 350° (within 10° of north) resolves to "N".
+String _seaCardinalLabel(double degrees) {
+  const points = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  final normalized = ((degrees % 360) + 360) % 360;
+  final index = ((normalized + 22.5) / 45).floor() % 8;
+  return points[index];
+}
+
+/// Formats [waveDirectionDegrees] per [SeaCondition.waveDirection]'s
+/// meteorological "coming from" convention, e.g. `"from NW"`.
+String _seaWaveDirectionLabel(double? waveDirectionDegrees) {
+  if (waveDirectionDegrees == null) return _noData;
+  return 'from ${_seaCardinalLabel(waveDirectionDegrees)}';
+}
+
+/// Formats [currentDirectionDegrees] per [SeaCondition.currentDirection]'s
+/// oceanographic "flowing toward" convention, e.g. `"toward SE"`.
+String _seaCurrentDirectionLabel(double? currentDirectionDegrees) {
+  if (currentDirectionDegrees == null) return _noData;
+  return 'toward ${_seaCardinalLabel(currentDirectionDegrees)}';
+}
+
+String _formatSeaWaveHeight(double? meters, UnitSystem unitSystem) {
+  if (meters == null) return _noData;
+  return formatWaveHeight(meters, unitSystem);
+}
+
+String _formatSeaWaterTemperature(double? celsius, UnitSystem unitSystem) {
+  if (celsius == null) return _noData;
+  return formatTemperature(celsius, unitSystem);
+}
+
+String _formatSeaCurrentSpeed(double? kmh, UnitSystem unitSystem) {
+  if (kmh == null) return _noData;
+  return formatWindSpeed(kmh, unitSystem);
+}
+
+/// The short suffix shown under the current-direction tile's value once a
+/// [ShoreRelation] is known (i.e. a seaward bearing was derived for the
+/// selected beach). [ShoreRelation.awayFromShore] gets a stronger warning
+/// ("stay close!") since it signals drift-out/rip-current risk — per issue
+/// #251, this is the Current group's own "status word" for that tile (the
+/// wave-direction tile has no defined status at all and shows no third
+/// line, matching every other no-status metric in this grid).
+String _shoreRelationLabel(ShoreRelation relation) {
+  switch (relation) {
+    case ShoreRelation.towardShore:
+      return '(towards shore)';
+    case ShoreRelation.awayFromShore:
+      return '(away from shore — stay close!)';
+    case ShoreRelation.alongShore:
+      return '(along shore)';
+  }
+}
 
 /// A location/display-name pair restored from `SharedPreferences` by
 /// [_HomeScreenState._restoreSelectedLocation].
@@ -741,6 +803,26 @@ class _HomeScreenState extends State<HomeScreen> {
     final depthStatusColor = depthClassification == null
         ? null
         : shallowEntryStatusColor(depthClassification.steepness);
+    // #251: the Sea/Current groups' marine-driven tiles (wave height, water
+    // temp, current speed/direction, wave direction) all read from this one
+    // `SeaCondition?` — null whenever nothing has been fetched yet (first
+    // load) or a fetch failed with nothing to fall back to, in which case
+    // every tile below falls back to its own "No data" via its null-safe
+    // formatter, exactly like every other field in this grid.
+    final seaCondition = marineProvider?.currentData;
+    // The current-direction tile's own "status word" (issue #251's Current
+    // group): the shore relation derived from the nearest beach's seaward
+    // bearing, when both that bearing and a current-direction reading are
+    // known. Null (never an invented relation) falls back to showing no
+    // third line at all, matching the pre-#251 `SeaConditionsRow` behavior.
+    final currentShoreRelation =
+        seawardBearingDegrees == null || seaCondition?.currentDirection == null
+        ? null
+        : classifyDirection(
+            degrees: seaCondition!.currentDirection!,
+            convention: DirectionConvention.flowingToward,
+            seawardBearingDegrees: seawardBearingDegrees,
+          );
     // #169/#229: upcoming heads-ups for the selected location, computed
     // fresh on every build from the same WeatherProvider/MarineProvider
     // hourly data the stat grid and Sea section already use — never a
@@ -898,151 +980,251 @@ class _HomeScreenState extends State<HomeScreen> {
                         now: effectiveNow,
                       ),
                     ],
-                    // #213: a fetch in flight for a new pick (no data for
-                    // it yet) shows a loading placeholder here instead of
-                    // either the previous pick's row or nothing at all;
-                    // once loaded (or when there's simply no
-                    // MarineProvider), this falls back to the existing
-                    // behavior unchanged.
+                    // #213/#228: a fetch in flight for a new pick, or one
+                    // that failed outright, shows a loading/error note here
+                    // instead of either the previous pick's values or a
+                    // silent blank gap — but (issue #251) never hides the
+                    // 3x3 grid below it: each tile already falls back to
+                    // "No data" on its own null-safe formatter when there's
+                    // nothing to show yet, exactly like every other "No
+                    // data" case in this grid, so Water depth and the Air
+                    // group (neither of which depend on marine data) stay
+                    // visible and correct regardless of this fetch's state.
                     if (marineLoading) ...[
                       const SizedBox(height: 20),
-                      _buildSectionLoading(height: 78),
+                      _buildSectionLoading(height: 40),
                     ] else if (marineErrorMessage != null) ...[
                       const SizedBox(height: 20),
-                      _buildSectionError(marineErrorMessage, height: 78),
-                    ] else if (marineProvider?.currentData != null) ...[
-                      const SizedBox(height: 20),
-                      SeaConditionsRow(
-                        data: marineProvider?.currentData,
-                        unitSystem: unitSystem,
-                        seawardBearingDegrees: seawardBearingDegrees,
-                      ),
+                      _buildSectionError(marineErrorMessage),
                     ],
                     const SizedBox(height: 20),
-                    // #213: same loading placeholder for the stat grid
-                    // while a new pick's weather fetch is in flight, so the
-                    // old place's wind/rain/pressure/UV values are never
-                    // shown next to the new place name.
-                    if (weatherLoading)
-                      _buildSectionLoading(height: 164)
-                    else
-                      GridView.count(
-                        crossAxisCount: 2,
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        mainAxisSpacing: 16,
-                        crossAxisSpacing: 16,
-                        childAspectRatio: 1.5,
-                        children: [
-                          StatTile(
-                            icon: Icons.air,
-                            label: 'Wind speed',
-                            value: _formatWindSpeedValue(
-                              weatherData?.windSpeed,
-                              unitSystem,
-                            ),
-                            unit: _windSpeedUnit(
-                              weatherData?.windSpeed,
-                              unitSystem,
-                            ),
-                            statusLabel: windStatus == null
-                                ? null
-                                : windStatusLabel(windStatus),
-                            statusColor: windStatus == null
-                                ? null
-                                : windStatusColor(windStatus),
-                            trendDirection: StatTrendDirection.up,
-                            trendDelta: unitSystem == UnitSystem.imperial
-                                ? '1 mph'
-                                : '2 km/h',
-                            onTap: () => Navigator.of(context).push(
-                              buildDetailRoute(
-                                DetailMetric.wind,
-                                hourly: weatherData?.hourly ?? const [],
-                                currentValue: weatherData?.windSpeed,
-                                unitSystem: unitSystem,
-                                now: widget.now,
-                              ),
+                    // #251: the former 2x2 stat grid (wind/rain/depth/UV)
+                    // and the former horizontally-scrolling Sea section are
+                    // now one 3x3 grid of equally-sized StatTiles in three
+                    // labelled groups (Sea/Current/Air), each separated by
+                    // a thin divider — all nine data points one visual
+                    // size, with no trend row on any of them (the detail
+                    // screens keep their own).
+                    StatTileGroup(
+                      label: 'Sea',
+                      icon: Icons.waves,
+                      tiles: [
+                        StatTile(
+                          key: const Key('wave-height-tile'),
+                          icon: Icons.waves,
+                          label: 'Wave height',
+                          value: _formatSeaWaveHeight(
+                            seaCondition?.waveHeight,
+                            unitSystem,
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.waveHeight,
+                              hourly: const [],
+                              seaHourly: seaCondition?.hourly ?? const [],
+                              currentValue: seaCondition?.waveHeight,
+                              unitSystem: unitSystem,
                             ),
                           ),
-                          StatTile(
-                            icon: Icons.water_drop_outlined,
-                            label: 'Rain chance',
-                            value: _formatPercentValue(
-                              weatherData?.rainChancePercent,
-                            ),
-                            unit: _percentUnit(weatherData?.rainChancePercent),
-                            statusLabel: rainStatus == null
-                                ? null
-                                : rainChanceStatusLabel(rainStatus),
-                            statusColor: rainStatus == null
-                                ? null
-                                : rainChanceStatusColor(rainStatus),
-                            trendDirection: StatTrendDirection.down,
-                            trendDelta: '3%',
-                            onTap: () => Navigator.of(context).push(
-                              buildDetailRoute(
-                                DetailMetric.rainChance,
-                                hourly: weatherData?.hourly ?? const [],
-                                currentValue: weatherData?.rainChancePercent,
-                                now: widget.now,
-                              ),
+                        ),
+                        StatTile(
+                          key: const Key('water-temperature-tile'),
+                          icon: Icons.thermostat,
+                          label: 'Water temp',
+                          value: _formatSeaWaterTemperature(
+                            seaCondition?.seaSurfaceTemperature,
+                            unitSystem,
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.waterTemperature,
+                              hourly: const [],
+                              seaHourly: seaCondition?.hourly ?? const [],
+                              currentValue: seaCondition?.seaSurfaceTemperature,
+                              unitSystem: unitSystem,
                             ),
                           ),
-                          StatTile(
-                            icon: Icons.waves,
-                            label: 'Water depth',
-                            value: depthValue,
-                            statusLabel: depthStatusLabel,
-                            statusColor: depthStatusColor,
-                            // No trend row: a nearshore depth profile is a
-                            // spatial reading, not a time series — there is
-                            // no meaningful "delta since last hour" to show
-                            // (unlike wind/rain/UV above), and StatTile
-                            // omits the row entirely rather than showing a
-                            // fabricated one (see its own doc comment).
-                            onTap: () => Navigator.of(context).push(
-                              buildDetailRoute(
-                                DetailMetric.depth,
-                                hourly: const [],
-                                depthProfile: depthProfile,
-                                beach: depthBeach,
-                                currentWaveHeightMeters:
-                                    marineProvider?.currentData?.waveHeight,
-                                currentValue: marineProvider
-                                    ?.currentData
-                                    ?.currentVelocity,
-                                currentDirectionValue: marineProvider
-                                    ?.currentData
-                                    ?.currentDirection,
-                                seawardBearingDegrees: seawardBearingDegrees,
-                                unitSystem: unitSystem,
-                              ),
+                        ),
+                        StatTile(
+                          key: const Key('water-depth-tile'),
+                          icon: Icons.waves,
+                          label: 'Water depth',
+                          value: depthValue,
+                          statusLabel: depthStatusLabel,
+                          statusColor: depthStatusColor,
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.depth,
+                              hourly: const [],
+                              depthProfile: depthProfile,
+                              beach: depthBeach,
+                              currentWaveHeightMeters: seaCondition?.waveHeight,
+                              currentValue: seaCondition?.currentVelocity,
+                              currentDirectionValue:
+                                  seaCondition?.currentDirection,
+                              seawardBearingDegrees: seawardBearingDegrees,
+                              unitSystem: unitSystem,
                             ),
                           ),
-                          StatTile(
-                            icon: Icons.wb_sunny_outlined,
-                            label: 'UV index',
-                            value: _formatUvIndex(weatherData?.uvIndex),
-                            statusLabel: uvBand == null
-                                ? null
-                                : uvBandLabel(uvBand),
-                            statusColor: uvBand == null
-                                ? null
-                                : uvBandColor(uvBand),
-                            trendDirection: StatTrendDirection.up,
-                            trendDelta: '0.5',
-                            onTap: () => Navigator.of(context).push(
-                              buildDetailRoute(
-                                DetailMetric.uvIndex,
-                                hourly: weatherData?.hourly ?? const [],
-                                currentValue: weatherData?.uvIndex,
-                                now: widget.now,
-                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _buildGroupDivider(),
+                    const SizedBox(height: 20),
+                    StatTileGroup(
+                      label: 'Current',
+                      icon: Icons.explore,
+                      tiles: [
+                        StatTile(
+                          key: const Key('current-speed-tile'),
+                          icon: Icons.speed,
+                          label: 'Current speed',
+                          value: _formatSeaCurrentSpeed(
+                            seaCondition?.currentVelocity,
+                            unitSystem,
+                          ),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.current,
+                              hourly: const [],
+                              seaHourly: seaCondition?.hourly ?? const [],
+                              currentValue: seaCondition?.currentVelocity,
+                              currentDirectionValue:
+                                  seaCondition?.currentDirection,
+                              seawardBearingDegrees: seawardBearingDegrees,
+                              unitSystem: unitSystem,
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                        StatTile(
+                          key: const Key('current-direction-tile'),
+                          icon: Icons.navigation,
+                          iconRotationDegrees: seaCondition?.currentDirection,
+                          label: 'Current direction',
+                          value: _seaCurrentDirectionLabel(
+                            seaCondition?.currentDirection,
+                          ),
+                          statusLabel: currentShoreRelation == null
+                              ? null
+                              : _shoreRelationLabel(currentShoreRelation),
+                          statusColor: currentShoreRelation == null
+                              ? null
+                              : (currentShoreRelation ==
+                                        ShoreRelation.awayFromShore
+                                    ? _colorWarning
+                                    : _textSecondary),
+                          statusBold:
+                              currentShoreRelation ==
+                              ShoreRelation.awayFromShore,
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.current,
+                              hourly: const [],
+                              seaHourly: seaCondition?.hourly ?? const [],
+                              currentValue: seaCondition?.currentVelocity,
+                              currentDirectionValue:
+                                  seaCondition?.currentDirection,
+                              seawardBearingDegrees: seawardBearingDegrees,
+                              unitSystem: unitSystem,
+                            ),
+                          ),
+                        ),
+                        StatTile(
+                          key: const Key('wave-direction-tile'),
+                          icon: Icons.navigation,
+                          iconRotationDegrees:
+                              seaCondition?.waveDirection == null
+                              ? null
+                              : seaCondition!.waveDirection! + 180,
+                          label: 'Wave direction',
+                          // No status/third line (issue #251): wave
+                          // direction has no defined status at all, unlike
+                          // the current-direction tile's shore relation
+                          // above.
+                          value: _seaWaveDirectionLabel(
+                            seaCondition?.waveDirection,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    _buildGroupDivider(),
+                    const SizedBox(height: 20),
+                    StatTileGroup(
+                      label: 'Air',
+                      icon: Icons.air,
+                      tiles: [
+                        StatTile(
+                          icon: Icons.air,
+                          label: 'Wind speed',
+                          value: _formatWindSpeedValue(
+                            weatherData?.windSpeed,
+                            unitSystem,
+                          ),
+                          unit: _windSpeedUnit(
+                            weatherData?.windSpeed,
+                            unitSystem,
+                          ),
+                          statusLabel: windStatus == null
+                              ? null
+                              : windStatusLabel(windStatus),
+                          statusColor: windStatus == null
+                              ? null
+                              : windStatusColor(windStatus),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.wind,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.windSpeed,
+                              unitSystem: unitSystem,
+                              now: widget.now,
+                            ),
+                          ),
+                        ),
+                        StatTile(
+                          icon: Icons.water_drop_outlined,
+                          label: 'Rain chance',
+                          value: _formatPercentValue(
+                            weatherData?.rainChancePercent,
+                          ),
+                          unit: _percentUnit(weatherData?.rainChancePercent),
+                          statusLabel: rainStatus == null
+                              ? null
+                              : rainChanceStatusLabel(rainStatus),
+                          statusColor: rainStatus == null
+                              ? null
+                              : rainChanceStatusColor(rainStatus),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.rainChance,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.rainChancePercent,
+                              now: widget.now,
+                            ),
+                          ),
+                        ),
+                        StatTile(
+                          icon: Icons.wb_sunny_outlined,
+                          label: 'UV index',
+                          value: _formatUvIndex(weatherData?.uvIndex),
+                          statusLabel: uvBand == null
+                              ? null
+                              : uvBandLabel(uvBand),
+                          statusColor: uvBand == null
+                              ? null
+                              : uvBandColor(uvBand),
+                          onTap: () => Navigator.of(context).push(
+                            buildDetailRoute(
+                              DetailMetric.uvIndex,
+                              hourly: weatherData?.hourly ?? const [],
+                              currentValue: weatherData?.uvIndex,
+                              now: widget.now,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 20),
                     const Row(
                       children: [
@@ -1136,6 +1318,14 @@ class _HomeScreenState extends State<HomeScreen> {
       unitSystem: unitSystem,
       borderRadius: BorderRadius.circular(24),
     );
+  }
+
+  /// A thin divider line between two of the stat grid's groups (issue
+  /// #251's "Sea"/"Current"/"Air" groups) — low-opacity `text.secondary` so
+  /// it reads as a subtle separator, matching the grid's own "no hard
+  /// borders" direction (docs/design.md).
+  Widget _buildGroupDivider() {
+    return Divider(color: _textSecondary.withValues(alpha: 0.15), height: 1);
   }
 
   /// The same spinner [_buildStatusShell] uses for the full-screen loading
