@@ -64,7 +64,8 @@ hourly row have **no card background at all** — they sit directly on the gradi
 ### Typography
 
 - Large temperature / hero number: bold, ~40–48pt, white.
-- Screen title ("My Location", "Search"): bold, ~20pt, white.
+- Screen title: bold, ~20pt, white. On Search this is literally "Search"; on Home (issue #253, superseding
+  the mockup's "My Location" placeholder below) it is the selected location's real place name.
 - Section labels ("Hourly forecast", "Beaches Near"): regular, ~13pt, `text.secondary`, often paired
   with a small leading icon.
 - Home stat-grid tile values (all nine tiles, issue #251 — semi-bold rather than the hero
@@ -93,8 +94,13 @@ formatted coordinates (`"38.3220°N, 26.3260°E"`), since reverse geocoding isn'
 
 Top to bottom:
 
-1. **Header row** — location label stack on the left ("My Location" bold + city/district subtitle in
-   `text.secondary`), current temperature large on the right, both on `bg.base`.
+1. **Header row** — location label stack on the left: the selected location's real place name, bold,
+   as the primary label (issue #253, Vaen's 2026-10-06 feedback — the mockup's "My Location" placeholder
+   is never shown, since the app has no device GPS at all, see #254, so a fixed label would misname
+   whatever point is actually selected), with a `text.secondary` coordinates subtitle underneath only
+   when it says something the place name doesn't already (a bare map tap's place name already IS its
+   formatted coordinates — no reverse geocoding, #254 — so a second identical line would be redundant).
+   Current temperature large on the right, both on `bg.base`.
 2. **Condition row** — condition text ("Partly Cloudy") left, high/low ("H:29° L:15°") right, both
    `text.secondary`, small size.
 3. **Map card** (`surface.paper`, rounded ~24px) — a **real OpenStreetMap-style map** (light land,

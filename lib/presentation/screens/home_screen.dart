@@ -397,6 +397,16 @@ class _HomeScreenState extends State<HomeScreen> {
   LatLng _selectedLocation = _cesmeDefault;
   String _placeName = _cesmeDefaultName;
 
+  /// The header's secondary line (issue #253) — the selected point's
+  /// formatted coordinates, shown under [_placeName] only when they add
+  /// real information. [_placeName] already IS [formatCoordinates] for a
+  /// bare map tap (no reverse geocoding — see #254), so this returns `null`
+  /// in that case rather than repeating the same text twice.
+  String? get _headerSubtitle {
+    final coordinates = formatCoordinates(_selectedLocation);
+    return coordinates == _placeName ? null : coordinates;
+  }
+
   /// The beach last picked from `SearchScreen`'s results (#214), shown
   /// highlighted on the map and as a compact info row below it. Cleared by
   /// any other kind of pick (a bare map tap, an in-map-card place search) —
@@ -877,22 +887,36 @@ class _HomeScreenState extends State<HomeScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'My Location',
-                                style: TextStyle(
+                              Text(
+                                _placeName,
+                                style: const TextStyle(
                                   color: _textPrimary,
                                   fontWeight: FontWeight.bold,
                                   fontSize: 20,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _placeName,
-                                style: const TextStyle(
-                                  color: _textSecondary,
-                                  fontSize: 13,
+                              // #253 (Vaen's 2026-10-06 feedback): the
+                              // header used to say the hard-coded "My
+                              // Location" above the real place name, which
+                              // is misleading — there is no device GPS at
+                              // all (see #254), so it is never actually the
+                              // user's location. The place name is now the
+                              // primary title; this secondary line adds the
+                              // coordinates only when they say something the
+                              // title doesn't already — a bare map tap's
+                              // `_placeName` IS `formatCoordinates(point)`
+                              // (no reverse geocoding, #254), so showing it
+                              // twice would be redundant.
+                              if (_headerSubtitle != null) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  _headerSubtitle!,
+                                  style: const TextStyle(
+                                    color: _textSecondary,
+                                    fontSize: 13,
+                                  ),
                                 ),
-                              ),
+                              ],
                             ],
                           ),
                         ),
