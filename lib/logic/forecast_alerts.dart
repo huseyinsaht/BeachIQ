@@ -15,7 +15,9 @@ enum ForecastAlertType { wind, waves, clouds, rain, current }
 enum ForecastAlertSeverity { moderate, high }
 
 /// A single heads-up window produced by [buildForecastAlerts], e.g. "Wind
-/// picks up between 10:00 and 11:00." or "Clouds moving in around 14:00,
+/// picks up between 10:00 and 11:00." or, when the window isn't on `now`'s
+/// calendar day (issue #252 — e.g. an evening session where the only
+/// windows left are tomorrow's), "Clouds moving in tomorrow around 14:00,
 /// sky will close in by 16:00.".
 class ForecastAlert {
   const ForecastAlert({
@@ -132,6 +134,13 @@ const _maxCurrentHourStaleness = Duration(hours: 1);
 /// covers several forecast days) can still match. An empty [daylight] (the
 /// API returned no sunrise/sunset, see [DaylightWindow]) disables this
 /// filter entirely rather than dropping every alert.
+///
+/// Issue #252: every [ForecastAlert.message] is day-prefixed ("tomorrow",
+/// or the weekday name beyond that) whenever its window isn't on [now]'s
+/// calendar day — see `_dayPhrase`. Combined with the #229 daylight filter
+/// above, this is what stops an evening session (after today's sunset,
+/// when only tomorrow's windows are left) from showing a bare hour like
+/// "Clouds moving in around 14:00" that reads as already in the past.
 List<ForecastAlert> buildForecastAlerts({
   required List<WeatherHourly> weather,
   required List<SeaHourly> sea,
@@ -217,7 +226,11 @@ bool _isInsideAnyDaylightWindow(
 /// one, using the exact same rules/thresholds [buildForecastAlerts] uses
 /// (no new thresholds). Unlike [buildForecastAlerts] this is never
 /// filtered by daylight — it answers "what changes in the next hour from
-/// right now", so it stays visible after sunset too.
+/// right now", so it stays visible after sunset too. Its message still
+/// goes through the same #252 day-prefixing as [buildForecastAlerts]'s, so
+/// the rare case of "the current hour" being just before midnight and "the
+/// next hour" just after it reads as e.g. "...by tomorrow 00:00", not a
+/// bare, same-looking hour.
 ///
 /// Returns null when there is no hourly entry at or before [now] (nothing
 /// to compare "the next hour" against yet), when the latest such entry is
@@ -261,7 +274,7 @@ ForecastAlert? buildNextHourNote({
         start: start,
         end: end,
         severity: trigger.severity,
-        message: _messageFor(trigger.reason, start, end),
+        message: _messageFor(trigger.reason, start, end, effectiveNow),
       ),
     );
   }
@@ -533,14 +546,14 @@ List<ForecastAlert> _collectAlerts<T>({
     }
     if (runStart != null) {
       alerts.add(
-        _buildAlert(type, hourly, timeOf, triggeredAt, runStart, runEnd),
+        _buildAlert(type, hourly, timeOf, triggeredAt, runStart, runEnd, now),
       );
       runStart = null;
     }
   }
   if (runStart != null) {
     alerts.add(
-      _buildAlert(type, hourly, timeOf, triggeredAt, runStart, runEnd),
+      _buildAlert(type, hourly, timeOf, triggeredAt, runStart, runEnd, now),
     );
   }
   return alerts;
@@ -551,7 +564,8 @@ List<ForecastAlert> _collectAlerts<T>({
 /// the rule first fired (the pre-trigger baseline); [end] is the last hour
 /// the rule was still firing for. When more than one hour in the run has
 /// the maximum severity, the latest one's wording is used (it best reflects
-/// where the trend currently stands).
+/// where the trend currently stands). [now] is only used for [_messageFor]'s
+/// #252 day-prefixing.
 ForecastAlert _buildAlert<T>(
   ForecastAlertType type,
   List<T> hourly,
@@ -559,6 +573,7 @@ ForecastAlert _buildAlert<T>(
   Map<int, _Trigger> triggeredAt,
   int runStart,
   int runEnd,
+  DateTime now,
 ) {
   final start = timeOf(hourly[runStart - 1]);
   final end = timeOf(hourly[runEnd]);
@@ -574,41 +589,115 @@ ForecastAlert _buildAlert<T>(
     start: start,
     end: end,
     severity: best.severity,
-    message: _messageFor(best.reason, start, end),
+    message: _messageFor(best.reason, start, end, now),
   );
 }
 
-String _messageFor(_Reason reason, DateTime start, DateTime end) {
+/// Issue #252: full weekday names for [_dayPhrase], e.g. a Thursday-evening
+/// session looking at Saturday's window. Spelled out in full (unlike
+/// `forecast_alert_list.dart`'s `_weekdayAbbreviations`, used for the
+/// compact time-window label) since this is embedded in a sentence, where a
+/// 3-letter abbreviation reads worse.
+const _weekdayNames = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+];
+
+bool _isSameDay(DateTime a, DateTime b) =>
+    a.year == b.year && a.month == b.month && a.day == b.day;
+
+/// The number of calendar days from [b]'s date to [a]'s date (1 when [a] is
+/// the day right after [b]). Deliberately computed via [DateTime.utc] on
+/// just the year/month/day fields rather than `a.difference(b).inDays` on
+/// local midnights: a local-time subtraction crosses a spring-forward
+/// daylight-saving transition as a 23-hour gap (`inDays` truncates that to
+/// `0`, so "tomorrow" would misfire as today's weekday name) and a
+/// fall-back transition as 25 hours (harmless here, but still not the
+/// calendar-day count this is meant to express). UTC has no daylight
+/// saving, so the same year/month/day pair always differs by an exact
+/// 24-hour multiple there.
+int _calendarDayDiff(DateTime a, DateTime b) {
+  final utcA = DateTime.utc(a.year, a.month, a.day);
+  final utcB = DateTime.utc(b.year, b.month, b.day);
+  return utcA.difference(utcB).inDays;
+}
+
+/// Issue #252: the word(s) to insert before a time so a message never reads
+/// as a bare, past-looking hour when [time]'s calendar day differs from
+/// [now]'s — the root cause of "Clouds moving in around 14:00" looking wrong
+/// in the evening, when the only window left is tomorrow's. Empty (no
+/// prefix) when [time] is on [now]'s own day, `'tomorrow '` for the next
+/// day, and the full weekday name beyond that (e.g. `'Saturday '`) — always
+/// with a trailing space so it can be spliced directly in front of the
+/// `HH:mm` label, and empty otherwise so no double space appears for today.
+String _dayPhrase(DateTime time, DateTime now) {
+  if (_isSameDay(time, now)) return '';
+  final dayDiff = _calendarDayDiff(time, now);
+  if (dayDiff == 1) return 'tomorrow ';
+  // [time] can land on a day before [now]'s for the pre-trigger baseline
+  // half of a window (e.g. "start" is 23:00 yesterday when "now" has just
+  // ticked past midnight) — "yesterday" reads correctly there, instead of
+  // a weekday name that would otherwise sound like a future day.
+  if (dayDiff == -1) return 'yesterday ';
+  return '${_weekdayNames[time.weekday - 1]} ';
+}
+
+/// A "between $start and $end" clause with a day phrase (see [_dayPhrase])
+/// spliced in. When [start] and [end] land on the same day relative to
+/// [now] (by far the common case — these are hourly windows), the phrase is
+/// said once, before "between", e.g. "tomorrow between 09:00 and 10:00".
+/// When they don't (a window straddling midnight with no daylight filter in
+/// effect), each side gets its own phrase instead, e.g. "between 23:00 and
+/// tomorrow 00:00", so neither hour is left to be misread as today's.
+String _betweenPhrase(DateTime start, DateTime end, DateTime now) {
+  final startPhrase = _dayPhrase(start, now);
+  final endPhrase = _dayPhrase(end, now);
   final startLabel = _formatHour(start);
   final endLabel = _formatHour(end);
+  if (startPhrase == endPhrase) {
+    return '${startPhrase}between $startLabel and $endLabel';
+  }
+  return 'between $startPhrase$startLabel and $endPhrase$endLabel';
+}
+
+String _messageFor(_Reason reason, DateTime start, DateTime end, DateTime now) {
+  final startLabel = _formatHour(start);
+  final endLabel = _formatHour(end);
+  final between = _betweenPhrase(start, end, now);
   switch (reason) {
     case _Reason.windRise:
-      return 'Wind picks up between $startLabel and $endLabel.';
+      return 'Wind picks up $between.';
     case _Reason.windCrossModerate:
-      return 'Wind crosses ${moderateWindSpeedKmh.round()} km/h between '
-          '$startLabel and $endLabel — getting breezy.';
+      return 'Wind crosses ${moderateWindSpeedKmh.round()} km/h $between — '
+          'getting breezy.';
     case _Reason.windCrossHigh:
-      return 'Wind crosses ${highWindSpeedKmh.round()} km/h between '
-          '$startLabel and $endLabel — strong wind expected.';
+      return 'Wind crosses ${highWindSpeedKmh.round()} km/h $between — '
+          'strong wind expected.';
     case _Reason.waveRise:
-      return 'Waves may rise between $startLabel and $endLabel.';
+      return 'Waves may rise $between.';
     case _Reason.waveCrossModerate:
-      return 'Waves cross ${moderateWaveHeightM}m between $startLabel and '
-          '$endLabel — getting choppy.';
+      return 'Waves cross ${moderateWaveHeightM}m $between — getting choppy.';
     case _Reason.waveCrossHigh:
-      return 'Waves cross ${highWaveHeightM}m between $startLabel and '
-          '$endLabel — rough seas expected.';
+      return 'Waves cross ${highWaveHeightM}m $between — rough seas '
+          'expected.';
     case _Reason.cloudsClosingIn:
-      return 'Clouds moving in around $startLabel, sky will close in by '
-          '$endLabel.';
+      final startPhrase = _dayPhrase(start, now);
+      final endPhrase = _dayPhrase(end, now);
+      final closeInDay = startPhrase == endPhrase ? '' : endPhrase;
+      return 'Clouds moving in ${startPhrase}around $startLabel, sky will '
+          'close in by $closeInDay$endLabel.';
     case _Reason.rainCrossModerate:
-      return 'Rain chance crosses $moderateRainChancePercent% between '
-          '$startLabel and $endLabel.';
+      return 'Rain chance crosses $moderateRainChancePercent% $between.';
     case _Reason.rainCrossHigh:
-      return 'Rain chance crosses $highRainChancePercent% between '
-          '$startLabel and $endLabel — bring a cover.';
+      return 'Rain chance crosses $highRainChancePercent% $between — bring '
+          'a cover.';
     case _Reason.currentRise:
-      return 'Current picks up between $startLabel and $endLabel.';
+      return 'Current picks up $between.';
   }
 }
 

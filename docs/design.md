@@ -64,33 +64,47 @@ hourly row have **no card background at all** — they sit directly on the gradi
 ### Typography
 
 - Large temperature / hero number: bold, ~40–48pt, white.
-- Screen title ("My Location", "Search"): bold, ~20pt, white.
+- Screen title: bold, ~20pt, white. On Search this is literally "Search"; on Home (issue #253, superseding
+  the mockup's "My Location" placeholder below) it is the selected location's real place name.
 - Section labels ("Hourly forecast", "Beaches Near"): regular, ~13pt, `text.secondary`, often paired
   with a small leading icon.
-- Home stat-grid card values (wind speed, rain chance, pressure, UV index — issue #215): bold, ~26–28pt,
-  white, with the unit as a separate, visually smaller/secondary run right next to it (~14pt,
-  `text.secondary`), never concatenated into the same string. Deviates from this doc's earlier
-  ~16–18pt figure, which read too small on a phone screen (Vaen's 2026-10-03 feedback); metric detail
-  screens (below) are unchanged — they already show a 44pt hero value.
+- Home stat-grid tile values (all nine tiles, issue #251 — semi-bold rather than the hero
+  temperature's full bold, since nine compact tiles read better slightly lighter than four large
+  ones did): semi-bold, ~22pt, white, with the unit as a separate, visually smaller/secondary run
+  right next to it (~13pt, `text.secondary`), never concatenated into the same string. Sized down
+  from issue #215's earlier ~26–28pt once the grid grew from four tiles to nine same-size ones (issue
+  #251, Vaen's 2026-10-06 feedback that the old grid had become too tall) — that earlier figure itself
+  deviated from this doc's original ~16–18pt, which read too small on a phone screen (Vaen's
+  2026-10-03 feedback). Metric detail screens (below) are unchanged — they already show a 44pt hero
+  value.
 - Card labels: regular, ~12pt, `text.secondary`.
 
 ## Screen: Home / location detail
 
 Every value on this screen — the header subtitle, hero temperature, condition row, map card, smart
 suggestion pill, Sea section, stat grid and hourly row — belongs to one **selected location** (issue
-#157), never a fixed city: whatever point the user last tapped on the map, restored from
-`SharedPreferences` on app start. Çeşme (38.3220, 26.3260) is only the **first-run default**, shown
-until the user has ever picked a point; after that, the selected location (and its persisted copy)
-always wins. Tapping a new point on the map card re-fetches weather, marine data and nearby beaches for
-it and updates the header/place name immediately — there is no separate "confirm" step. The place name
-shown is a real name when the location came from a search result, otherwise (a bare map tap)
-formatted coordinates (`"38.3220°N, 26.3260°E"`), since reverse geocoding isn't available
-(`GeocodingService`, #156, only supports forward name search).
+#157), never a fixed city: whatever point the user last tapped on the map, picked via "Use my location"
+(#254), or restored from `SharedPreferences` on app start. Çeşme (38.3220, 26.3260) is only the
+**first-run default**, shown until the user has ever picked a point; after that, the selected location
+(and its persisted copy) always wins. Tapping a new point on the map card re-fetches weather, marine data
+and nearby beaches for it and updates the header/place name immediately — there is no separate "confirm"
+step. The place name shown is a real name when the location came from a search result; a bare map tap or
+a device-location pick (#254) instead shows formatted coordinates (`"38.3220°N, 26.3260°E"`) immediately,
+then upgrades to a real reverse-geocoded city name (`ReverseGeocodingService`, e.g. "Çeşme, İzmir") a
+moment later if/when that lookup succeeds — coordinates remain the permanent fallback whenever it fails
+or isn't available.
 
 Top to bottom:
 
-1. **Header row** — location label stack on the left ("My Location" bold + city/district subtitle in
-   `text.secondary`), current temperature large on the right, both on `bg.base`.
+1. **Header row** — location label stack on the left: the selected location's real place name, bold,
+   as the primary label (issue #253, Vaen's 2026-10-06 feedback — the mockup's "My Location" placeholder
+   is never shown as a fixed label, since it would misname whatever point is actually selected; the real
+   device-location action added by #254 lives in the map card's overflow menu instead, see below), with a
+   `text.secondary` coordinates subtitle underneath only when it says something the place name doesn't
+   already (a bare map tap/device-location pick starts out with its place name being its own formatted
+   coordinates, before any reverse-geocode upgrade — #254 — so a second identical line would be
+   redundant; once that upgrade lands, the coordinates line adds real information again and reappears).
+   Current temperature large on the right, both on `bg.base`.
 2. **Condition row** — condition text ("Partly Cloudy") left, high/low ("H:29° L:15°") right, both
    `text.secondary`, small size.
 3. **Map card** (`surface.paper`, rounded ~24px) — a **real OpenStreetMap-style map** (light land,
@@ -105,7 +119,14 @@ Top to bottom:
    error/loaded, the same states `SearchScreen`'s own "Places" section uses), replacing the mockup's
    separate standalone search entry below the map card. Selecting a result recenters the map exactly
    as a map tap would. The overflow menu itself now opens a small sheet with "Beaches" (→
-   `SearchScreen`, the beach list/favorites/filter) and, when available, "Units".
+   `SearchScreen`, the beach list/favorites/filter), when available, "Use my location" (issue
+   #254: device location via `geolocator`, hidden entirely when no `DeviceLocationService` is
+   supplied), and, when available, "Units". "Use my location" is the *only* thing on this screen
+   that can ever show a location-permission prompt — it never happens on app start or any other
+   pick. On success the device position is selected exactly like a map pick (header, weather,
+   marine data, nearby beaches, persistence); on a denied permission or an unavailable/disabled
+   location service, the previous pick stays and a short `SnackBar` explains why, rather than
+   inventing a position or showing an error screen.
    **Amenity markers** (issue #172) — each beach's real toilets/showers/changing rooms/parking/cafes/
    beach clubs/lifeguard posts (`Beach.amenities`, from #171) are drawn as Google-Maps-style pins: a
    filled colored circle with a white glyph and a soft drop shadow (food & drink orange `#F57C00`;
@@ -156,57 +177,71 @@ Top to bottom:
    tile background" direction. Tapping a row does nothing yet (optional per the issue) — this is a
    heads-up list, not a notification: pushing these as device notifications is explicitly out of
    scope (see the follow-up note in `lib/logic/condition_alert_service.dart`).
-6. **Sea section** (issue #163) — not in the mockup (it has no wave/current fields at all); this
-   extends it. Sits under the smart suggestion pill and above the stat grid: a "Sea" section label
-   (small wave icon, matching the "Hourly forecast" label's styling) over a horizontally scrollable
-   row of five tiles — wave height, water temperature, wave direction, current speed, current
-   direction — in the stat grid's icon/label/value style but with no trend row (none of these values
-   have a meaningful delta the rest of the app already surfaces). Only rendered once
-   `MarineProvider.currentData` is loaded; any null field inside it shows "No data", never `0`.
-   Direction tiles pair a rotated arrow (clockwise from "up", by compass bearing) with a cardinal
-   label, and the two direction fields use **different conventions** — do not render them the same
-   way: wave/wind direction is meteorological "coming from" (bearing is where the wave originates, so
-   the tile reads e.g. "from NW" and its arrow is rotated to the *opposite* bearing, i.e. where the
-   wave is actually heading), while ocean current direction is oceanographic "flowing toward" (bearing
-   already is where the current is heading, so the tile reads e.g. "toward SE" and its arrow is
-   rotated straight to that bearing). See the doc comments on `SeaCondition.waveDirection` /
-   `.currentDirection` for the authoritative explanation. When the nearest fetched beach (by real
-   distance to the selected point, not list order) has usable OSM geometry and amenities (issue #164),
-   the current-direction tile (primary) and wave-direction tile (secondary) each show a small
-   shore-relation line under the value — "(towards shore)" / "(away from shore — stay close!)" /
-   "(along shore)" — with the away-from-shore case in `color.warning` and bold, wrapping onto extra
-   lines rather than being clipped, since it signals drift-out / rip-current risk. The derivation
-   (`lib/logic/wave_shore_relation.dart`'s `seawardBearingFromGeometry`) is a best-effort heuristic
-   (land-side amenities as an anchor), not a guaranteed fact; when no geometry/amenities are
-   available, or the derivation itself cannot determine a direction, the tiles show cardinal-only
-   labels and never an invented relation.
-7. **Stat grid** — 2×2 grid, **no tile background**: wind speed, rain chance, water depth, UV index
-   (issue #217 replaces the mockup's pressure tile with water depth — see below). Each tile: small line
-   icon at the left, `text.secondary`-style label above a large value (with its unit as a secondary run
-   — see "Typography"), and, for wind speed/rain chance/UV index, a small trend indicator (▴/▾ + delta)
-   at the bottom-right of the tile. UV uses a decimal comma in the mockup (locale formatting).
-   **Status word (issue #215)** — not in the mockup; this extends it. Wind speed (Calm/Moderate/Strong,
-   `lib/logic/wind_status.dart`, reusing `swim_suitability.dart`'s own moderate/high thresholds), rain
-   chance (Low/Medium/High, `lib/logic/rain_status.dart`, same thresholds), UV index (its band —
-   Low/Moderate/High/Very high/Extreme, `lib/logic/uv_band.dart`) and water depth (its steepness —
-   Gentle/Moderate/Steep, `lib/logic/shallow_entry_status.dart`) each show a short colored status word
-   under the value: a small dot plus the word, in green/orange/red (wind, rain, water depth) or the UV
-   band's own color (the same color the UV index detail screen's chart bands use). `MetricDetailScaffold`
-   shows the same word/color under its hero value on the matching detail screen, so Home and the detail
-   screen never disagree.
-   **Water depth (issue #217)** — not in the mockup; this extends it, replacing the mockup's pressure
-   tile (which has no defined status word of its own — `pressure_trend.dart` only exposes a
-   rising/steady/falling trend, not a color). A rough, approximate, non-swimmer "how gentle is this
-   beach?" indication, built on issue #216's `BathymetryService`/`classifyShallowEntry`: the tile's value
-   reads how far out from shore the water stays shallow (at or under `shallow_entry.dart`'s
-   `shallowLimitMeters`), e.g. "<= 1.2 m for 180 m" (unit per the metric/imperial preference), with the
-   Gentle/Moderate/Steep status word below it. Shows "No data" (never a fabricated number) whenever the
-   selected beach has no usable geometry/transect, every sample request failed, or the location is
-   outside EMODnet's coverage. Tapping it opens its own detail screen (below) exactly like every other
-   stat tile; it has **no trend indicator** — a nearshore depth profile is a spatial reading with no time
-   dimension, so `StatTile`'s trend row is omitted entirely rather than showing an invented delta. The
-   pressure tile/its detail screen/route stay in the codebase, just unreachable from this grid — see
-   `lib/presentation/navigation/detail_routes.dart`'s own doc comment.
+6. **Stat grid** (issues #163/#215/#217, superseded by the owner's 2026-10-06 decision on issue
+   #251) — not in the mockup as such a grid at all (the mockup has no wave/current fields, and shows
+   wind speed/rain chance/pressure/UV index as a visually larger 2×2 block); this is the current,
+   final shape of that combined area, sitting under the smart suggestion pill (and the forecast alert
+   list, when present). **One 3×3 grid of nine same-size tiles**, in three labelled rows of three —
+   Sea (wave height, water temperature, water depth), Current (current speed, current direction, wave
+   direction), Air (wind speed, rain chance, UV index) — chosen so the owner's "the wave height/water
+   temperature row is fine, the rest is too big" feedback resolves by matching *everything* to that
+   compact size, not by enlarging the sea tiles. Each group has a small uppercase `text.secondary`
+   heading (a leading icon + the group name, matching the "Hourly forecast" label's styling) above its
+   row of three tiles, with a thin low-opacity divider line between groups (no divider after the last
+   one) — `StatTileGroup`. **No tile background** on any of the nine, same as every earlier version of
+   this grid. A tile's three equal-width columns come from an `Expanded` row (`StatTileGroup`); a
+   tile's own *height* is left to grow with its content (e.g. a wrapped status line) rather than being
+   forced to a fixed aspect ratio, so the grid still reads as "one size" without an artificial cap that
+   would either clip the one safety-relevant warning this grid shows or waste space on every other
+   tile to make room for it.
+
+   **Tile content** (`StatTile`) — icon + `text.secondary` label on one line; then the value, bold/
+   semi-bold and ~22pt, with its unit as a separate, visually smaller/secondary run right next to it
+   (never concatenated into the same string — see "Typography"); then, only for a metric with a
+   defined status, a short colored status word/phrase under the value (a small dot + text, in
+   green/orange/red or a metric's own band color). A metric with **no** defined status (wave height,
+   water temperature, current speed, wave direction) shows no third line at all, rather than an empty
+   one. Direction tiles (current direction, wave direction) show a rotated arrow icon (clockwise from
+   "up", by compass bearing) instead of a plain one, paired with a cardinal-label value, e.g. `"toward
+   SE"`/`"from NW"` — see the doc comments on `SeaCondition.waveDirection`/`.currentDirection` for the
+   "coming from" vs. "flowing toward" bearing conventions those two use (do not render them the same
+   way). **No trend row** on any of the nine Home tiles (every earlier version of this grid had one on
+   wind speed/rain chance/UV index) — none of the nine values has a meaningful "delta since last hour"
+   that a Home tile, rather than its own detail screen, should surface; `MetricDetailScaffold`'s own
+   trend line (where a metric has one, e.g. pressure) is unaffected. Every tile keeps today's
+   tappability, opening its own detail screen (below) exactly as before.
+
+   **Status words** come from the existing helpers issues #215/#217 already built, never new
+   thresholds invented for this grid: wind speed (Calm/Moderate/Strong, `lib/logic/wind_status.dart`,
+   reusing `swim_suitability.dart`'s own moderate/high thresholds), rain chance (Low/Medium/High,
+   `lib/logic/rain_status.dart`, same thresholds), UV index (its band — Low/Moderate/High/Very
+   high/Extreme, `lib/logic/uv_band.dart`, the same color the UV index detail screen's chart bands
+   use) and water depth (its steepness — Gentle/Moderate/Steep, `lib/logic/shallow_entry_status.dart`,
+   issue #217's `BathymetryService`/`classifyShallowEntry` — see that issue's own notes below on its
+   value format/"No data" fallback, still unchanged by #251 beyond moving into the Sea group).
+   `MetricDetailScaffold` shows the same word/color under its hero value on the matching detail
+   screen, so Home and the detail screen never disagree. The **current-direction** tile's own "status"
+   is the Sea-section shore relation (issue #164): when the nearest fetched beach (by real distance to
+   the selected point, not list order) has usable OSM geometry and amenities, it shows a short line —
+   "(towards shore)" / "(away from shore — stay close!)" / "(along shore)" — with the away-from-shore
+   case bold and in `color.warning`, wrapping onto further lines rather than being clipped, since it
+   signals drift-out/rip-current risk; the derivation (`lib/logic/wave_shore_relation.dart`'s
+   `seawardBearingFromGeometry`) is a best-effort heuristic (land-side amenities as an anchor), not a
+   guaranteed fact, so no geometry/amenities (or a derivation that can't determine a direction) means
+   no relation line at all — a cardinal-only value, never an invented one. The **wave-direction** tile
+   deliberately shows no relation line of its own (a 2026-10-06 simplification of the pre-#251 design,
+   which showed one on both direction tiles) — it has no defined status at all, like wave height/water
+   temperature/current speed.
+
+   **Loading/error/"No data" handling** (issue #213, extended by #228) stays per-section, not merged
+   into one state for the whole grid: the Air group (wind speed/rain chance/UV index) and the Sea
+   group's water-depth tile are independent of `MarineProvider` and keep rendering their own real data
+   (or "No data") regardless of a marine fetch's state. Wave height/water temperature/current
+   speed/current direction/wave direction — the five tiles actually driven by
+   `MarineProvider.currentData` — fall back to "No data" on their own null-safe formatters exactly like
+   every other null field in this grid, with a slim loading note (while a fetch for a freshly picked
+   location is in flight) or a visible inline error (`"Unable to load marine data."` plus the real
+   error, in `color.warning`, never a silent blank gap) shown just above the grid for that window.
 8. **Hourly forecast** — section label with a small clock icon, then a horizontally scrollable row of
    items (time label, weather icon, bold temperature), starting with "Now". Icons are colored by WMO
    weather-code group (`styleForWeatherIcon`): clear `icon.sun` `#FFC94D`, cloudy/overcast/fog blue-grey,
@@ -217,7 +252,9 @@ Top to bottom:
 ## Screen: Metric detail
 
 Not in the mockup — the mockup only covers Home/location-detail and Search (see the top of this
-doc). Each Home stat tile (wind speed, rain chance, water depth, UV index) opens its own detail screen
+doc). Each of the nine Home stat-grid tiles (wind speed, rain chance, water depth, UV index, wave
+height, water temperature, current speed, current direction; wave direction is the one tile with no
+detail screen of its own) opens its own detail screen
 when tapped, on its own route, with a back button to Home (issue #165 and the per-metric issues that
 follow it: #178 UV index, #179 rain chance, #166 wind, #167 wave height, #180 water temperature, #181
 current, #217 water depth).
@@ -233,14 +270,59 @@ as part of the same app:
    the metric has one) a short trend line, e.g. Pressure's "Rising — ...".
 3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
    band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
-   **Water depth (issue #217) deviates here**: it has no hourly/time series at all, so its chart slot is
-   `DepthProfileChart` instead — a distance-vs-depth profile (x = distance from shore, y = depth, drawn
-   increasing *downward*, with horizontal lines at `shallow_entry.dart`'s `shallowLimitMeters`/
-   `deepLimitMeters`) — followed by a context row of plain info facts (lifeguard presence, current wave
-   height, and, only when it applies, the issue #164 drift-out warning), and its explanation paragraph
-   (below) also carries an EMODnet attribution line. Its Min/Max/Now summary row (next) is repurposed to
-   the shallowest/deepest valid reading along the transect and the reading at the classification's own
-   100 m reference distance, since there is no literal "now" for a spatial reading.
+   **Water depth (issue #217, extended by #256) deviates here**: it has no hourly/time series at all, so
+   its chart slot is a stack of several pieces instead, top to bottom:
+   - **Non-swimmer verdict line** (issue #256) — one short, bold, plain-language sentence judging the
+     beach for non-swimmers, derived only from the existing gentle/moderate/steep/unknown classification
+     (`classifyShallowEntry`, `lib/logic/shallow_entry.dart`) — never a new threshold:
+     gentle = "Shallow for a long way out. Easier for non-swimmers." (green, matching the gentle status
+     color), moderate = "Gets deep fairly quickly. Non-swimmers should stay close to shore." (orange),
+     steep = "Drops away quickly. Not suitable for non-swimmers." (red), unknown = "Not enough depth
+     data for this beach." (`text.secondary`). Always immediately followed, same size position, by a
+     fixed caveat in `text.secondary`: "Approximate (~115 m data). Not a safety guarantee. Waves,
+     currents, sandbars and sudden drop-offs are not captured." Both strings live in
+     `lib/logic/shallow_entry_verdict.dart` (`shallowEntryVerdictLine`/`depthApproximationCaveat`) —
+     small pure functions, reusable by a later screen (issue #257) — never duplicated wording. This
+     copy is **owner-reviewable** (safety-adjacent): see the PR that introduced it for the explicit
+     call-out.
+   - **`DepthCrossSection`** (issue #256, `lib/presentation/widgets/depth_cross_section.dart`) — a
+     side-view graphic: water surface on top, the seabed drawn from the transect's real samples, the
+     water column tinted in three horizontal bands reusing the exact same colors as the Home tile's
+     gentle/moderate/steep status (green `<= shallowLimitMeters` "stand-up", orange
+     `shallowLimitMeters`-`deepLimitMeters` "getting deep", red `>= deepLimitMeters` "over your head"),
+     and up to `maxPersonSilhouettes` (3) simple standing-person silhouettes scaled to
+     `referenceAdultHeightMeters` (1.7 m) so depth reads at human scale without needing to read a
+     number — a shallow figure's head/shoulders show above the water line, a figure at a sample deeper
+     than 1.7 m renders fully submerged (dimmed) to read as "over your head". Honesty about the ~115 m
+     grid's limits: only real, non-null `DepthSample`s are ever used to place a seabed point or a
+     person figure (never an invented position), and the seabed line connecting real points is drawn
+     **dashed throughout** — even the segment between two measured points is an inferred approximation,
+     never a surveyed continuous reading, so a solid line would overstate the data's precision. An empty
+     sample list (or a profile with no usable data at all) falls back to the same "No data" placeholder
+     `DepthProfileChart` already uses. The graphic also carries a `Semantics` image label (built from the
+     verdict + distance labels below) so its content reaches assistive technology too, not just sighted
+     users.
+   - **Distance labels** (issue #256, part 4) — plain-language text under the graphic, from
+     `lib/logic/shallow_entry_verdict.dart`'s `standUpDistanceLabel`/`deepFromDistanceLabel`, reading
+     `ShallowEntryClassification.firstShallowExitDistanceMeters`/`.firstDeepDistanceMeters`: "Stand-up
+     water until about X m" and "Deep (2.5 m+) from about Y m" (or a "whole measured distance" variant
+     when a threshold is never crossed within the transect). If the profile's first *valid* sample is
+     already deeper than `shallowLimitMeters` (`hasNoShallowZone`), the stand-up label is replaced with
+     "No shallow stand-up zone in this data (it may exist closer to shore than the data can show)."
+     instead of ever inventing a shallow start — this message, and the verdict/caveat above, never use
+     the word "safe".
+   - **Context row** — unchanged from issue #217: plain info facts (lifeguard presence, current wave
+     height, and, only when it applies, the issue #164 drift-out warning), kept directly under the
+     verdict/graphic/labels block above (issue #256, part 5) since non-swimmer suitability depends on
+     these facts just as much.
+   - **`DepthProfileChart`** — the original distance-vs-depth profile (x = distance from shore, y =
+     depth, drawn increasing *downward*, with horizontal lines at `shallow_entry.dart`'s
+     `shallowLimitMeters`/`deepLimitMeters`) is kept, now sitting below the cross-section as the exact
+     numeric reading for anyone who wants it, rather than being replaced by it.
+
+   The explanation paragraph (below) also carries an EMODnet attribution line. The Min/Max/Now summary
+   row is repurposed to the shallowest/deepest valid reading along the transect and the reading at the
+   classification's own 100 m reference distance, since there is no literal "now" for a spatial reading.
 4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
    stat-grid's label/value styling.
 5. **Explanation paragraph** — one short `text.secondary` paragraph on what the metric means for the
@@ -283,13 +365,13 @@ the marine group.
 
 Reusable widgets worth extracting rather than rebuilding per-screen:
 
-- `StatTile` — icon + label + value/unit + an optional status word/color + trend, used 4× in the stat
-  grid.
+- `StatTile` — icon + label + value/unit + an optional status word/color, used 9× (issue #251) across
+  the stat grid's three groups; no trend row (the Home tiles dropped it, detail screens keep their
+  own).
+- `StatTileGroup` — one labelled row of the stat grid (issue #251): a small uppercase heading over
+  exactly three equal-width `StatTile`s.
 - `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
   rows, sorted most severe first and rendering nothing when empty.
-- `SeaConditionsRow` — the Sea section's horizontally scrollable row of 5 tiles (wave height, water
-  temperature, wave direction, current speed, current direction), in `StatTile`'s visual style but
-  without its trend row.
 - `HourlyForecastItem` — time + icon + temperature, used in the scrollable hourly row.
 - `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
   beach overlay (gold polygons/lines).

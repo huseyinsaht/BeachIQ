@@ -8,16 +8,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../helpers/builders.dart';
 import '../../helpers/fake_http_client.dart';
 
-const _host = 'tiles.emodnet-bathymetry.eu';
+const _host = 'ows.emodnet-bathymetry.eu';
 
 Object _validDepthFixture(double grayIndex) => {
   'type': 'FeatureCollection',
   'features': [
     {
       'type': 'Feature',
-      'id': 'mean_atlas_land.1',
+      'id': '',
       'geometry': null,
-      'properties': {'GRAY_INDEX': grayIndex},
+      'properties': {'Depth': grayIndex},
     },
   ],
 };
@@ -115,6 +115,29 @@ void main() {
           BathymetryService.defaultLayer,
         );
       }
+    });
+
+    test('given the default endpoint, defaultBaseUrl/defaultLayer -> are the '
+        'OGC WMS host and the depth layer (not the WMTS tile host, which '
+        'answers 403)', () {
+      final uri = Uri.parse(BathymetryService.defaultBaseUrl);
+
+      expect(uri.host, 'ows.emodnet-bathymetry.eu');
+      expect(uri.path, '/wms');
+      expect(BathymetryService.defaultLayer, 'emodnet:mean');
+    });
+
+    test('given the real emodnet:mean response shape (a Depth property, an '
+        'empty feature list outside coverage), fetchProfile -> parses the '
+        'depth and treats no feature as unavailable', () async {
+      final client = FakeHttpClient()
+        ..queueJson(host: _host, json: _validDepthFixture(-8.19921875));
+      final service = BathymetryService(client);
+
+      final result = await service.fetchProfile(_transectableBeach);
+
+      expect(result.available, isTrue);
+      expect(result.samples.first.depthMeters, closeTo(8.19921875, 1e-9));
     });
 
     test('given every request, fetchProfile -> sends a User-Agent header '
@@ -252,7 +275,7 @@ void main() {
         ..queueResponse(
           host: _host,
           body:
-              "Results for FeatureType 'emodnet:mean_atlas_land':\n"
+              "Results for FeatureType 'emodnet:mean':\n"
               '   GRAY_INDEX = -4.75',
         );
       final service = BathymetryService(client);
@@ -271,7 +294,7 @@ void main() {
           ..queueResponse(
             host: _host,
             body:
-                "Results for FeatureType 'emodnet:mean_atlas_land':\n"
+                "Results for FeatureType 'emodnet:mean':\n"
                 '   (no features were found)',
           );
         final service = BathymetryService(client);

@@ -45,5 +45,9 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Issue #254: shown only when the user taps the map card's opt-in
+	     "Use my location" action — never on app start. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Used to show the weather and sea conditions near you when you tap "Use my location".</string>
 </dict>
 </plist>

@@ -107,9 +107,33 @@ is cached yet.
   favorable" notification. `LocalNotificationsPlugin` is the injectable interface
   (`RealLocalNotificationsPlugin` in production) so tests never touch a real platform
   channel. A no-op if the permission was denied. Used by `ConditionAlertDispatcher`.
+- `DeviceLocationService`/`DeviceLocationSource` (`lib/data/services/device_location_service.dart`)
+  — issue #254's opt-in device-location lookup, backing the map card overflow menu's
+  "Use my location" action. `DeviceLocationSource` is the injectable interface
+  (`GeolocatorDeviceLocationSource` in production, wrapping the `geolocator` plugin's
+  static methods) so tests never touch real GPS hardware or a real permission dialog.
+  `getCurrentLocation` checks location services are on, checks (and, only then, once,
+  in direct response to the caller's own request) requests permission, then reads a
+  `LocationAccuracy.low` (city-level) fix — paired with Android's manifest declaring
+  only `ACCESS_COARSE_LOCATION` (no fine, no background location) and iOS's
+  `NSLocationWhenInUseUsageDescription`. Every failure (services off, permission
+  denied, or any other platform error) resolves to a `DeviceLocationResult.failure`
+  with a `DeviceLocationFailure` reason, never a thrown exception and never a
+  fabricated position.
+- `ReverseGeocodingService`/`PlacemarkLookup` (`lib/data/services/reverse_geocoding_service.dart`)
+  — issue #254's reverse-geocoding lookup, turning a device-location or map-tap pick's
+  coordinates into a short display name (e.g. "Çeşme, İzmir", via `displayNameFromPlacemark`:
+  locality or sub-administrative area, plus region when it adds information). 
+  `PlacemarkLookup` is the injectable interface (`GeocodingPlacemarkLookup` in
+  production, wrapping the `geocoding` plugin's `Geocoding.placemarkFromCoordinates`)
+  so tests never touch a real platform geocoder channel. Results are cached by
+  `ReverseGeocodeCache` (below) so the same area is never looked up twice. Any failure
+  (a `PlatformException` — rate limiting, no Google Play Services — an empty result, or
+  a placemark with no usable name) resolves to `null`, never a made-up name; `HomeScreen`
+  falls back to `location_map_card.dart`'s `formatCoordinates` in that case.
 - `BathymetryService` (`lib/data/services/bathymetry_service.dart`) — fetches a beach's
   nearshore depth profile (#216) from EMODnet Bathymetry's public WMS `GetFeatureInfo`
-  endpoint (`tiles.emodnet-bathymetry.eu`, the `emodnet:mean_atlas_land` layer, no API
+  endpoint (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer, no API
   key): one small request per point on the beach's seaward transect (see
   `lib/logic/transect.dart`), up to 5 per beach. Tolerantly parses either a JSON or
   GeoServer plain-text response body and never throws — any failure (no geometry/
@@ -149,6 +173,14 @@ an expired entry is simply treated as a miss and re-fetched, there is no
 stale-while-revalidate step. Only an `available` profile is cached, so a transient
 failure is retried on the next call rather than remembered for 90 days.
 
+### `lib/data/services/reverse_geocode_cache.dart`
+
+`ReverseGeocodeCache` — a persistent (`SharedPreferences`-backed) cache of
+reverse-geocoded display names (#254), keyed by a coarse grid cell (`gridSize`
+degrees, default 0.01°, ~1.1km) with a 30-day TTL — mirroring `DepthCache`'s "an
+expired entry is simply treated as a miss and re-fetched" pattern. Only a non-empty
+name is cached, so a failed lookup is retried on the next call rather than remembered.
+
 ### `lib/logic`
 
 Pure, platform-agnostic logic with no I/O:
@@ -186,7 +218,14 @@ Pure, platform-agnostic logic with no I/O:
   only the current hour to the next one with the same rules/thresholds, never
   daylight-filtered (so it can still show after sunset), suppressed when the hourly
   entry anchoring "now" is more than an hour stale. Both are rendered on the Home
-  screen by `ForecastAlertList` (see `lib/presentation/widgets`).
+  screen by `ForecastAlertList` (see `lib/presentation/widgets`). Issue #252: every
+  `ForecastAlert.message` (and `buildNextHourNote`'s own message) is day-prefixed
+  ("tomorrow ...", or the full weekday name beyond that, "yesterday " for a
+  pre-trigger baseline hour on the day before `now`) whenever its window isn't on
+  `now`'s calendar day — otherwise an evening session's only-remaining window (after
+  today's sunset) would read as a bare, already-past-looking hour. The day/calendar
+  comparison is done on UTC year/month/day fields rather than a `Duration`, so it
+  stays correct across a daylight-saving transition.
 - `classifyPressureTrend` (`lib/logic/pressure_trend.dart`) — classifies a pressure
   reading as `rising`/`steady`/`falling` against an earlier one (>= 1 hPa change
   either way is a trend, matching the ~1 hPa/3h "rapid change" meteorological
@@ -221,6 +260,18 @@ Pure, platform-agnostic logic with no I/O:
   `ShallowEntrySteepness` (#217), in the same style as `wind_status.dart`, plus a
   formatted summary string for the water-depth tile/detail screen's headline value
   (e.g. "<= 1.2 m for 180 m"), falling back to "No data" for `unknown`.
+- `shallowEntryVerdictLine`/`hasNoShallowZone`/`standUpDistanceLabel`/
+  `deepFromDistanceLabel` (`lib/logic/shallow_entry_verdict.dart`) — issue #256's
+  plain-language, non-swimmer-focused copy layered on top of `classifyShallowEntry`'s
+  existing gentle/moderate/steep/unknown bands (no new thresholds): one bold verdict
+  sentence per steepness (e.g. "Drops away quickly. Not suitable for non-swimmers."
+  for `steep`), always paired with a fixed `depthApproximationCaveat` ("~115 m data.
+  Not a safety guarantee. ..."); `hasNoShallowZone` flags the distinct case where the
+  first valid sample is already deeper than `shallowLimitMeters` (there is data, it
+  just starts deep), shown via `noShallowZoneMessage` instead of a fabricated shallow
+  distance; `standUpDistanceLabel`/`deepFromDistanceLabel` describe where the
+  stand-up-shallow/deep zones begin or end, in whichever unit `UnitSystem` wants.
+  Never uses the word "safe". Used by `DepthDetailScreen` below.
 - `adviseOnShoes` (`lib/logic/beach_gear_advisor.dart`) — advises `advised`/
   `notNeeded`/`unknown` on bringing shoes/slippers, from a beach's OSM `surface` tag.
   Framed as advice, never as a fact.
@@ -298,9 +349,17 @@ Reusable widgets built against `docs/design.md`:
   colored status chip (`statusLabel`/`statusColor`, e.g. "Calm", "High" — must be
   supplied together) + an optional muted trend indicator (`trendDirection`/
   `trendDelta`, also must be supplied together; omitted entirely for a metric with no
-  meaningful delta, e.g. water depth's spatial reading). Used in the Home screen's 2×2
-  stat grid. Optionally `onTap` (used by every stat tile to open its own detail
-  screen).
+  meaningful delta, e.g. water depth's spatial reading). Used for all nine tiles of
+  the Home screen's 3×3 stat grid (issue #251, via `StatTileGroup` below) — none of
+  them currently supply a trend indicator, only the detail screens do. Optionally
+  `onTap` (used by every stat tile to open its own detail screen).
+- `StatTileGroup` (`stat_tile_group.dart`) — issue #251: one labelled row of the Home
+  screen's 3×3 stat grid — a small uppercase `text.secondary` heading (icon + label,
+  e.g. "Sea"/"Current"/"Air") over exactly three equal-width `StatTile`s side by side
+  (`Expanded`, so each shares the row's width equally; the row's height follows its
+  tallest tile). Pure presentational widget. `HomeScreen` renders three of these
+  (Sea/Current/Air, see below), separated by a thin divider, replacing the pre-#251
+  2×2 stat grid and the separate `SeaConditionsRow` widget (removed).
 - `HourlyForecastItem` (`hourly_forecast_item.dart`) — time label + colored weather
   icon (day/night variant chosen from the entry's own `time`, not the device clock) +
   bold temperature, used in the Home screen's scrollable hourly row.
@@ -338,16 +397,6 @@ Reusable widgets built against `docs/design.md`:
   `scoreSwimSuitability`) as the Home screen's "smart suggestion pill", colored per
   `verdict_palette.dart`'s `paletteForVerdict` (green/orange/red-orange/neutral grey,
   each contrast-checked against WCAG AA).
-- `SeaConditionsRow` (`sea_conditions_row.dart`) — the Home screen's "Sea" section
-  under the suggestion pill: wave height, water temperature, wave direction, current
-  speed and current direction, read from `MarineProvider.currentData`. The wave
-  height, water temperature and current speed/direction tiles each open their own
-  detail screen (`buildDetailRoute`) when tapped; only the wave-direction tile has no
-  tap target. When a `seawardBearingDegrees` is supplied (the nearest beach's shore
-  bearing, from `wave_shore_relation.dart`), the direction tiles also show a
-  toward/away/along-shore label, with "away from shore" shown as a bold warning.
-  Renders nothing when no sea data has loaded yet; any individual missing field shows
-  "No data".
 - `CloudBackdrop` (`cloud_backdrop.dart`) — a faint, deterministic (no `Random()`, no
   animation) blurred-cloud texture painted behind the Home header with
   `CustomPainter`, replacing the mockup's missing photographic asset. Wrapped in
@@ -380,16 +429,29 @@ Reusable widgets built against `docs/design.md`:
   `deepLimitMeters`. A `null` `DepthSample.depthMeters` (land/NoData) is a gap in the
   line, never a fabricated `0`. `CustomPaint`-based like `HourlyMetricChart`, no
   charting package.
+- `DepthCrossSection`/`DepthCrossSectionPainter` (`depth_cross_section.dart`) — issue
+  #256's human-scale side-view graphic on the water-depth detail screen, sitting
+  above `DepthProfileChart`: water surface on top, three tinted bands matching
+  `shallow_entry_status.dart`'s stand-up/getting-deep/over-head colors, a **dashed**
+  seabed line through the real (non-null) `DepthSample`s only (dashed throughout,
+  since even the segment between two ~115 m grid points is an inferred
+  approximation, not a surveyed reading), and up to `maxPersonSilhouettes` (3)
+  standing-person silhouettes (scaled to `referenceAdultHeightMeters`, 1.7 m) placed
+  only at real sample distances, shown part-submerged once the depth there exceeds
+  that reference height. A `null` depth (land/NoData) is a gap, exactly like
+  `DepthProfileChart`. `CustomPaint`-based; the painter is public so widget tests can
+  inspect its fields directly instead of asserting on pixels.
 - `ForecastAlertList` (`forecast_alert_list.dart`) — the Home screen's list of
   upcoming `ForecastAlert`s (from `buildForecastAlerts`), sitting between the
-  suggestion pill and the stat grid: one row per alert (a type icon colored by
-  severity, the alert's one-line message, a compact time-window label — prefixed with
-  a day label, e.g. "Tomorrow", when the alert isn't on today's calendar date, #229),
-  sorted most-severe-first via `sortAlertsBySeverity`. An optional `nextHourNote`
-  (#229, from `buildNextHourNote`) renders first as a visually distinct "Next hour"
-  row (a tinted icon circle, no time-window line) — it can be shown even when
-  `alerts` is empty (e.g. after sunset, since it is never daylight-filtered). Renders
-  nothing when both are empty/null, leaving no gap.
+  suggestion pill and the 3×3 stat grid: one row per alert (a type icon colored by
+  severity, the alert's one-line message — itself day-prefixed per #252, see
+  `buildForecastAlerts` above — and a compact time-window label underneath,
+  separately prefixed with a day label, e.g. "Tomorrow", when the alert isn't on
+  today's calendar date, #229), sorted most-severe-first via `sortAlertsBySeverity`.
+  An optional `nextHourNote` (#229, from `buildNextHourNote`) renders first as a
+  visually distinct "Next hour" row (a tinted icon circle, no time-window line) — it
+  can be shown even when `alerts` is empty (e.g. after sunset, since it is never
+  daylight-filtered). Renders nothing when both are empty/null, leaving no gap.
 
 ### `lib/presentation/theme`
 
@@ -413,32 +475,58 @@ Reusable widgets built against `docs/design.md`:
 ### `lib/presentation/screens`
 
 - `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — the real dashboard for
-  a **selected location**: a header (place name, live temperature), a condition row
-  (description, high/low), `LocationMapCard` (with its own search icon and overflow
-  menu — "Beaches" opens `SearchScreen`, "Units" the metric/imperial sheet, when a
-  `UnitPreferencesProvider` is supplied), `SwimSuggestionPill`, `ForecastAlertList`
-  (built fresh on every build from `buildForecastAlerts` on the same hourly data;
-  hidden entirely when there are no upcoming alerts), the `SeaConditionsRow`
-  (once marine data has loaded), the 2×2 `StatTile` grid (wind speed, rain chance,
-  water depth — #217, replacing the original pressure tile — and UV index; each
-  tappable to its own detail screen — wind/rain/UV from `WeatherProvider`, water depth
-  from `DepthProvider`), and the hourly forecast row (trimmed to the next 24 entries from
-  "now"). A `CloudBackdrop` sits behind the header in both the loaded and
-  loading/error layouts. The selected location starts at a fixed Çeşme default, is
-  replaced by whatever the user taps on the map or picks via its search icon, and is
-  persisted via `SharedPreferences` and restored on the next app start; every fetch
-  (weather, marine, nearby beaches) and the header/place name follow it, never a fixed
-  city once a pick has happened. Shows a full-screen loading spinner or error message
-  (driven by `MarineProvider`) before the first successful load; pull-to-refresh
-  re-fetches both `MarineProvider` and `WeatherProvider` for the selected location
-  without tearing down the screen. Also derives the nearest beach to the selected
-  location (by real distance — `NearbyBeachesProvider.beaches` is in Overpass
-  element-id order, not distance order), or uses a beach explicitly picked from
-  Search (#238, via `SearchScreen`'s `Navigator.pop<Beach>`) in preference to it — that
-  beach's seaward bearing feeds `SeaConditionsRow`'s shore-relation labels, and the
-  same beach (`isSameBeach`-compared) is what `DepthProvider.fetchForBeach` is called
-  with for the water-depth tile. A beach picked from Search is rendered as a compact
-  `BeachResultCard`-based info row below the map.
+  a **selected location**: a header, a condition row (description, high/low),
+  `LocationMapCard` (with its own search icon and overflow menu — "Beaches" opens
+  `SearchScreen`, "Units" the metric/imperial sheet, when a `UnitPreferencesProvider`
+  is supplied), `SwimSuggestionPill`, `ForecastAlertList` (built fresh on every build
+  from `buildForecastAlerts` on the same hourly data; hidden entirely when there are
+  no upcoming alerts), then a **3×3 grid of `StatTile`s in three labelled
+  `StatTileGroup`s** (issue #251, separated by thin dividers): "Sea" (wave height,
+  water temperature, water depth — #217, replacing the original pressure tile),
+  "Current" (current speed, current direction with its shore-relation label, wave
+  direction — no tap target), and "Air" (wind speed, rain chance, UV index) — all
+  nine tiles one visual size, none showing a trend indicator (only the detail screens
+  do), each tappable to its own detail screen except wave direction. This single grid
+  replaces the pre-#251 2×2 stat grid plus the separate `SeaConditionsRow` widget
+  (removed) that used to sit above it. Below the grid sits the hourly forecast row
+  (trimmed to the next 24 entries from "now"). A `CloudBackdrop` sits behind the
+  header in both the loaded and loading/error layouts.
+  The header's title (issue #253 — superseding the mockup's hard-coded "My Location",
+  which was misleading since the app has no device GPS of its own, see #254) is the
+  selected location's own real place name, with a `text.secondary` coordinates
+  subtitle shown underneath only when it says something the title doesn't already (a
+  bare map tap's place name already IS its formatted coordinates, so a second,
+  identical line is skipped). The selected location starts at a fixed Çeşme default,
+  is replaced by whatever the user taps on the map or picks via its search icon, and
+  is persisted via `SharedPreferences` and restored on the next app start; every
+  fetch (weather, marine, nearby beaches) and the header/place name follow it, never
+  a fixed city once a pick has happened. Shows a full-screen loading spinner or error
+  message (driven by `MarineProvider`) before the first successful load;
+  pull-to-refresh re-fetches both `MarineProvider` and `WeatherProvider` for the
+  selected location without tearing down the screen. Also derives the nearest beach
+  to the selected location (by real distance — `NearbyBeachesProvider.beaches` is in
+  Overpass element-id order, not distance order), or uses a beach explicitly picked
+  from Search (#238, via `SearchScreen`'s `Navigator.pop<Beach>`) in preference to
+  it — that beach's seaward bearing feeds the "Current" group's shore-relation
+  labels, and the same beach (`isSameBeach`-compared) is what
+  `DepthProvider.fetchForBeach` is called with for the water-depth tile. A beach
+  picked from Search is rendered as a compact
+  `BeachResultCard`-based info row below the map. Issue #254: given a
+  `DeviceLocationService`, the map card overflow menu also shows a "Use my location"
+  entry (hidden entirely without one) — the *only* thing that can ever trigger a
+  location permission prompt, and only because the user just tapped it. On success the
+  device position is treated exactly like a map pick (header, weather, marine data,
+  persistence), plus an explicit `nearbyBeachesProvider.pickLocation` call (mirroring
+  `_handleBeachPicked`, since this pick doesn't go through `LocationMapCard`'s own tap
+  handler either). On failure (permission denied, location services off, or any other
+  platform error) the current pick is left untouched and a short `SnackBar` explains
+  why. Given a `ReverseGeocodingService`, both that device-location pick and a plain
+  map tap are reported with `location_map_card.dart`'s coordinate label first (so the UI
+  updates immediately, matching the existing map-tap behavior), then — guarded by a
+  request token so a stale lookup from an *earlier* pick can never overwrite a newer
+  one — upgraded asynchronously to a real resolved city name if/when that lookup
+  succeeds, without blocking the weather/marine fetch already in flight for the same
+  pick.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Tapping a beach card pops the screen with that
@@ -458,14 +546,22 @@ Reusable widgets built against `docs/design.md`:
   and its `DetailMetric.pressure` route still exist (and are still tested) but are no
   longer reachable from the stat grid.
 - `DepthDetailScreen` (`detail/depth_detail_screen.dart`) — the water-depth / shallow-
-  entry detail screen (#217): a hero value from `formatShallowEntrySummary`, a status
-  chip from `shallowEntryStatusLabel`/`shallowEntryStatusColor`, a `DepthProfileChart`,
-  a min/now/max row repurposed for the spatial profile (shallowest/the 100m reference
-  depth/deepest valid reading, rather than a time series), a context list (lifeguard
-  presence, current wave height, and the Ocean Current screen's drift-out warning
-  when the current is heading offshore above its threshold — each item renders only
-  when its data exists), and an EMODnet attribution line. The attribution text follows
-  EMODnet's terms of use (EU-owned, CC BY 4.0, not for navigation). Pushed from `HomeScreen`'s water-depth `StatTile`.
+  entry detail screen (#217, extended by #256): a hero value from
+  `formatShallowEntrySummary`, a status chip from
+  `shallowEntryStatusLabel`/`shallowEntryStatusColor`, then (issue #256) one bold
+  plain-language non-swimmer verdict line (`shallowEntryVerdictLine`) always paired
+  with a fixed approximation caveat, the `DepthCrossSection` human-scale side-view
+  graphic, a stand-up/deep-from distance label pair (or a "no shallow zone" message
+  when the data starts deep, `shallow_entry_verdict.dart`), the #217 context list
+  (lifeguard presence, current wave height, and the Ocean Current screen's drift-out
+  warning when the current is heading offshore above its threshold — each item
+  renders only when its data exists), and the existing numeric `DepthProfileChart`
+  below all of that (not replaced by the cross-section, kept alongside it). The
+  min/now/max row is repurposed for the spatial profile (shallowest/the 100m
+  reference depth/deepest valid reading, rather than a time series). Ends with an
+  EMODnet attribution line following EMODnet's terms of use (EU-owned, CC BY 4.0, not
+  for navigation, EMODnet Digital Bathymetry DTM 2024 completed with GEBCO 2024/IBCAO
+  V4). Pushed from `HomeScreen`'s water-depth `StatTile`.
 - `UvIndexDetailScreen` (`detail/uv_index_detail_screen.dart`) — the day's hourly UV
   index as an `HourlyMetricChart` with the five `uv_band.dart` risk bands colored in
   via `valueBands`, a "Now" marker, a min/max/now summary, and `uvProtectionHint` for
@@ -482,11 +578,11 @@ Reusable widgets built against `docs/design.md`:
   wave height (from `SeaCondition.hourly`) with the 0.6 m/1.2 m choppy/rough
   thresholds from `swim_suitability.dart`, plus wave period and direction per hour
   underneath. Shows "No data for this location." instead of an empty chart when the
-  whole series is null. Pushed from `SeaConditionsRow`'s wave height tile.
+  whole series is null. Pushed from the Home screen's Sea group's wave height tile.
 - `WaterTemperatureDetailScreen` (`detail/water_temperature_detail_screen.dart`) — the
   day's hourly sea surface temperature with four comfort bands (below 16°C cold,
   16-20°C cool, 20-24°C pleasant, above 24°C warm) and a comfort hint; same "no data"
-  handling as the wave height screen. Pushed from `SeaConditionsRow`'s water
+  handling as the wave height screen. Pushed from the Home screen's Sea group's water
   temperature tile.
 - `CurrentDetailScreen` (`detail/current_detail_screen.dart`) — the day's hourly ocean
   current speed as a chart plus a per-hour direction arrow strip, and a prominent
@@ -495,7 +591,7 @@ Reusable widgets built against `docs/design.md`:
   (`driftOutWarningSpeedKmh`, from NOAA swimmer-safety guidance). With no beach
   geometry or direction data, the status line says so instead of inventing a shore
   relation; names Open-Meteo's ocean current grid as coarse/often empty near shore
-  when there's no data at all. Pushed from `SeaConditionsRow`'s current speed/
+  when there's no data at all. Pushed from the Home screen's Current group's speed/
   direction tiles.
 
 Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
@@ -507,17 +603,21 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
 - `main()` — initializes Flutter bindings, loads `SharedPreferences`, creates one
   shared `http.Client`, builds a `NearbyBeachesProvider` (`OverpassService` +
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, a
-  `PlaceSearchProvider` (`GeocodingService`), and a `DepthProvider` (#217:
-  `BathymetryService` + `DepthCache`); also builds the `MarineProvider`/
-  `WeatherProvider` instances here (rather than leaving it to `MarineApp`'s default)
-  so it can start a `NotificationService` and a `ConditionAlertDispatcher` listening
-  to those same instances before `runApp`, then runs `MarineApp` with all of them.
+  `PlaceSearchProvider` (`GeocodingService`), a `DepthProvider` (#217:
+  `BathymetryService` + `DepthCache`), a `DeviceLocationService` (#254:
+  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` (#254:
+  `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`); also builds the
+  `MarineProvider`/`WeatherProvider` instances here (rather than leaving it to
+  `MarineApp`'s default) so it can start a `NotificationService` and a
+  `ConditionAlertDispatcher` listening to those same instances before `runApp`, then
+  runs `MarineApp` with all of them.
 - `MarineApp` — the root widget. Creates `MarineProvider`/`WeatherProvider` via
   `MultiProvider`/`ChangeNotifierProvider` and hosts `HomeScreen` inside a
   `MaterialApp`, forwarding the `UnitPreferencesProvider`/`NearbyBeachesProvider`/
-  `PlaceSearchProvider` passed into `main()`. Every optional provider defaults to
-  `null`, so existing widget tests that construct `MarineApp` without them still
-  render the pre-wiring layout.
+  `PlaceSearchProvider`/`DeviceLocationService`/`ReverseGeocodingService` passed into
+  `main()`. Every optional provider/service defaults to `null`, so existing widget
+  tests that construct `MarineApp` without them still render the pre-wiring layout
+  (for `DeviceLocationService`: no "Use my location" entry at all).
 
 ## State flow
 
@@ -527,12 +627,12 @@ calls `WeatherProvider.fetchData` and `NearbyBeachesProvider.pickLocation` for t
 selected location (post-frame, to avoid notifying an ancestor mid-build).
 `WeatherProvider`/`MarineProvider` are `ChangeNotifier`s updated through their
 repository → service → Open-Meteo API chain; `HomeScreen` listens to both (plus
-`UnitPreferencesProvider` and `NearbyBeachesProvider`, the latter so the Sea section's
-shore-relation bearing appears once beaches resolve) and rebuilds on change.
+`UnitPreferencesProvider` and `NearbyBeachesProvider`, the latter so the "Current"
+group's shore-relation bearing appears once beaches resolve) and rebuilds on change.
 `MarineProvider.fetchData` is **not** called on initial load — only on pull-to-refresh
-or a fresh location pick — so `SwimSuggestionPill`'s wave-height input and
-`SeaConditionsRow` are typically absent until one of those happens; `MarineProvider` is
-otherwise used for the initial loading/error shell.
+or a fresh location pick — so `SwimSuggestionPill`'s wave-height input and the Sea/
+Current groups' marine-driven tiles are typically "No data" until one of those
+happens; `MarineProvider` is otherwise used for the initial loading/error shell.
 
 Tapping the map (or picking a place via the map card's own search icon) calls
 `HomeScreen._handleLocationPicked`: it updates the selected location/place name
@@ -561,6 +661,22 @@ every update it scores a `SwimVerdict` and, through `NotificationService`, fires
 local notification whenever `ConditionAlertService` says the verdict just turned
 favorable for the currently selected location.
 
+Issue #254: tapping the map card overflow menu's "Use my location" entry calls
+`HomeScreen._handleUseMyLocation`, the only path that ever calls
+`DeviceLocationService.getCurrentLocation` — so the only path that can ever trigger a
+location-permission prompt. On success it's handed to `_handleLocationPicked` exactly
+like a map tap (plus an explicit `nearbyBeachesProvider.pickLocation` call, since this
+pick bypasses `LocationMapCard`'s own tap handler); on failure, a `SnackBar` reports
+why and the previous pick stays. Whenever `_handleLocationPicked` receives the bare
+coordinate label (a plain map tap or a device-location pick — a place-search result
+always carries a real name already), it also kicks off
+`ReverseGeocodingService.resolveName` in the background: on success (and only if no
+newer pick has superseded it, via a request-token guard) the header/map-card name is
+upgraded from coordinates to the resolved city name and re-persisted; on failure, the
+coordinate label stands as the permanent name for that pick. `resolveName` itself
+checks `ReverseGeocodeCache` before ever calling the real `geocoding` plugin, so
+picking the same area again is free.
+
 ## External APIs
 
 - **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — single-location
@@ -578,33 +694,47 @@ favorable for the currently selected location.
 - **OpenStreetMap tiles** (`tile.openstreetmap.org`) — used by `flutter_map` in
   `HomeScreen`'s `LocationMapCard`; credited via the `OsmAttribution` widget as
   required by OSM's ODbL license.
-- **EMODnet Bathymetry WMS** (`tiles.emodnet-bathymetry.eu`, `GetFeatureInfo` on the
-  `emodnet:mean_atlas_land` layer) — nearshore depth samples for the water-depth tile
+- **EMODnet Bathymetry WMS** (`ows.emodnet-bathymetry.eu/wms`, `GetFeatureInfo` on the
+  `emodnet:mean` layer) — nearshore depth samples for the water-depth tile
   (#216/#217), queried by `BathymetryService`, cached 90 days by `DepthCache`.
   Credited on the depth detail screen.
+- **Platform location services** (via the `geolocator` plugin) and **platform
+  reverse geocoder** (via the `geocoding` plugin — Apple's `CLGeocoder` on iOS, Google
+  Play Services' geocoder on Android, no API key for either) — issue #254's device
+  position and city name, behind `DeviceLocationService`/`ReverseGeocodingService`.
+  Both only ever run in response to the explicit "Use my location" action or a map
+  tap; resolved names are cached 30 days by `ReverseGeocodeCache`.
 
 ## Tests
 
 - `flutter test` — unit tests for models (`test/data/models/`, including
   `depth_profile_test.dart`/`beach_amenity_test.dart`), mappers, services
   (`test/data/services/`, including `bathymetry_service_test.dart`/
-  `depth_cache_test.dart`), repositories (`test/data/`, including
+  `depth_cache_test.dart`/`device_location_service_test.dart`/
+  `reverse_geocode_cache_test.dart`/`reverse_geocoding_service_test.dart`, #254 —
+  faked via `test/helpers/fake_location.dart`'s `FakeDeviceLocationSource`/
+  `FakePlacemarkLookup`, never touching real GPS hardware or a real platform
+  geocoder channel), repositories (`test/data/`, including
   `notification_service_test.dart`'s fake `LocalNotificationsPlugin`), pure logic
   (`test/logic/`, including `swim_suitability_test.dart`,
-  `condition_alert_service_test.dart`, `forecast_alerts_test.dart` (covering both
-  `buildForecastAlerts`'s daylight filter and `buildNextHourNote`, #229),
-  `pressure_trend_test.dart`, `wave_shore_relation_test.dart`,
+  `condition_alert_service_test.dart`, `forecast_alerts_test.dart` (covering
+  `buildForecastAlerts`'s daylight filter, `buildNextHourNote`, #229, and the #252
+  day-prefixed message wording — including a DST-boundary case and a straddling-
+  midnight window), `pressure_trend_test.dart`, `wave_shore_relation_test.dart`,
   `beach_gear_advisor_test.dart`, `unit_preferences_test.dart`, `uv_band_test.dart`,
   `rain_windows_test.dart`, `transect_test.dart`, `shallow_entry_test.dart`,
-  `shallow_entry_status_test.dart`, `wind_status_test.dart`, `rain_status_test.dart`),
-  provider tests (`test/logic/providers/`, including
+  `shallow_entry_status_test.dart`, `shallow_entry_verdict_test.dart` (#256),
+  `wind_status_test.dart`, `rain_status_test.dart`), provider tests
+  (`test/logic/providers/`, including
   `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
   `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`/
   `ConditionAlertDispatcher`/`DepthProvider`), widget tests for every
-  presentational widget (including `depth_profile_chart_test.dart`) and for
-  `SearchScreen` and all eight metric detail screens (`test/presentation/`, including
-  `test/presentation/screens/detail/`, e.g. `depth_detail_screen_test.dart`), plus
-  `test/widget_test.dart` rendering `HomeScreen` with a fake tile provider, and
+  presentational widget (including `depth_profile_chart_test.dart`,
+  `depth_cross_section_test.dart` (#256) and `stat_tile_group_test.dart` (#251)) and
+  for `SearchScreen` and all eight metric detail screens (`test/presentation/`,
+  including `test/presentation/screens/detail/`, e.g.
+  `depth_detail_screen_test.dart`), plus `test/widget_test.dart` rendering
+  `HomeScreen` with a fake tile provider, and
   `test/tools/test_summary_test.dart` (the CI test-summary tool itself, below). API/
   service tests fake `http.Client` so none hit the network. Shared fixtures/fakes/
   builders live in `test/helpers/` (see `docs/testing.md` for the full conventions:
@@ -619,9 +749,14 @@ favorable for the currently selected location.
   search-icon flow; the search-to-map flow (#214: tapping a beach card in Search
   returns to Home with it selected/highlighted); the water-depth flow (#217: picking
   a beach fetches its nearshore profile and the detail screen shows it); the forecast
-  daylight-filter/next-hour-note flow (#229); and a detail-flow test per metric (tap a
-  stat tile → its detail screen → back). CI runs this on Linux under a virtual
-  display: `xvfb-run -a flutter test integration_test -d linux --reporter expanded`.
+  daylight-filter/next-hour-note flow (#229); the "Use my location" flow (#254: never
+  prompts for permission on launch, selects the device position via a faked
+  `DeviceLocationService` exactly like a map pick, shows its reverse-geocoded name via
+  a faked `ReverseGeocodingService`, and reuses the cached name on a repeat pick; a
+  separate test covers the permission-denied SnackBar); and a detail-flow test per
+  metric (tap a stat tile → its detail screen → back). CI runs this on Linux under a
+  virtual display: `xvfb-run -a flutter test integration_test -d linux --reporter
+  expanded`.
 - `tools/run_tests.sh` (used by both CI and local development) runs `flutter test
   --coverage --concurrency=4 --reporter json` and pipes it through
   `tools/test_summary.dart`

@@ -29,18 +29,20 @@ class BathymetryService {
     this.halfCellDegrees = 0.0006,
   });
 
-  /// EMODnet Bathymetry's public WMS endpoint for the "mean, land-merged"
-  /// DTM layer (~1/16 arc-minute, ~115 m cells) -- see
-  /// https://emodnet.ec.europa.eu/geonetwork/srv/eng/catalog.search#/metadata/eaef2466-d3bb-432a-904b-ff3fcebaad2b
-  /// and the layer's own WMS `GetCapabilities`. No API key is required.
-  static const String defaultBaseUrl =
-      'https://tiles.emodnet-bathymetry.eu/v11/mean_atlas_land/wms';
+  /// EMODnet Bathymetry's public OGC WMS endpoint (~1/16 arc-minute, ~115 m
+  /// cells), checked live against `GetFeatureInfo` (see issue #216 and
+  /// its follow-up fix). No API key is required. Not
+  /// `tiles.emodnet-bathymetry.eu`: that host serves WMTS tiles and
+  /// answers WMS requests with 403.
+  static const String defaultBaseUrl = 'https://ows.emodnet-bathymetry.eu/wms';
 
-  /// The WMS layer name queried on [defaultBaseUrl]. "mean_atlas_land"
-  /// merges the bathymetry DTM with land elevation, so a single
-  /// `GetFeatureInfo` call can return either a positive (land) or negative
-  /// (sea floor, relative to mean sea level) value -- see [_depthFromRawValue].
-  static const String defaultLayer = 'emodnet:mean_atlas_land';
+  /// The WMS layer name queried on [defaultBaseUrl]. `emodnet:mean` is the
+  /// DTM's mean depth: `GetFeatureInfo` returns a `Depth` property that is
+  /// a signed elevation in meters, negative below sea level and positive on
+  /// land, and an empty feature list outside the dataset's extent -- see
+  /// [_depthFromRawValue]. (`emodnet:mean_atlas_land` is a rendered RGB
+  /// layer with no depth value.)
+  static const String defaultLayer = 'emodnet:mean';
 
   static const String _userAgent =
       'BeachIQ/1.0 (+https://github.com/huseyinsaht/BeachIQ)';
@@ -210,11 +212,13 @@ class BathymetryService {
     return _depthFromRawValue(_extractRawValue(properties));
   }
 
-  /// GeoServer's default raster `GetFeatureInfo` property key is
-  /// `GRAY_INDEX` for a single-band layer, but this tries a few other
-  /// common names too rather than assuming one exact server config.
+  /// The `emodnet:mean` layer reports its value as `Depth`; GeoServer's
+  /// default raster key is `GRAY_INDEX` for a single-band layer. This tries
+  /// both, then a few other common names, rather than assuming one exact
+  /// server config.
   Object? _extractRawValue(Map<String, dynamic> properties) {
     for (final key in const [
+      'Depth',
       'GRAY_INDEX',
       'value',
       'VALUE',
@@ -229,7 +233,7 @@ class BathymetryService {
 
   /// GeoServer's plain-text `GetFeatureInfo` format looks like:
   /// ```
-  /// Results for FeatureType 'emodnet:mean_atlas_land':
+  /// Results for FeatureType 'emodnet:mean':
   ///    GRAY_INDEX = -45.2
   /// ```
   /// or has no `key = value` line at all when there is no feature at that

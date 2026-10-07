@@ -1,6 +1,9 @@
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/logic/shallow_entry.dart';
+import 'package:beachiq/logic/shallow_entry_verdict.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
+import 'package:beachiq/presentation/widgets/depth_cross_section.dart';
 import 'package:beachiq/presentation/widgets/depth_profile_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +18,40 @@ const DepthProfile _gentleProfile = DepthProfile(
     DepthSample(distanceMeters: 200, depthMeters: 1.5),
     DepthSample(distanceMeters: 300, depthMeters: 2.0),
     DepthSample(distanceMeters: 400, depthMeters: 2.5),
+  ],
+);
+
+// depth at 100m (reference distance) is 2.0, between
+// gentleMaxDepthAtReferenceDistanceMeters (1.5) and
+// moderateMaxDepthAtReferenceDistanceMeters (3.0) -> moderate.
+const DepthProfile _moderateProfile = DepthProfile(
+  available: true,
+  samples: [
+    DepthSample(distanceMeters: 0, depthMeters: 0.4),
+    DepthSample(distanceMeters: 100, depthMeters: 2.0),
+    DepthSample(distanceMeters: 200, depthMeters: 2.8),
+  ],
+);
+
+// depth at 100m is 3.2, above moderateMaxDepthAtReferenceDistanceMeters
+// (3.0) -> steep.
+const DepthProfile _steepProfile = DepthProfile(
+  available: true,
+  samples: [
+    DepthSample(distanceMeters: 0, depthMeters: 0.5),
+    DepthSample(distanceMeters: 100, depthMeters: 3.2),
+    DepthSample(distanceMeters: 200, depthMeters: 4.0),
+  ],
+);
+
+// First valid sample (100m) is already deeper than shallowLimitMeters
+// (1.2m) -- no shallow stand-up zone anywhere in this data.
+const DepthProfile _noShallowZoneProfile = DepthProfile(
+  available: true,
+  samples: [
+    DepthSample(distanceMeters: 0),
+    DepthSample(distanceMeters: 100, depthMeters: 2.0),
+    DepthSample(distanceMeters: 200, depthMeters: 2.8),
   ],
 );
 
@@ -86,6 +123,103 @@ void main() {
         find.byType(DepthProfileChart),
       );
       expect(chart.samples, _gentleProfile.samples);
+    });
+
+    testWidgets('renders a DepthCrossSection with the profile\'s samples '
+        'above the numeric chart (issue #256)', (tester) async {
+      await tester.pumpWidget(
+        wrap(const DepthDetailScreen(profile: _gentleProfile)),
+      );
+
+      final crossSection = tester.widget<DepthCrossSection>(
+        find.byType(DepthCrossSection),
+      );
+      expect(crossSection.samples, _gentleProfile.samples);
+    });
+
+    group('issue #256 non-swimmer verdict', () {
+      testWidgets('given a gentle profile, shows the gentle verdict line '
+          'and the approximation caveat', (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _gentleProfile)),
+        );
+
+        expect(
+          find.text(shallowEntryVerdictLine(ShallowEntrySteepness.gentle)),
+          findsOneWidget,
+        );
+        expect(find.text(depthApproximationCaveat), findsOneWidget);
+      });
+
+      testWidgets('given a moderate profile, shows the moderate verdict '
+          'line', (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _moderateProfile)),
+        );
+
+        expect(
+          find.text(shallowEntryVerdictLine(ShallowEntrySteepness.moderate)),
+          findsOneWidget,
+        );
+        expect(find.text(depthApproximationCaveat), findsOneWidget);
+      });
+
+      testWidgets('given a steep profile, shows the steep verdict line', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _steepProfile)),
+        );
+
+        expect(
+          find.text(shallowEntryVerdictLine(ShallowEntrySteepness.steep)),
+          findsOneWidget,
+        );
+        expect(find.text(depthApproximationCaveat), findsOneWidget);
+      });
+
+      testWidgets('given no data at all, shows the unknown verdict line '
+          'instead of a fabricated one', (tester) async {
+        await tester.pumpWidget(const MaterialApp(home: DepthDetailScreen()));
+
+        expect(
+          find.text(shallowEntryVerdictLine(ShallowEntrySteepness.unknown)),
+          findsOneWidget,
+        );
+        expect(find.text(depthApproximationCaveat), findsOneWidget);
+      });
+
+      testWidgets(
+        'given a profile whose first valid sample is already deeper than '
+        'the shallow limit, shows the "no shallow zone" message instead of '
+        'an invented stand-up distance',
+        (tester) async {
+          await tester.pumpWidget(
+            wrap(const DepthDetailScreen(profile: _noShallowZoneProfile)),
+          );
+
+          expect(find.text(noShallowZoneMessage), findsOneWidget);
+          expect(find.byKey(const Key('depth-stand-up-label')), findsNothing);
+          // The deep-from label is independent of the shallow zone and
+          // still shows.
+          expect(
+            find.byKey(const Key('depth-deep-from-label')),
+            findsOneWidget,
+          );
+        },
+      );
+
+      testWidgets('given a gentle profile with a real shallow zone, shows the '
+          'stand-up and deep-from distance labels, never the "no shallow '
+          'zone" message', (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _gentleProfile)),
+        );
+
+        expect(find.byKey(const Key('depth-stand-up-label')), findsOneWidget);
+        expect(find.byKey(const Key('depth-deep-from-label')), findsOneWidget);
+        expect(find.text(noShallowZoneMessage), findsNothing);
+      });
     });
 
     testWidgets('shows the explanation text and the EMODnet attribution '

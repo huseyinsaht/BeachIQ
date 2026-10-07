@@ -67,11 +67,16 @@ LatLngBounds? beachBoundsToFit(Beach? beach) {
 }
 
 /// Formats [point] as a short "lat°N/S, lon°E/W" label, e.g.
-/// `"38.3220°N, 26.3260°E"` — the display name reported by a map tap when
-/// no real place name is known. `GeocodingService` (#156) only supports
-/// forward name search, not reverse geocoding, so a tapped point (as
-/// opposed to one chosen from a name search) can never resolve to a real
-/// place name and always falls back to this format instead.
+/// `"38.3220°N, 26.3260°E"` — the display name reported by a map tap
+/// immediately, before any real name is known. `GeocodingService` (#156)
+/// only supports forward name search, not reverse geocoding, so this
+/// widget itself still has no way to resolve a tapped point to a real
+/// place name — that now happens one layer up, in `HomeScreen`, via
+/// `ReverseGeocodingService` (#254): a bare map tap or a device-location
+/// pick is reported with this coordinate label first (so the UI updates
+/// immediately), then upgraded to a real resolved name asynchronously
+/// once/if that lookup succeeds. This format remains the ultimate
+/// fallback whenever reverse geocoding isn't available or fails.
 String formatCoordinates(LatLng point) {
   final latLabel =
       '${point.latitude.abs().toStringAsFixed(4)}°${point.latitude >= 0 ? 'N' : 'S'}';
@@ -135,10 +140,12 @@ class LocationMapCard extends StatefulWidget {
   /// (e.g. `HomeScreen`, #157) can re-fetch its own data and update its
   /// header for the new point. This widget has no access to a real reverse
   /// geocode for the tapped point (`GeocodingService` only supports forward
-  /// name search), so the reported name is always formatted coordinates,
-  /// never a looked-up place name. Optional: when null (the default), a tap
-  /// still forwards to [nearbyBeachesProvider] as before, it just doesn't
-  /// notify a parent of the new point.
+  /// name search), so the reported name is always formatted coordinates
+  /// first — `HomeScreen` is the one that, given a `ReverseGeocodingService`
+  /// (#254), asynchronously upgrades it to a real looked-up name without
+  /// blocking anything else this callback kicks off. Optional: when null
+  /// (the default), a tap still forwards to [nearbyBeachesProvider] as
+  /// before, it just doesn't notify a parent of the new point.
   final void Function(LatLng point, String displayName)? onLocationPicked;
 
   /// A beach picked elsewhere (e.g. tapped in `SearchScreen`'s results,

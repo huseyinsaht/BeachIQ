@@ -4,8 +4,10 @@ import '../../../data/models/beach.dart';
 import '../../../data/models/depth_profile.dart';
 import '../../../logic/shallow_entry.dart';
 import '../../../logic/shallow_entry_status.dart';
+import '../../../logic/shallow_entry_verdict.dart';
 import '../../../logic/unit_preferences.dart';
 import '../../../logic/wave_shore_relation.dart';
+import '../../widgets/depth_cross_section.dart';
 import '../../widgets/depth_profile_chart.dart';
 import '../../widgets/metric_detail_scaffold.dart';
 // `driftOutWarningSpeedKmh` (issue #164's drift-out threshold) is defined
@@ -23,8 +25,9 @@ const Color _warning = Color(0xFFEF5350);
 /// dataset's catalog entry says not to use it for navigation.
 const String depthDataAttribution =
     'Depth data: EMODnet Bathymetry (https://emodnet.ec.europa.eu/en/), '
-    '© European Union, CC BY 4.0. ~115 m grid resolution. Approximate, not '
-    'for navigation.';
+    '© European Union, CC BY 4.0. EMODnet Digital Bathymetry (DTM 2024), '
+    'completed with GEBCO 2024 and IBCAO V4 where survey data is missing. '
+    '~115 m grid resolution. Approximate, not for navigation.';
 
 String _formatDepth(double? meters, UnitSystem unitSystem) =>
     meters == null ? '--' : formatDepthMeters(meters, unitSystem);
@@ -122,6 +125,23 @@ class DepthDetailScreen extends StatelessWidget {
         speed != null &&
         speed >= driftOutWarningSpeedKmh;
 
+    final verdictLine = shallowEntryVerdictLine(classification.steepness);
+    final verdictColor =
+        shallowEntryStatusColor(classification.steepness) ?? _textSecondary;
+    final noShallowZone = hasNoShallowZone(effectiveProfile);
+    final standUpLabel = standUpDistanceLabel(
+      classification,
+      effectiveProfile,
+      unitSystem,
+    );
+    final deepFromLabel = deepFromDistanceLabel(classification, unitSystem);
+    final semanticParts = <String>[
+      verdictLine,
+      if (noShallowZone) noShallowZoneMessage,
+      if (standUpLabel != null) standUpLabel,
+      if (deepFromLabel != null) deepFromLabel,
+    ];
+
     return MetricDetailScaffold(
       title: 'Water depth',
       heroValue: formatShallowEntrySummary(classification, unitSystem),
@@ -130,11 +150,62 @@ class DepthDetailScreen extends StatelessWidget {
       chart: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          DepthProfileChart(
+          // Issue #256, part 2: one plain-language non-swimmer verdict,
+          // always paired with the approximation caveat, at the top of
+          // this screen's own distinctive content block.
+          Text(
+            verdictLine,
+            key: const Key('depth-verdict-line'),
+            style: TextStyle(
+              color: verdictColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            depthApproximationCaveat,
+            key: Key('depth-verdict-caveat'),
+            style: TextStyle(color: _textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          // Issue #256, part 1: a human-scale side-view cross-section,
+          // sitting above the existing numeric DepthProfileChart below
+          // rather than replacing it.
+          DepthCrossSection(
             samples: effectiveProfile.samples,
             unitSystem: unitSystem,
+            semanticLabel: semanticParts.join('. '),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 10),
+          // Issue #256, part 4: the distance labels, honest about the
+          // data's limits -- a "no shallow zone" case is called out
+          // explicitly instead of ever implying a shallow start that
+          // isn't in the data.
+          if (noShallowZone)
+            const Text(
+              noShallowZoneMessage,
+              key: Key('depth-no-shallow-zone'),
+              style: TextStyle(color: _textSecondary, fontSize: 13),
+            )
+          else if (standUpLabel != null)
+            Text(
+              standUpLabel,
+              key: const Key('depth-stand-up-label'),
+              style: const TextStyle(color: _textSecondary, fontSize: 13),
+            ),
+          if (deepFromLabel != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              deepFromLabel,
+              key: const Key('depth-deep-from-label'),
+              style: const TextStyle(color: _textSecondary, fontSize: 13),
+            ),
+          ],
+          const SizedBox(height: 16),
+          // Issue #256, part 5: the context row stays directly under the
+          // verdict/graphic/labels block above, since non-swimmer
+          // suitability depends on these facts just as much.
           _ContextRow(
             hasLifeguard: beach?.hasLifeguard,
             currentWaveHeightMeters: currentWaveHeightMeters,
@@ -143,6 +214,11 @@ class DepthDetailScreen extends StatelessWidget {
             driftSpeedLabel: speed == null
                 ? null
                 : formatWindSpeed(speed, unitSystem),
+          ),
+          const SizedBox(height: 20),
+          DepthProfileChart(
+            samples: effectiveProfile.samples,
+            unitSystem: unitSystem,
           ),
         ],
       ),

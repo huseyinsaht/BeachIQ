@@ -5,6 +5,11 @@
          prompt is requested once via NotificationService — see
          lib/data/services/notification_service.dart. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Issue #254: city-level ("Use my location" map action) only — no
+         fine location and no background location, requested solely in
+         response to that explicit, opt-in tap. See
+         lib/data/services/device_location_service.dart. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application
         android:label="beachiq"
         android:name="${applicationName}"
