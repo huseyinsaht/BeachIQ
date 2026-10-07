@@ -259,14 +259,59 @@ as part of the same app:
    the metric has one) a short trend line, e.g. Pressure's "Rising — ...".
 3. **Chart slot** — an `HourlyMetricChart`: the day's hourly series as a line (with an optional filled
    band and threshold lines), a "Now" marker, and gaps instead of zeros for any `null` hour.
-   **Water depth (issue #217) deviates here**: it has no hourly/time series at all, so its chart slot is
-   `DepthProfileChart` instead — a distance-vs-depth profile (x = distance from shore, y = depth, drawn
-   increasing *downward*, with horizontal lines at `shallow_entry.dart`'s `shallowLimitMeters`/
-   `deepLimitMeters`) — followed by a context row of plain info facts (lifeguard presence, current wave
-   height, and, only when it applies, the issue #164 drift-out warning), and its explanation paragraph
-   (below) also carries an EMODnet attribution line. Its Min/Max/Now summary row (next) is repurposed to
-   the shallowest/deepest valid reading along the transect and the reading at the classification's own
-   100 m reference distance, since there is no literal "now" for a spatial reading.
+   **Water depth (issue #217, extended by #256) deviates here**: it has no hourly/time series at all, so
+   its chart slot is a stack of several pieces instead, top to bottom:
+   - **Non-swimmer verdict line** (issue #256) — one short, bold, plain-language sentence judging the
+     beach for non-swimmers, derived only from the existing gentle/moderate/steep/unknown classification
+     (`classifyShallowEntry`, `lib/logic/shallow_entry.dart`) — never a new threshold:
+     gentle = "Shallow for a long way out. Easier for non-swimmers." (green, matching the gentle status
+     color), moderate = "Gets deep fairly quickly. Non-swimmers should stay close to shore." (orange),
+     steep = "Drops away quickly. Not suitable for non-swimmers." (red), unknown = "Not enough depth
+     data for this beach." (`text.secondary`). Always immediately followed, same size position, by a
+     fixed caveat in `text.secondary`: "Approximate (~115 m data). Not a safety guarantee. Waves,
+     currents, sandbars and sudden drop-offs are not captured." Both strings live in
+     `lib/logic/shallow_entry_verdict.dart` (`shallowEntryVerdictLine`/`depthApproximationCaveat`) —
+     small pure functions, reusable by a later screen (issue #257) — never duplicated wording. This
+     copy is **owner-reviewable** (safety-adjacent): see the PR that introduced it for the explicit
+     call-out.
+   - **`DepthCrossSection`** (issue #256, `lib/presentation/widgets/depth_cross_section.dart`) — a
+     side-view graphic: water surface on top, the seabed drawn from the transect's real samples, the
+     water column tinted in three horizontal bands reusing the exact same colors as the Home tile's
+     gentle/moderate/steep status (green `<= shallowLimitMeters` "stand-up", orange
+     `shallowLimitMeters`-`deepLimitMeters` "getting deep", red `>= deepLimitMeters` "over your head"),
+     and up to `maxPersonSilhouettes` (3) simple standing-person silhouettes scaled to
+     `referenceAdultHeightMeters` (1.7 m) so depth reads at human scale without needing to read a
+     number — a shallow figure's head/shoulders show above the water line, a figure at a sample deeper
+     than 1.7 m renders fully submerged (dimmed) to read as "over your head". Honesty about the ~115 m
+     grid's limits: only real, non-null `DepthSample`s are ever used to place a seabed point or a
+     person figure (never an invented position), and the seabed line connecting real points is drawn
+     **dashed throughout** — even the segment between two measured points is an inferred approximation,
+     never a surveyed continuous reading, so a solid line would overstate the data's precision. An empty
+     sample list (or a profile with no usable data at all) falls back to the same "No data" placeholder
+     `DepthProfileChart` already uses. The graphic also carries a `Semantics` image label (built from the
+     verdict + distance labels below) so its content reaches assistive technology too, not just sighted
+     users.
+   - **Distance labels** (issue #256, part 4) — plain-language text under the graphic, from
+     `lib/logic/shallow_entry_verdict.dart`'s `standUpDistanceLabel`/`deepFromDistanceLabel`, reading
+     `ShallowEntryClassification.firstShallowExitDistanceMeters`/`.firstDeepDistanceMeters`: "Stand-up
+     water until about X m" and "Deep (2.5 m+) from about Y m" (or a "whole measured distance" variant
+     when a threshold is never crossed within the transect). If the profile's first *valid* sample is
+     already deeper than `shallowLimitMeters` (`hasNoShallowZone`), the stand-up label is replaced with
+     "No shallow stand-up zone in this data (it may exist closer to shore than the data can show)."
+     instead of ever inventing a shallow start — this message, and the verdict/caveat above, never use
+     the word "safe".
+   - **Context row** — unchanged from issue #217: plain info facts (lifeguard presence, current wave
+     height, and, only when it applies, the issue #164 drift-out warning), kept directly under the
+     verdict/graphic/labels block above (issue #256, part 5) since non-swimmer suitability depends on
+     these facts just as much.
+   - **`DepthProfileChart`** — the original distance-vs-depth profile (x = distance from shore, y =
+     depth, drawn increasing *downward*, with horizontal lines at `shallow_entry.dart`'s
+     `shallowLimitMeters`/`deepLimitMeters`) is kept, now sitting below the cross-section as the exact
+     numeric reading for anyone who wants it, rather than being replaced by it.
+
+   The explanation paragraph (below) also carries an EMODnet attribution line. The Min/Max/Now summary
+   row is repurposed to the shallowest/deepest valid reading along the transect and the reading at the
+   classification's own 100 m reference distance, since there is no literal "now" for a spatial reading.
 4. **Min/Max/Now summary row** — three short columns under the chart, label above value, matching the
    stat-grid's label/value styling.
 5. **Explanation paragraph** — one short `text.secondary` paragraph on what the metric means for the
