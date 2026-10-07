@@ -490,7 +490,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(Scaffold), findsOneWidget);
-    expect(find.text('My Location'), findsOneWidget);
+    // The header title (#253) and the map card's own docked location bar
+    // both render the same selected place name.
+    expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
     expect(find.byType(LocationMapCard), findsOneWidget);
     expect(find.byType(StatTile), findsNWidgets(9));
     expect(find.byType(HourlyForecastItem), findsWidgets);
@@ -852,7 +854,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('My Location'), findsNothing);
+    expect(find.text('Çeşme, İzmir'), findsNothing);
 
     // Resolve the pending fetch so no future is left dangling past the test.
     repository.completer.complete(
@@ -883,7 +885,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('My Location'), findsNothing);
+      expect(find.text('Çeşme, İzmir'), findsNothing);
       expect(find.textContaining('boom'), findsOneWidget);
     },
   );
@@ -905,7 +907,9 @@ void main() {
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(find.text('My Location'), findsOneWidget);
+      // The header title (#253) and the map card's own location bar both
+      // show it.
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
       expect(find.byType(StatTile), findsNWidgets(9));
     },
   );
@@ -1042,16 +1046,23 @@ void main() {
       expect(repository.calls, hasLength(1));
       repository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      expect(find.text('My Location'), findsOneWidget);
+      // The header title (#253) and the map card's own location bar both
+      // show it.
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
 
       // A real drag-down gesture over the scroll view, not calling
       // RefreshIndicator.onRefresh directly, so this also catches the
       // gesture itself being broken (e.g. by the content being replaced
-      // mid-drag). Anchored on the 'My Location' text rather than the
-      // scroll view itself: the scroll view's render box spans the whole
-      // screen including the map card, and FlutterMap's own gesture
-      // recognizer would otherwise swallow the drag.
-      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
+      // mid-drag). Anchored on the FIRST 'Çeşme, İzmir' match (the header
+      // title, which comes before the map card's own copy in paint order)
+      // rather than the scroll view itself: the scroll view's render box
+      // spans the whole screen including the map card, and FlutterMap's
+      // own gesture recognizer would otherwise swallow the drag.
+      await tester.fling(
+        find.text('Çeşme, İzmir').first,
+        const Offset(0, 300),
+        1000,
+      );
       await tester.pump();
       // RefreshIndicator only invokes onRefresh once its own arm/snap
       // animation finishes, which takes a few more frames after the drag
@@ -1065,11 +1076,11 @@ void main() {
       // the very gesture that triggered it and reset the scroll position.
       expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.byType(SingleChildScrollView), findsOneWidget);
-      expect(find.text('My Location'), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
 
       repository.calls[1].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      expect(find.text('My Location'), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
     },
   );
 
@@ -1081,10 +1092,14 @@ void main() {
       );
       await tester.pump();
 
-      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
+      await tester.fling(
+        find.text('Çeşme, İzmir').first,
+        const Offset(0, 300),
+        1000,
+      );
       await tester.pumpAndSettle();
 
-      expect(find.text('My Location'), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
     },
   );
 
@@ -1108,7 +1123,9 @@ void main() {
       await tester.pump();
       repository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      expect(find.text('My Location'), findsOneWidget);
+      // The header title (#253) and the map card's own location bar both
+      // show it.
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
 
       // A refresh that fails must not replace already-loaded content with
       // the full-screen error shell (which has no RefreshIndicator to
@@ -1121,7 +1138,7 @@ void main() {
       await refreshFuture;
       await tester.pump();
 
-      expect(find.text('My Location'), findsOneWidget);
+      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
       expect(find.byType(RefreshIndicator), findsOneWidget);
     },
   );
@@ -1591,8 +1608,9 @@ void main() {
         // default. Marine data is never auto-fetched on the initial load
         // (only an explicit refresh/pick triggers it — see
         // HomeScreen._fetchWeatherAndMarine's call sites), so it starts
-        // empty. The place name shows twice (the header subtitle and the
-        // map card's own location bar both render the same selected name).
+        // empty. The place name shows twice (the header title, #253, and
+        // the map card's own location bar both render the same selected
+        // name).
         expect(weatherRepository.calls, hasLength(1));
         expect(marineRepository.calls, isEmpty);
         expect(find.text('27°'), findsOneWidget);
@@ -1767,9 +1785,15 @@ void main() {
         expect(find.byType(HourlyForecastItem), findsNothing);
         expect(find.byType(CircularProgressIndicator), findsWidgets);
         // The header/map card itself is NOT torn down into the full-screen
-        // shell: "My Location" (and the rest of the chrome) stays visible,
-        // only the data sections show loading.
-        expect(find.text('My Location'), findsOneWidget);
+        // shell: the header title (now the newly tapped point's formatted
+        // coordinates, #253 — no reverse geocoding for a bare map tap, see
+        // #254) and the rest of the chrome stay visible, only the data
+        // sections show loading. The old "Çeşme, İzmir" title is long gone
+        // by this point (the pick updates it synchronously, before either
+        // fetch resolves). Both the header title and the map card's own
+        // location bar now show the same formatted coordinates.
+        expect(find.text('Çeşme, İzmir'), findsNothing);
+        expect(find.textContaining('°N'), findsNWidgets(2));
         expect(find.byType(LocationMapCard), findsOneWidget);
 
         // Resolve the new location's fetches.
@@ -1986,8 +2010,14 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('0.5 m'), findsOneWidget);
 
-      // Same (lat, lon) refresh, via a real drag gesture.
-      await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
+      // Same (lat, lon) refresh, via a real drag gesture. Anchored on the
+      // FIRST match (the header title, #253) since the map card's own
+      // location bar renders the same place name too.
+      await tester.fling(
+        find.text('Çeşme, İzmir').first,
+        const Offset(0, 300),
+        1000,
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 

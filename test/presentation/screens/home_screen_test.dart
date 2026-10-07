@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
+import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
+import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/rain_status.dart';
 import 'package:beachiq/logic/shallow_entry.dart';
 import 'package:beachiq/logic/shallow_entry_status.dart';
@@ -1037,6 +1040,246 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen header shows the place name, never "My Location" '
+      '(issue #253)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'given the Çeşme first-run default (nothing picked yet), build -> '
+      'the header title is the real place name, "My Location" never '
+      'appears, and the coordinates show as a secondary line underneath '
+      '(the name is a real name, not the coordinates themselves)',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        expect(find.text('My Location'), findsNothing);
+        expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+        expect(find.text('38.3220°N, 26.3260°E'), findsOneWidget);
+      },
+    );
+
+    testWidgets('given a beach picked from Search results, the header title '
+        'becomes the beach name — never "My Location" — with its own '
+        'coordinates shown underneath', (tester) async {
+      final client = FakeHttpClient()
+        ..queueJson(
+          host: 'overpass-api.de',
+          json: {
+            'elements': [
+              {
+                'type': 'way',
+                'id': 1,
+                'tags': {
+                  'natural': 'beach',
+                  'name': 'Fixture Beach',
+                  'addr:city': 'Cesme',
+                  'fee': 'no',
+                },
+                // Two points straddling (38.40, 26.40) so the mapper's
+                // centroid (used as `Beach.latitude`/`.longitude`) lands
+                // exactly on it — makes the expected coordinates below
+                // exact, while still being 2 distinct points (flutter_map
+                // needs a non-zero-area bounds to fit the camera to).
+                'geometry': [
+                  {'lat': 38.39, 'lon': 26.40},
+                  {'lat': 38.41, 'lon': 26.40},
+                ],
+              },
+            ],
+          },
+        )
+        ..queueJson(
+          host: 'marine-api.open-meteo.com',
+          json: [
+            {
+              'current': {
+                'wave_height': 0.5,
+                'wave_direction': 200,
+                'wave_period': 5,
+                'sea_surface_temperature': 24.0,
+              },
+            },
+          ],
+        );
+      final provider = await fakeNearbyBeachesProvider(client: client);
+      addTearDown(provider.dispose);
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(temperature: 27),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          nearbyBeachesProvider: provider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fixture Beach'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('My Location'), findsNothing);
+      // The header title, the map card's docked location bar and the
+      // compact info row below the map all render the same beach name.
+      expect(find.text('Fixture Beach'), findsNWidgets(3));
+      expect(find.text('38.4000°N, 26.4000°E'), findsOneWidget);
+    });
+  });
+
+  group(
+    'HomeScreen header temperature matches Open-Meteo\'s current.temperature_2m '
+    'for the selected point (issue #253)',
+    () {
+      setUp(() {
+        SharedPreferences.setMockInitialValues({});
+      });
+
+      /// Queues a response shaped exactly like a real Open-Meteo `/forecast`
+      /// reply (`current.temperature_2m`, the real field this repository/
+      /// model parse) for the exact (lat, lon) `WeatherApiService` sends,
+      /// so this exercises the real JSON field name end to end rather than
+      /// a `FakeWeatherRepository` handing back an already-built
+      /// `WeatherCondition`.
+      void queueTemperature(
+        FakeHttpClient client,
+        double lat,
+        double lon,
+        double temperatureCelsius,
+      ) {
+        client.queueJson(
+          matcher: (request) =>
+              request.url.host == 'api.open-meteo.com' &&
+              request.url.queryParameters['latitude'] == lat.toString() &&
+              request.url.queryParameters['longitude'] == lon.toString(),
+          json: {
+            'current': {
+              'temperature_2m': temperatureCelsius,
+              'wind_speed_10m': 5.0,
+              'weather_code': 0,
+            },
+          },
+        );
+      }
+
+      testWidgets('given three different points at different times of day (two '
+          'daytime fixtures, one evening fixture), the header shows each '
+          "point's own real current.temperature_2m after its fetch, never a "
+          'previous pick\'s value — ruling out #213\'s stale-value failure '
+          'mode for the real Open-Meteo field, not a canned WeatherCondition', (
+        tester,
+      ) async {
+        final client = FakeHttpClient();
+        // HomeScreen's initState auto-fetches the Çeşme first-run default
+        // on mount; queued so that fetch has somewhere to resolve to
+        // before the test's own explicit picks below.
+        queueTemperature(client, 38.3220, 26.3260, 21.0);
+        final weatherProvider = WeatherProvider(
+          WeatherRepository(WeatherApiService()),
+        );
+
+        await http.runWithClient(() async {
+          await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+          expect(find.text('21°'), findsOneWidget);
+
+          // Point A: a daytime fixture at a different location.
+          queueTemperature(client, 36.8, 30.7, 31.0);
+          await weatherProvider.fetchData(36.8, 30.7);
+          await tester.pumpAndSettle();
+          expect(find.text('31°'), findsOneWidget);
+          expect(find.text('21°'), findsNothing);
+
+          // Point B: an evening fixture at a third, different location —
+          // this is the owner's actual complaint (a steady 19-20°C every
+          // evening): the real cause is the fixed Çeşme default being
+          // shown under a misleading "My Location" label (fixed above),
+          // not a bug in this fetch-to-display path, which this proves
+          // reflects whatever point/time Open-Meteo itself returns.
+          queueTemperature(client, 41.0, 29.0, 19.0);
+          await weatherProvider.fetchData(41.0, 29.0);
+          await tester.pumpAndSettle();
+          expect(find.text('19°'), findsOneWidget);
+          expect(find.text('31°'), findsNothing);
+
+          // Point C: back to a daytime fixture at yet another location —
+          // proves the previous evening value doesn't linger either.
+          queueTemperature(client, 37.9, 27.3, 26.0);
+          await weatherProvider.fetchData(37.9, 27.3);
+          await tester.pumpAndSettle();
+          expect(find.text('26°'), findsOneWidget);
+          expect(find.text('19°'), findsNothing);
+
+          // Each fetch really did carry its own point: the 3 explicit
+          // picks plus the initial default are 4 distinct requests.
+          final forecastRequests = client.requests
+              .where((r) => r.url.host == 'api.open-meteo.com')
+              .toList();
+          expect(forecastRequests, hasLength(4));
+          expect(forecastRequests.last.url.queryParameters['latitude'], '37.9');
+          expect(
+            forecastRequests.last.url.queryParameters['longitude'],
+            '27.3',
+          );
+        }, () => client);
+      });
+
+      testWidgets(
+        'a newer pick\'s real Open-Meteo fetch resolving before an older, '
+        'still-in-flight one shows the NEWER point\'s temperature and is '
+        'never overwritten once the older one belatedly resolves (#213)',
+        (tester) async {
+          final client = FakeHttpClient();
+          queueTemperature(client, 38.3220, 26.3260, 21.0);
+          final weatherProvider = WeatherProvider(
+            WeatherRepository(WeatherApiService()),
+          );
+
+          await http.runWithClient(() async {
+            await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+            expect(find.text('21°'), findsOneWidget);
+
+            // The OLDER request is queued with a delay so it resolves only
+            // after the newer one below, simulating two overlapping picks
+            // completing out of order.
+            client.queueResponse(
+              matcher: (request) =>
+                  request.url.host == 'api.open-meteo.com' &&
+                  request.url.queryParameters['latitude'] == '10.0' &&
+                  request.url.queryParameters['longitude'] == '10.0',
+              body:
+                  '{"current": {"temperature_2m": 99.0, '
+                  '"wind_speed_10m": 1.0, "weather_code": 0}}',
+              headers: const {'content-type': 'application/json'},
+              delay: const Duration(milliseconds: 50),
+            );
+            final olderFetch = weatherProvider.fetchData(10.0, 10.0);
+
+            queueTemperature(client, 20.0, 20.0, 31.0);
+            final newerFetch = weatherProvider.fetchData(20.0, 20.0);
+
+            await newerFetch;
+            await tester.pumpAndSettle();
+            expect(find.text('31°'), findsOneWidget);
+
+            // The older request finally resolves, but must not overwrite
+            // the newer pick's already-displayed real value.
+            await olderFetch;
+            await tester.pumpAndSettle();
+            expect(find.text('31°'), findsOneWidget);
+            expect(find.text('99°'), findsNothing);
+          }, () => client);
+        },
+      );
+    },
+  );
 }
 
 /// A [MarineRepository] whose first call succeeds (seeding "the previous
