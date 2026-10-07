@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.9] - 2026-10-07
+
 ### Added
 
 - "Use my location": an opt-in device-location pick (`DeviceLocationService`,
