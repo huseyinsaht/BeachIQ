@@ -5,6 +5,55 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- "Use my location": an opt-in device-location pick (`DeviceLocationService`,
+  wrapping the `geolocator` plugin's coarse/city-level fix) in the map card's
+  overflow menu — the only action that can ever show a location-permission prompt,
+  never on app launch. A successful pick is reverse-geocoded in the background to a
+  short place name (`ReverseGeocodingService`, cached 30 days by
+  `ReverseGeocodeCache`); a failure keeps the previous location and shows a short
+  message instead (#262)
+- Water depth detail screen: a bold plain-language non-swimmer verdict sentence
+  (e.g. "Gets deep fairly quickly. Non-swimmers should stay close to shore.") and a
+  human-scale side-view cross-section graphic — depth-tinted water bands, a dashed
+  seabed line through the real measured points, and a couple of standing-person
+  silhouettes for scale — shown above the existing numeric depth-vs-distance chart
+  (#261)
+- Additional test coverage for the `unableToDetermine` location-permission case in
+  `DeviceLocationService` (#263)
+
+### Changed
+
+- Home's 2×2 stat grid and its separate "Sea" section are merged into a single 3×3
+  grid of nine equally-sized tiles in three labelled groups — Sea (wave height,
+  water temperature, water depth), Current (current speed/direction, wave
+  direction), Air (wind speed, rain chance, UV index) (#259)
+- Home's header now shows the selected location's real place name as its primary
+  title instead of a hard-coded "My Location" label, with the coordinates shown
+  underneath only when they add information the name doesn't already (#260)
+- The EMODnet Bathymetry attribution line on the water-depth detail screen now
+  follows EMODnet's own terms of use (CC BY 4.0, EU ownership, not for navigation)
+  and names the underlying dataset (EMODnet Digital Bathymetry DTM 2024, completed
+  with GEBCO 2024/IBCAO V4 where survey data is missing) (#248)
+- Pinned the Android NDK to 27.0.12077973, which several plugins
+  (`flutter_local_notifications`, `path_provider_android`,
+  `shared_preferences_android`, `url_launcher_android`) require, stopping a
+  build-time warning (#249)
+
+### Fixed
+
+- `BathymetryService` now queries EMODnet Bathymetry's real OGC WMS endpoint
+  (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer) instead of a WMTS tile
+  host that answered every request with an HTTP 403 — the water-depth tile had been
+  showing "No data" for every location (#255)
+- A forecast alert whose window falls on a later calendar day (e.g. an evening
+  session where only tomorrow's transition is left) is now prefixed with "tomorrow"
+  or a weekday name instead of reading as a bare, already-past-looking hour (#258)
+- Flaky Home integration tests: the boot/navigation tests now inject fixture
+  `WeatherProvider`/`MarineProvider` instances instead of depending on a real,
+  possibly-still-pending network fetch (#250)
+
 ## [2026.10.8] - 2026-10-06
 
 ### Added
