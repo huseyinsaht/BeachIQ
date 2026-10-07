@@ -538,6 +538,261 @@ void main() {
     });
   });
 
+  group('buildForecastAlerts day-prefixed messages (issue #252)', () {
+    test('given now is 20:00 and the only transition left is tomorrow\'s, '
+        'buildForecastAlerts -> the message says "tomorrow" instead of a '
+        'bare, past-looking hour', () {
+      // Reproduces the issue as reported: an evening `now`, with an hourly
+      // clear-to-overcast transition at 14:00 the next day — after today's
+      // sunset, that next-day window is the only one left (see the #229
+      // daylight filter), and the message must say "tomorrow" rather than
+      // a bare "around 14:00" that reads as already in the past.
+      final evening = DateTime(2024, 1, 1, 20);
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(
+            time: DateTime(2024, 1, 2, 14),
+            weatherCode: 1, // mainly clear
+          ),
+          aWeatherHourly(
+            time: DateTime(2024, 1, 2, 15),
+            weatherCode: 61, // rain -> overcast-or-worse
+          ),
+        ],
+        sea: const [],
+        daylight: [
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 1, 6),
+            sunset: DateTime(2024, 1, 1, 20, 30),
+          ),
+          aDaylightWindow(
+            sunrise: DateTime(2024, 1, 2, 6),
+            sunset: DateTime(2024, 1, 2, 20, 30),
+          ),
+        ],
+        now: evening,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Clouds moving in tomorrow around 14:00, sky will close in by '
+        '15:00.',
+      );
+      expect(alerts.single.message, contains('tomorrow around 14:00'));
+      // Never a bare "around 14:00" with no day wording.
+      expect(alerts.single.message, isNot(contains('in around 14:00')));
+    });
+
+    test('given the alert\'s window is today, buildForecastAlerts -> no day '
+        'prefix is added (unchanged bare-hour wording)', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: h(13), weatherCode: 1),
+          aWeatherHourly(time: h(14), weatherCode: 61),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Clouds moving in around 13:00, sky will close in by 14:00.',
+      );
+    });
+
+    test('given the window is two or more days out, buildForecastAlerts -> '
+        'the message is prefixed with the weekday name instead of '
+        '"tomorrow"', () {
+      // `now` is Monday 2024-01-01; the window below is Wednesday
+      // 2024-01-03, i.e. the day after tomorrow.
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 3, 9), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 3, 10), windSpeed: 45),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind crosses ${highWindSpeedKmh.round()} km/h Wednesday between '
+        '09:00 and 10:00 — strong wind expected.',
+      );
+    });
+
+    test('given a window that straddles midnight into tomorrow, '
+        'buildForecastAlerts -> each side of "between" gets its own day '
+        'word so neither hour reads as today\'s', () {
+      // No daylight filtering here (empty `daylight`), so a window
+      // spanning 23:00 -> 00:00 can still occur.
+      final straddling = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), windSpeed: 16),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(straddling, hasLength(1));
+      expect(
+        straddling.single.message,
+        'Wind picks up between 23:00 and tomorrow 00:00.',
+      );
+    });
+
+    test('given a window entirely on tomorrow (both hours the same day), '
+        'buildForecastAlerts -> the day word is said once, not twice', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 2, 9), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 10), windSpeed: 16),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind picks up tomorrow between 09:00 and 10:00.',
+      );
+    });
+
+    test('given every other alert type (waves, rain, current), '
+        'buildForecastAlerts -> the same day-prefix wording is applied, '
+        'since they all share _messageFor', () {
+      final evening = DateTime(2024, 1, 1, 20);
+
+      final waves = buildForecastAlerts(
+        weather: const [],
+        sea: [
+          aSeaHourly(time: DateTime(2024, 1, 2, 9), waveHeight: 0.2),
+          aSeaHourly(time: DateTime(2024, 1, 2, 10), waveHeight: 0.5),
+        ],
+        now: evening,
+      );
+      expect(waves.single.message, contains('tomorrow between'));
+
+      final rain = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(
+            time: DateTime(2024, 1, 2, 9),
+            rainChancePercent: moderateRainChancePercent - 5,
+          ),
+          aWeatherHourly(
+            time: DateTime(2024, 1, 2, 10),
+            rainChancePercent: moderateRainChancePercent + 5,
+          ),
+        ],
+        sea: const [],
+        now: evening,
+      );
+      expect(rain.single.message, contains('tomorrow between'));
+
+      final current = buildForecastAlerts(
+        weather: const [],
+        sea: [
+          aSeaHourly(time: DateTime(2024, 1, 2, 9), currentVelocity: 1.0),
+          aSeaHourly(time: DateTime(2024, 1, 2, 10), currentVelocity: 3.5),
+        ],
+        now: evening,
+      );
+      expect(current.single.message, contains('tomorrow between'));
+    });
+
+    test('given a transition entirely in the past relative to now, even on '
+        'a later calendar day, buildForecastAlerts -> still never shows it '
+        '(day-prefixing never resurrects a past window)', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 2, 9), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 10), windSpeed: 45),
+        ],
+        sea: const [],
+        // Already past tomorrow 10:00 — both hours are in the past.
+        now: DateTime(2024, 1, 2, 11),
+      );
+
+      expect(alerts, isEmpty);
+    });
+
+    test('given a clouds window that straddles midnight into tomorrow, '
+        'buildForecastAlerts -> the "sky will close in by" side gets its '
+        'own day word too, not just the "moving in" side', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), weatherCode: 1),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), weatherCode: 61),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Clouds moving in around 23:00, sky will close in by tomorrow '
+        '00:00.',
+      );
+    });
+
+    test("given now is right at a US spring-forward DST boundary (2024's "
+        'started 2024-03-10, where local wall-clock time only advances 23 '
+        'hours from one midnight to the next), buildForecastAlerts -> '
+        'still says "tomorrow" for the very next day, not a weekday name '
+        '(calendar-date comparison, not a 24h-duration one)', () {
+      // Codifies the fix for a review comment on this PR: `_dayPhrase` used
+      // to compare local-midnight `DateTime`s with `Duration.inDays`, which
+      // is exactly 24h-wide; on a spring-forward day the real gap between
+      // local midnights is 23 wall-clock hours, so `inDays` would read `0`
+      // and mislabel tomorrow with its weekday name instead. `now` here is
+      // deliberately on the DST boundary date itself.
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 3, 11, 9), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 3, 11, 10), windSpeed: 16),
+        ],
+        sea: const [],
+        now: DateTime(2024, 3, 10, 8),
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind picks up tomorrow between 09:00 and 10:00.',
+      );
+    });
+
+    test('given the pre-trigger baseline hour falls on the day before now '
+        '(now has just ticked past midnight), buildForecastAlerts -> that '
+        'side says "yesterday" instead of a weekday name that would read '
+        'as a future day', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          // A baseline hour late the previous day and a triggered hour
+          // early today — a data gap wider than the usual 1-hour step,
+          // but the windowing code pairs whatever two entries are
+          // adjacent in the list regardless of the gap between them.
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 1), windSpeed: 16),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 2, 0, 30),
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind picks up between yesterday 23:00 and 01:00.',
+      );
+    });
+  });
+
   group('buildNextHourNote (issue #229)', () {
     test('given a wind crossing between the current hour and the next, '
         'buildNextHourNote -> a note for it', () {
@@ -703,6 +958,22 @@ void main() {
       );
 
       expect(note, isNotNull);
+    });
+
+    test('given the current hour is just before midnight and the next hour '
+        'is just after it, buildNextHourNote -> the message is day-prefixed '
+        '(issue #252) so it does not read as today\'s stale hour', () {
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), windSpeed: 16),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 1, 23, 15),
+      );
+
+      expect(note, isNotNull);
+      expect(note!.message, 'Wind picks up between 23:00 and tomorrow 00:00.');
     });
   });
 }
