@@ -611,6 +611,22 @@ const _weekdayNames = [
 bool _isSameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
+/// The number of calendar days from [b]'s date to [a]'s date (1 when [a] is
+/// the day right after [b]). Deliberately computed via [DateTime.utc] on
+/// just the year/month/day fields rather than `a.difference(b).inDays` on
+/// local midnights: a local-time subtraction crosses a spring-forward
+/// daylight-saving transition as a 23-hour gap (`inDays` truncates that to
+/// `0`, so "tomorrow" would misfire as today's weekday name) and a
+/// fall-back transition as 25 hours (harmless here, but still not the
+/// calendar-day count this is meant to express). UTC has no daylight
+/// saving, so the same year/month/day pair always differs by an exact
+/// 24-hour multiple there.
+int _calendarDayDiff(DateTime a, DateTime b) {
+  final utcA = DateTime.utc(a.year, a.month, a.day);
+  final utcB = DateTime.utc(b.year, b.month, b.day);
+  return utcA.difference(utcB).inDays;
+}
+
 /// Issue #252: the word(s) to insert before a time so a message never reads
 /// as a bare, past-looking hour when [time]'s calendar day differs from
 /// [now]'s — the root cause of "Clouds moving in around 14:00" looking wrong
@@ -621,9 +637,7 @@ bool _isSameDay(DateTime a, DateTime b) =>
 /// `HH:mm` label, and empty otherwise so no double space appears for today.
 String _dayPhrase(DateTime time, DateTime now) {
   if (_isSameDay(time, now)) return '';
-  final today = DateTime(now.year, now.month, now.day);
-  final target = DateTime(time.year, time.month, time.day);
-  if (target.difference(today).inDays == 1) return 'tomorrow ';
+  if (_calendarDayDiff(time, now) == 1) return 'tomorrow ';
   return '${_weekdayNames[time.weekday - 1]} ';
 }
 

@@ -720,6 +720,53 @@ void main() {
 
       expect(alerts, isEmpty);
     });
+
+    test('given a clouds window that straddles midnight into tomorrow, '
+        'buildForecastAlerts -> the "sky will close in by" side gets its '
+        'own day word too, not just the "moving in" side', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), weatherCode: 1),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 0), weatherCode: 61),
+        ],
+        sea: const [],
+        now: now,
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Clouds moving in around 23:00, sky will close in by tomorrow '
+        '00:00.',
+      );
+    });
+
+    test("given now is right at a US spring-forward DST boundary (2024's "
+        'started 2024-03-10, where local wall-clock time only advances 23 '
+        'hours from one midnight to the next), buildForecastAlerts -> '
+        'still says "tomorrow" for the very next day, not a weekday name '
+        '(calendar-date comparison, not a 24h-duration one)', () {
+      // Codifies the fix for a review comment on this PR: `_dayPhrase` used
+      // to compare local-midnight `DateTime`s with `Duration.inDays`, which
+      // is exactly 24h-wide; on a spring-forward day the real gap between
+      // local midnights is 23 wall-clock hours, so `inDays` would read `0`
+      // and mislabel tomorrow with its weekday name instead. `now` here is
+      // deliberately on the DST boundary date itself.
+      final alerts = buildForecastAlerts(
+        weather: [
+          aWeatherHourly(time: DateTime(2024, 3, 11, 9), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 3, 11, 10), windSpeed: 16),
+        ],
+        sea: const [],
+        now: DateTime(2024, 3, 10, 8),
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind picks up tomorrow between 09:00 and 10:00.',
+      );
+    });
   });
 
   group('buildNextHourNote (issue #229)', () {
