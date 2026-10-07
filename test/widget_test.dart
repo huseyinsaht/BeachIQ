@@ -25,7 +25,6 @@ import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/hourly_forecast_item.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
-import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
 import 'package:flutter/material.dart';
@@ -493,7 +492,7 @@ void main() {
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('My Location'), findsOneWidget);
     expect(find.byType(LocationMapCard), findsOneWidget);
-    expect(find.byType(StatTile), findsNWidgets(4));
+    expect(find.byType(StatTile), findsNWidgets(9));
     expect(find.byType(HourlyForecastItem), findsWidgets);
     expect(find.text('Now'), findsOneWidget);
   });
@@ -773,7 +772,7 @@ void main() {
 
       expect(find.byType(Scaffold), findsOneWidget);
       expect(find.text('--°'), findsWidgets);
-      expect(find.byType(StatTile), findsNWidgets(4));
+      expect(find.byType(StatTile), findsNWidgets(9));
       expect(find.byType(HourlyForecastItem), findsNothing);
     },
   );
@@ -796,7 +795,7 @@ void main() {
     expect(weatherProvider.error, isNotNull);
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('--°'), findsWidgets);
-    expect(find.byType(StatTile), findsNWidgets(4));
+    expect(find.byType(StatTile), findsNWidgets(9));
   });
 
   testWidgets('HomeScreen built the same way MarineApp composes it (inside the '
@@ -907,7 +906,7 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('My Location'), findsOneWidget);
-      expect(find.byType(StatTile), findsNWidgets(4));
+      expect(find.byType(StatTile), findsNWidgets(9));
     },
   );
 
@@ -1416,36 +1415,53 @@ void main() {
       expect(nearbyBeachesProvider.status, NearbyBeachesStatus.loaded);
     });
 
-    testWidgets('given no nearby beaches, HomeScreen passes a null '
-        'seawardBearingDegrees to SeaConditionsRow (never a fabricated one)', (
-      WidgetTester tester,
-    ) async {
-      final marineProvider = await aLoadedMarineProvider(
-        SeaCondition(currentDirection: 90),
-      );
-      addTearDown(marineProvider.dispose);
+    /// The exact wording `home_screen.dart`'s private `_shoreRelationLabel`
+    /// produces for [relation] — duplicated here (rather than exported)
+    /// since it's the Current-direction tile's own literal copy, the same
+    /// way other tests in this file assert on literal formatted strings.
+    String expectedShoreRelationLabel(ShoreRelation relation) {
+      switch (relation) {
+        case ShoreRelation.towardShore:
+          return '(towards shore)';
+        case ShoreRelation.awayFromShore:
+          return '(away from shore — stay close!)';
+        case ShoreRelation.alongShore:
+          return '(along shore)';
+      }
+    }
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: HomeScreen(
-            tileProvider: _FakeTileProvider(),
-            marineProvider: marineProvider,
-            // No nearbyBeachesProvider at all -> no beach to derive a
-            // bearing from.
+    testWidgets(
+      'given no nearby beaches, the current-direction tile shows no shore '
+      'relation (never a fabricated one)',
+      (WidgetTester tester) async {
+        final marineProvider = await aLoadedMarineProvider(
+          SeaCondition(currentDirection: 90),
+        );
+        addTearDown(marineProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: HomeScreen(
+              tileProvider: _FakeTileProvider(),
+              marineProvider: marineProvider,
+              // No nearbyBeachesProvider at all -> no beach to derive a
+              // bearing from.
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      final row = tester.widget<SeaConditionsRow>(
-        find.byType(SeaConditionsRow),
-      );
-      expect(row.seawardBearingDegrees, isNull);
-    });
+        final currentDirectionTile = tester.widget<StatTile>(
+          find.widgetWithText(StatTile, 'Current direction'),
+        );
+        expect(currentDirectionTile.statusLabel, isNull);
+      },
+    );
 
     testWidgets(
       'given a nearby beach with geometry and amenities, HomeScreen derives '
-      'its seaward bearing and passes it to SeaConditionsRow',
+      'its seaward bearing and the current-direction tile shows the '
+      'matching shore-relation label',
       (WidgetTester tester) async {
         final nearbyBeachesProvider =
             _fixtureNearbyBeachesProviderWithAmenity();
@@ -1471,11 +1487,19 @@ void main() {
           nearbyBeachesProvider.beaches.first,
         );
         expect(expectedBearing, isNotNull);
-
-        final row = tester.widget<SeaConditionsRow>(
-          find.byType(SeaConditionsRow),
+        final expectedRelation = classifyDirection(
+          degrees: 90,
+          convention: DirectionConvention.flowingToward,
+          seawardBearingDegrees: expectedBearing!,
         );
-        expect(row.seawardBearingDegrees, expectedBearing);
+
+        final currentDirectionTile = tester.widget<StatTile>(
+          find.widgetWithText(StatTile, 'Current direction'),
+        );
+        expect(
+          currentDirectionTile.statusLabel,
+          expectedShoreRelationLabel(expectedRelation),
+        );
       },
     );
 
@@ -1518,11 +1542,19 @@ void main() {
         );
         final expectedBearing = seawardBearingFromGeometry(nearestBeach);
         expect(expectedBearing, isNotNull);
-
-        final row = tester.widget<SeaConditionsRow>(
-          find.byType(SeaConditionsRow),
+        final expectedRelation = classifyDirection(
+          degrees: 90,
+          convention: DirectionConvention.flowingToward,
+          seawardBearingDegrees: expectedBearing!,
         );
-        expect(row.seawardBearingDegrees, expectedBearing);
+
+        final currentDirectionTile = tester.widget<StatTile>(
+          find.widgetWithText(StatTile, 'Current direction'),
+        );
+        expect(
+          currentDirectionTile.statusLabel,
+          expectedShoreRelationLabel(expectedRelation),
+        );
       },
     );
   });
@@ -1705,9 +1737,11 @@ void main() {
         await initialMarineFetch;
         await tester.pumpAndSettle();
 
-        // Sanity: the old place's values are genuinely on screen first.
+        // Sanity: the old place's values are genuinely on screen first —
+        // the old wave height (a marine-driven stat-grid tile, issue #251)
+        // alongside the hourly row.
         expect(find.text('27°'), findsOneWidget);
-        expect(find.byType(SeaConditionsRow), findsOneWidget);
+        expect(find.text('0.5 m'), findsOneWidget);
         expect(find.byType(HourlyForecastItem), findsWidgets);
 
         // Tap the map's own center — flutter_map's lat/lng <-> pixel
@@ -1723,10 +1757,13 @@ void main() {
         expect(weatherRepository.calls, hasLength(2));
         expect(marineRepository.calls, hasLength(2));
         // ...but neither has resolved yet. Even so, in this very same
-        // frame the old place's values must already be gone, replaced by
-        // a loading layout — never shown stale under the new place name.
+        // frame the old place's values must already be gone — the
+        // marine-driven tiles fall back to "No data" rather than keeping
+        // the old wave height under the new place name (issue #251: the
+        // 3x3 grid itself is never hidden, unlike the hourly row below,
+        // since Water depth/Air tiles are independent of this fetch).
         expect(find.text('27°'), findsNothing);
-        expect(find.byType(SeaConditionsRow), findsNothing);
+        expect(find.text('0.5 m'), findsNothing);
         expect(find.byType(HourlyForecastItem), findsNothing);
         expect(find.byType(CircularProgressIndicator), findsWidgets);
         // The header/map card itself is NOT torn down into the full-screen
@@ -1751,7 +1788,7 @@ void main() {
 
         expect(find.text('31°'), findsOneWidget);
         expect(find.text('27°'), findsNothing);
-        expect(find.byType(SeaConditionsRow), findsOneWidget);
+        expect(find.text('1.8 m'), findsOneWidget);
       },
     );
 
@@ -1898,7 +1935,7 @@ void main() {
         marineRepository.calls[0].complete(_fakeSeaCondition());
         await initialMarineFetch;
         await tester.pumpAndSettle();
-        expect(find.byType(SeaConditionsRow), findsOneWidget);
+        expect(find.text('0.5 m'), findsOneWidget);
 
         // A pick for a new, different location whose marine fetch then
         // fails.
@@ -1908,10 +1945,11 @@ void main() {
         marineRepository.calls[1].completeError(Exception('boom'));
         await tester.pumpAndSettle();
 
-        // The old place's Sea row must never reappear next to the failed
-        // new pick, and the failure must be visible — not a silent blank
-        // gap (the pre-fix regression) and not a loading spinner either.
-        expect(find.byType(SeaConditionsRow), findsNothing);
+        // The old place's wave height must never reappear next to the
+        // failed new pick, and the failure must be visible — not a silent
+        // blank gap (the pre-fix regression) and not a loading spinner
+        // either.
+        expect(find.text('0.5 m'), findsNothing);
         expect(find.byType(CircularProgressIndicator), findsNothing);
         expect(
           find.textContaining('Unable to load marine data'),
@@ -1946,7 +1984,7 @@ void main() {
       await tester.pump();
       marineRepository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      expect(find.byType(SeaConditionsRow), findsOneWidget);
+      expect(find.text('0.5 m'), findsOneWidget);
 
       // Same (lat, lon) refresh, via a real drag gesture.
       await tester.fling(find.text('My Location'), const Offset(0, 300), 1000);
@@ -1956,7 +1994,7 @@ void main() {
       expect(marineRepository.calls, hasLength(2));
       // Still visible while the refresh is in flight — a same-location
       // refresh never clears the data like a new pick does.
-      expect(find.byType(SeaConditionsRow), findsOneWidget);
+      expect(find.text('0.5 m'), findsOneWidget);
 
       marineRepository.calls[1].complete(
         SeaCondition(
@@ -1967,7 +2005,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.byType(SeaConditionsRow), findsOneWidget);
+      expect(find.text('0.6 m'), findsOneWidget);
     });
   });
 }

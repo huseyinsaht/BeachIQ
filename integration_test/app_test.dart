@@ -34,7 +34,6 @@ import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
-import 'package:beachiq/presentation/widgets/sea_conditions_row.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -745,7 +744,6 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byType(SeaConditionsRow), findsOneWidget);
     expect(find.text('0.9 m'), findsOneWidget);
     expect(find.text('24°C'), findsOneWidget);
     expect(find.text('from NW'), findsOneWidget);
@@ -1214,7 +1212,7 @@ void main() {
       marineRepository.calls[0].complete(SeaCondition(waveHeight: 0.3));
       await initialMarineFetch;
       await tester.pumpAndSettle();
-      expect(find.byType(SeaConditionsRow), findsOneWidget);
+      expect(find.text('0.3 m'), findsOneWidget);
 
       // First tap ("tap A"): a real gesture at the map's own center.
       await tester.tap(find.byType(FlutterMap));
@@ -1227,7 +1225,7 @@ void main() {
       // Tap A's old values are already gone, replaced by a loading
       // layout, even though tap A's own fetch hasn't resolved yet (#213).
       expect(find.text('27°'), findsNothing);
-      expect(find.byType(SeaConditionsRow), findsNothing);
+      expect(find.text('0.3 m'), findsNothing);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
       // The header/map card itself stays on screen (not torn down into
       // the full-screen shell): only the data sections show loading.
@@ -1253,7 +1251,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('31°'), findsOneWidget);
-      expect(find.byType(SeaConditionsRow), findsOneWidget);
+      expect(find.text('1.8 m'), findsOneWidget);
 
       // Tap A (the older pick) resolving late must be discarded entirely:
       // it must not overwrite tap B's already-displayed data ("last tap
