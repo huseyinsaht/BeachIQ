@@ -767,6 +767,30 @@ void main() {
         'Wind picks up tomorrow between 09:00 and 10:00.',
       );
     });
+
+    test('given the pre-trigger baseline hour falls on the day before now '
+        '(now has just ticked past midnight), buildForecastAlerts -> that '
+        'side says "yesterday" instead of a weekday name that would read '
+        'as a future day', () {
+      final alerts = buildForecastAlerts(
+        weather: [
+          // A baseline hour late the previous day and a triggered hour
+          // early today — a data gap wider than the usual 1-hour step,
+          // but the windowing code pairs whatever two entries are
+          // adjacent in the list regardless of the gap between them.
+          aWeatherHourly(time: DateTime(2024, 1, 1, 23), windSpeed: 5),
+          aWeatherHourly(time: DateTime(2024, 1, 2, 1), windSpeed: 16),
+        ],
+        sea: const [],
+        now: DateTime(2024, 1, 2, 0, 30),
+      );
+
+      expect(alerts, hasLength(1));
+      expect(
+        alerts.single.message,
+        'Wind picks up between yesterday 23:00 and 01:00.',
+      );
+    });
   });
 
   group('buildNextHourNote (issue #229)', () {

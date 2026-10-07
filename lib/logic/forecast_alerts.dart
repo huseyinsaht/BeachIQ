@@ -637,7 +637,13 @@ int _calendarDayDiff(DateTime a, DateTime b) {
 /// `HH:mm` label, and empty otherwise so no double space appears for today.
 String _dayPhrase(DateTime time, DateTime now) {
   if (_isSameDay(time, now)) return '';
-  if (_calendarDayDiff(time, now) == 1) return 'tomorrow ';
+  final dayDiff = _calendarDayDiff(time, now);
+  if (dayDiff == 1) return 'tomorrow ';
+  // [time] can land on a day before [now]'s for the pre-trigger baseline
+  // half of a window (e.g. "start" is 23:00 yesterday when "now" has just
+  // ticked past midnight) — "yesterday" reads correctly there, instead of
+  // a weekday name that would otherwise sound like a future day.
+  if (dayDiff == -1) return 'yesterday ';
   return '${_weekdayNames[time.weekday - 1]} ';
 }
 
