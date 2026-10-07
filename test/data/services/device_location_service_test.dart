@@ -90,6 +90,23 @@ void main() {
       expect(source.requestPermissionCallCount, 0);
     });
 
+    test('given permission is unableToDetermine (the platform could not '
+        'tell), getCurrentLocation -> fails with permissionDenied and never '
+        'requests permission', () async {
+      final source = FakeDeviceLocationSource(
+        permission: LocationPermission.unableToDetermine,
+      );
+      final service = DeviceLocationService(source);
+
+      final result = await service.getCurrentLocation();
+
+      expect(result.isSuccess, isFalse);
+      expect(result.failure, DeviceLocationFailure.permissionDenied);
+      // unableToDetermine is not the `denied` value that triggers a
+      // request, same as deniedForever.
+      expect(source.requestPermissionCallCount, 0);
+    });
+
     test('given permission is granted but obtaining a fix throws, '
         'getCurrentLocation -> fails with unavailable, never propagating the '
         'exception', () async {
