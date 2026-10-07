@@ -83,23 +83,27 @@ hourly row have **no card background at all** — they sit directly on the gradi
 
 Every value on this screen — the header subtitle, hero temperature, condition row, map card, smart
 suggestion pill, Sea section, stat grid and hourly row — belongs to one **selected location** (issue
-#157), never a fixed city: whatever point the user last tapped on the map, restored from
-`SharedPreferences` on app start. Çeşme (38.3220, 26.3260) is only the **first-run default**, shown
-until the user has ever picked a point; after that, the selected location (and its persisted copy)
-always wins. Tapping a new point on the map card re-fetches weather, marine data and nearby beaches for
-it and updates the header/place name immediately — there is no separate "confirm" step. The place name
-shown is a real name when the location came from a search result, otherwise (a bare map tap)
-formatted coordinates (`"38.3220°N, 26.3260°E"`), since reverse geocoding isn't available
-(`GeocodingService`, #156, only supports forward name search).
+#157), never a fixed city: whatever point the user last tapped on the map, picked via "Use my location"
+(#254), or restored from `SharedPreferences` on app start. Çeşme (38.3220, 26.3260) is only the
+**first-run default**, shown until the user has ever picked a point; after that, the selected location
+(and its persisted copy) always wins. Tapping a new point on the map card re-fetches weather, marine data
+and nearby beaches for it and updates the header/place name immediately — there is no separate "confirm"
+step. The place name shown is a real name when the location came from a search result; a bare map tap or
+a device-location pick (#254) instead shows formatted coordinates (`"38.3220°N, 26.3260°E"`) immediately,
+then upgrades to a real reverse-geocoded city name (`ReverseGeocodingService`, e.g. "Çeşme, İzmir") a
+moment later if/when that lookup succeeds — coordinates remain the permanent fallback whenever it fails
+or isn't available.
 
 Top to bottom:
 
 1. **Header row** — location label stack on the left: the selected location's real place name, bold,
    as the primary label (issue #253, Vaen's 2026-10-06 feedback — the mockup's "My Location" placeholder
-   is never shown, since the app has no device GPS at all, see #254, so a fixed label would misname
-   whatever point is actually selected), with a `text.secondary` coordinates subtitle underneath only
-   when it says something the place name doesn't already (a bare map tap's place name already IS its
-   formatted coordinates — no reverse geocoding, #254 — so a second identical line would be redundant).
+   is never shown as a fixed label, since it would misname whatever point is actually selected; the real
+   device-location action added by #254 lives in the map card's overflow menu instead, see below), with a
+   `text.secondary` coordinates subtitle underneath only when it says something the place name doesn't
+   already (a bare map tap/device-location pick starts out with its place name being its own formatted
+   coordinates, before any reverse-geocode upgrade — #254 — so a second identical line would be
+   redundant; once that upgrade lands, the coordinates line adds real information again and reappears).
    Current temperature large on the right, both on `bg.base`.
 2. **Condition row** — condition text ("Partly Cloudy") left, high/low ("H:29° L:15°") right, both
    `text.secondary`, small size.
@@ -115,7 +119,14 @@ Top to bottom:
    error/loaded, the same states `SearchScreen`'s own "Places" section uses), replacing the mockup's
    separate standalone search entry below the map card. Selecting a result recenters the map exactly
    as a map tap would. The overflow menu itself now opens a small sheet with "Beaches" (→
-   `SearchScreen`, the beach list/favorites/filter) and, when available, "Units".
+   `SearchScreen`, the beach list/favorites/filter), when available, "Use my location" (issue
+   #254: device location via `geolocator`, hidden entirely when no `DeviceLocationService` is
+   supplied), and, when available, "Units". "Use my location" is the *only* thing on this screen
+   that can ever show a location-permission prompt — it never happens on app start or any other
+   pick. On success the device position is selected exactly like a map pick (header, weather,
+   marine data, nearby beaches, persistence); on a denied permission or an unavailable/disabled
+   location service, the previous pick stays and a short `SnackBar` explains why, rather than
+   inventing a position or showing an error screen.
    **Amenity markers** (issue #172) — each beach's real toilets/showers/changing rooms/parking/cafes/
    beach clubs/lifeguard posts (`Beach.amenities`, from #171) are drawn as Google-Maps-style pins: a
    filled colored circle with a white glyph and a soft drop shadow (food & drink orange `#F57C00`;

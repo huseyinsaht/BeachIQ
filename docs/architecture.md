@@ -107,6 +107,30 @@ is cached yet.
   favorable" notification. `LocalNotificationsPlugin` is the injectable interface
   (`RealLocalNotificationsPlugin` in production) so tests never touch a real platform
   channel. A no-op if the permission was denied. Used by `ConditionAlertDispatcher`.
+- `DeviceLocationService`/`DeviceLocationSource` (`lib/data/services/device_location_service.dart`)
+  — issue #254's opt-in device-location lookup, backing the map card overflow menu's
+  "Use my location" action. `DeviceLocationSource` is the injectable interface
+  (`GeolocatorDeviceLocationSource` in production, wrapping the `geolocator` plugin's
+  static methods) so tests never touch real GPS hardware or a real permission dialog.
+  `getCurrentLocation` checks location services are on, checks (and, only then, once,
+  in direct response to the caller's own request) requests permission, then reads a
+  `LocationAccuracy.low` (city-level) fix — paired with Android's manifest declaring
+  only `ACCESS_COARSE_LOCATION` (no fine, no background location) and iOS's
+  `NSLocationWhenInUseUsageDescription`. Every failure (services off, permission
+  denied, or any other platform error) resolves to a `DeviceLocationResult.failure`
+  with a `DeviceLocationFailure` reason, never a thrown exception and never a
+  fabricated position.
+- `ReverseGeocodingService`/`PlacemarkLookup` (`lib/data/services/reverse_geocoding_service.dart`)
+  — issue #254's reverse-geocoding lookup, turning a device-location or map-tap pick's
+  coordinates into a short display name (e.g. "Çeşme, İzmir", via `displayNameFromPlacemark`:
+  locality or sub-administrative area, plus region when it adds information). 
+  `PlacemarkLookup` is the injectable interface (`GeocodingPlacemarkLookup` in
+  production, wrapping the `geocoding` plugin's `Geocoding.placemarkFromCoordinates`)
+  so tests never touch a real platform geocoder channel. Results are cached by
+  `ReverseGeocodeCache` (below) so the same area is never looked up twice. Any failure
+  (a `PlatformException` — rate limiting, no Google Play Services — an empty result, or
+  a placemark with no usable name) resolves to `null`, never a made-up name; `HomeScreen`
+  falls back to `location_map_card.dart`'s `formatCoordinates` in that case.
 - `BathymetryService` (`lib/data/services/bathymetry_service.dart`) — fetches a beach's
   nearshore depth profile (#216) from EMODnet Bathymetry's public WMS `GetFeatureInfo`
   endpoint (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer, no API
@@ -148,6 +172,14 @@ keyed by a coarse grid cell (`gridSize` degrees, default 0.001°, close to EMODn
 an expired entry is simply treated as a miss and re-fetched, there is no
 stale-while-revalidate step. Only an `available` profile is cached, so a transient
 failure is retried on the next call rather than remembered for 90 days.
+
+### `lib/data/services/reverse_geocode_cache.dart`
+
+`ReverseGeocodeCache` — a persistent (`SharedPreferences`-backed) cache of
+reverse-geocoded display names (#254), keyed by a coarse grid cell (`gridSize`
+degrees, default 0.01°, ~1.1km) with a 30-day TTL — mirroring `DepthCache`'s "an
+expired entry is simply treated as a miss and re-fetched" pattern. Only a non-empty
+name is cached, so a failed lookup is retried on the next call rather than remembered.
 
 ### `lib/logic`
 
@@ -438,7 +470,22 @@ Reusable widgets built against `docs/design.md`:
   beach's seaward bearing feeds `SeaConditionsRow`'s shore-relation labels, and the
   same beach (`isSameBeach`-compared) is what `DepthProvider.fetchForBeach` is called
   with for the water-depth tile. A beach picked from Search is rendered as a compact
-  `BeachResultCard`-based info row below the map.
+  `BeachResultCard`-based info row below the map. Issue #254: given a
+  `DeviceLocationService`, the map card overflow menu also shows a "Use my location"
+  entry (hidden entirely without one) — the *only* thing that can ever trigger a
+  location permission prompt, and only because the user just tapped it. On success the
+  device position is treated exactly like a map pick (header, weather, marine data,
+  persistence), plus an explicit `nearbyBeachesProvider.pickLocation` call (mirroring
+  `_handleBeachPicked`, since this pick doesn't go through `LocationMapCard`'s own tap
+  handler either). On failure (permission denied, location services off, or any other
+  platform error) the current pick is left untouched and a short `SnackBar` explains
+  why. Given a `ReverseGeocodingService`, both that device-location pick and a plain
+  map tap are reported with `location_map_card.dart`'s coordinate label first (so the UI
+  updates immediately, matching the existing map-tap behavior), then — guarded by a
+  request token so a stale lookup from an *earlier* pick can never overwrite a newer
+  one — upgraded asynchronously to a real resolved city name if/when that lookup
+  succeeds, without blocking the weather/marine fetch already in flight for the same
+  pick.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Tapping a beach card pops the screen with that
@@ -507,17 +554,21 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
 - `main()` — initializes Flutter bindings, loads `SharedPreferences`, creates one
   shared `http.Client`, builds a `NearbyBeachesProvider` (`OverpassService` +
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, a
-  `PlaceSearchProvider` (`GeocodingService`), and a `DepthProvider` (#217:
-  `BathymetryService` + `DepthCache`); also builds the `MarineProvider`/
-  `WeatherProvider` instances here (rather than leaving it to `MarineApp`'s default)
-  so it can start a `NotificationService` and a `ConditionAlertDispatcher` listening
-  to those same instances before `runApp`, then runs `MarineApp` with all of them.
+  `PlaceSearchProvider` (`GeocodingService`), a `DepthProvider` (#217:
+  `BathymetryService` + `DepthCache`), a `DeviceLocationService` (#254:
+  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` (#254:
+  `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`); also builds the
+  `MarineProvider`/`WeatherProvider` instances here (rather than leaving it to
+  `MarineApp`'s default) so it can start a `NotificationService` and a
+  `ConditionAlertDispatcher` listening to those same instances before `runApp`, then
+  runs `MarineApp` with all of them.
 - `MarineApp` — the root widget. Creates `MarineProvider`/`WeatherProvider` via
   `MultiProvider`/`ChangeNotifierProvider` and hosts `HomeScreen` inside a
   `MaterialApp`, forwarding the `UnitPreferencesProvider`/`NearbyBeachesProvider`/
-  `PlaceSearchProvider` passed into `main()`. Every optional provider defaults to
-  `null`, so existing widget tests that construct `MarineApp` without them still
-  render the pre-wiring layout.
+  `PlaceSearchProvider`/`DeviceLocationService`/`ReverseGeocodingService` passed into
+  `main()`. Every optional provider/service defaults to `null`, so existing widget
+  tests that construct `MarineApp` without them still render the pre-wiring layout
+  (for `DeviceLocationService`: no "Use my location" entry at all).
 
 ## State flow
 
@@ -561,6 +612,22 @@ every update it scores a `SwimVerdict` and, through `NotificationService`, fires
 local notification whenever `ConditionAlertService` says the verdict just turned
 favorable for the currently selected location.
 
+Issue #254: tapping the map card overflow menu's "Use my location" entry calls
+`HomeScreen._handleUseMyLocation`, the only path that ever calls
+`DeviceLocationService.getCurrentLocation` — so the only path that can ever trigger a
+location-permission prompt. On success it's handed to `_handleLocationPicked` exactly
+like a map tap (plus an explicit `nearbyBeachesProvider.pickLocation` call, since this
+pick bypasses `LocationMapCard`'s own tap handler); on failure, a `SnackBar` reports
+why and the previous pick stays. Whenever `_handleLocationPicked` receives the bare
+coordinate label (a plain map tap or a device-location pick — a place-search result
+always carries a real name already), it also kicks off
+`ReverseGeocodingService.resolveName` in the background: on success (and only if no
+newer pick has superseded it, via a request-token guard) the header/map-card name is
+upgraded from coordinates to the resolved city name and re-persisted; on failure, the
+coordinate label stands as the permanent name for that pick. `resolveName` itself
+checks `ReverseGeocodeCache` before ever calling the real `geocoding` plugin, so
+picking the same area again is free.
+
 ## External APIs
 
 - **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — single-location
@@ -582,13 +649,23 @@ favorable for the currently selected location.
   `emodnet:mean` layer) — nearshore depth samples for the water-depth tile
   (#216/#217), queried by `BathymetryService`, cached 90 days by `DepthCache`.
   Credited on the depth detail screen.
+- **Platform location services** (via the `geolocator` plugin) and **platform
+  reverse geocoder** (via the `geocoding` plugin — Apple's `CLGeocoder` on iOS, Google
+  Play Services' geocoder on Android, no API key for either) — issue #254's device
+  position and city name, behind `DeviceLocationService`/`ReverseGeocodingService`.
+  Both only ever run in response to the explicit "Use my location" action or a map
+  tap; resolved names are cached 30 days by `ReverseGeocodeCache`.
 
 ## Tests
 
 - `flutter test` — unit tests for models (`test/data/models/`, including
   `depth_profile_test.dart`/`beach_amenity_test.dart`), mappers, services
   (`test/data/services/`, including `bathymetry_service_test.dart`/
-  `depth_cache_test.dart`), repositories (`test/data/`, including
+  `depth_cache_test.dart`/`device_location_service_test.dart`/
+  `reverse_geocode_cache_test.dart`/`reverse_geocoding_service_test.dart`, #254 —
+  faked via `test/helpers/fake_location.dart`'s `FakeDeviceLocationSource`/
+  `FakePlacemarkLookup`, never touching real GPS hardware or a real platform
+  geocoder channel), repositories (`test/data/`, including
   `notification_service_test.dart`'s fake `LocalNotificationsPlugin`), pure logic
   (`test/logic/`, including `swim_suitability_test.dart`,
   `condition_alert_service_test.dart`, `forecast_alerts_test.dart` (covering both
@@ -619,9 +696,14 @@ favorable for the currently selected location.
   search-icon flow; the search-to-map flow (#214: tapping a beach card in Search
   returns to Home with it selected/highlighted); the water-depth flow (#217: picking
   a beach fetches its nearshore profile and the detail screen shows it); the forecast
-  daylight-filter/next-hour-note flow (#229); and a detail-flow test per metric (tap a
-  stat tile → its detail screen → back). CI runs this on Linux under a virtual
-  display: `xvfb-run -a flutter test integration_test -d linux --reporter expanded`.
+  daylight-filter/next-hour-note flow (#229); the "Use my location" flow (#254: never
+  prompts for permission on launch, selects the device position via a faked
+  `DeviceLocationService` exactly like a map pick, shows its reverse-geocoded name via
+  a faked `ReverseGeocodingService`, and reuses the cached name on a repeat pick; a
+  separate test covers the permission-denied SnackBar); and a detail-flow test per
+  metric (tap a stat tile → its detail screen → back). CI runs this on Linux under a
+  virtual display: `xvfb-run -a flutter test integration_test -d linux --reporter
+  expanded`.
 - `tools/run_tests.sh` (used by both CI and local development) runs `flutter test
   --coverage --concurrency=4 --reporter json` and pipes it through
   `tools/test_summary.dart`

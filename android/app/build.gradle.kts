@@ -7,7 +7,9 @@ plugins {
 
 android {
     namespace = "io.beachiq.beachiq"
-    compileSdk = flutter.compileSdkVersion
+    // geocoding_android (#254) requires compiling against SDK 36; Flutter 3.32's
+    // own default (flutter.compileSdkVersion) is lower and fails the manifest merge.
+    compileSdk = 36
     // Plugins (flutter_local_notifications, path_provider_android,
     // shared_preferences_android, url_launcher_android) require NDK 27;
     // Flutter 3.32 defaults to 26.3 and warns on every build.
@@ -30,7 +32,9 @@ android {
         applicationId = "io.beachiq.beachiq"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // geocoding_android (#254) requires minSdk 24; Flutter 3.32's own default
+        // (flutter.minSdkVersion, 21) is lower and fails the manifest merge.
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName

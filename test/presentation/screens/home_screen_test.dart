@@ -5,6 +5,9 @@ import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/device_location_service.dart';
+import 'package:beachiq/data/services/reverse_geocode_cache.dart';
+import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
@@ -29,12 +32,17 @@ import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/stat_tile_group.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/builders.dart';
 import '../../helpers/fake_http_client.dart';
+import '../../helpers/fake_location.dart';
 import '../../helpers/pump_app.dart';
 
 void main() {
@@ -1280,6 +1288,226 @@ void main() {
       );
     },
   );
+
+  group('HomeScreen device location and reverse geocoding (issue #254)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// A [ReverseGeocodingService] wired to a throwaway [SharedPreferences]
+    /// cache (so each test starts with an empty cache) and the given fake
+    /// lookup result/error.
+    Future<ReverseGeocodingService> aReverseGeocodingService({
+      List<Placemark> result = const [],
+      Object? error,
+    }) async {
+      final prefs = await SharedPreferences.getInstance();
+      return ReverseGeocodingService(
+        FakePlacemarkLookup(result: result, error: error),
+        ReverseGeocodeCache(prefs),
+      );
+    }
+
+    testWidgets(
+      'given no deviceLocationService, the map overflow menu has no "Use '
+      'my location" entry',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Use my location'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a deviceLocationService and a reverse geocoder that resolves, '
+      'tapping "Use my location" selects the device position and shows '
+      'its resolved city name in the header',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(position: const LatLng(36.8969, 30.7133)),
+        );
+        final reverseGeocodingService = await aReverseGeocodingService(
+          result: const [
+            Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+          ],
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Antalya'), findsAtLeastNWidgets(1));
+        expect(find.text('Çeşme, İzmir'), findsNothing);
+        expect(find.text('My Location'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given location permission is denied (even after being requested), '
+      'tapping "Use my location" keeps the previous place and shows a '
+      'short, non-blocking message',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(
+            permission: LocationPermission.denied,
+            permissionAfterRequest: LocationPermission.denied,
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        // Still the Çeşme first-run default — nothing was picked.
+        expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+        expect(find.textContaining('permission denied'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given the device\'s location services are off, tapping "Use my '
+      'location" keeps the previous place and shows a short, non-blocking '
+      'message',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(serviceEnabled: false),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+        expect(find.textContaining('turned off'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a map tap and a reverse geocoder that resolves, the header '
+      'upgrades from formatted coordinates to the real city name',
+      (tester) async {
+        final reverseGeocodingService = await aReverseGeocodingService(
+          result: const [
+            Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+          ],
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byType(FlutterMap));
+        // flutter_map delays a single tap by its double-tap-to-zoom window
+        // before firing onTap.
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Antalya'), findsAtLeastNWidgets(1));
+      },
+    );
+
+    testWidgets(
+      'given a map tap and a reverse geocoder that fails, the header falls '
+      'back to formatted coordinates — never a fabricated name',
+      (tester) async {
+        final reverseGeocodingService = await aReverseGeocodingService(
+          error: Exception('IO_ERROR: rate limited'),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byType(FlutterMap));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('°N'), findsAtLeastNWidgets(1));
+        expect(find.text('Çeşme, İzmir'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given the same grid cell is picked twice via "Use my location", the '
+      'reverse geocoder is looked up only once (cache reuse)',
+      (tester) async {
+        final lookup = FakePlacemarkLookup(
+          result: const [
+            Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+          ],
+        );
+        final prefs = await SharedPreferences.getInstance();
+        final reverseGeocodingService = ReverseGeocodingService(
+          lookup,
+          ReverseGeocodeCache(prefs),
+        );
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(position: const LatLng(36.8969, 30.7133)),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+        expect(lookup.calls, hasLength(1));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        expect(lookup.calls, hasLength(1));
+      },
+    );
+  });
 }
 
 /// A [MarineRepository] whose first call succeeds (seeding "the previous
