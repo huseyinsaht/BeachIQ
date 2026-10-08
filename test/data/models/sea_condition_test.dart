@@ -148,6 +148,68 @@ void main() {
           expect(condition.currentDirection, 90.0);
         },
       );
+
+      group('dailyForecast (issue #273)', () {
+        test(
+          'given a full daily section, fromJson -> populates SeaDailyForecast per day',
+          () {
+            final condition = SeaCondition.fromJson({
+              'daily': {
+                'time': ['2026-07-01', '2026-07-02'],
+                'wave_height_max': [0.9, 1.4],
+              },
+            });
+
+            expect(condition.dailyForecast, hasLength(2));
+            expect(
+              condition.dailyForecast[0].date,
+              DateTime.parse('2026-07-01'),
+            );
+            expect(condition.dailyForecast[0].waveHeightMax, 0.9);
+            expect(condition.dailyForecast[1].waveHeightMax, 1.4);
+          },
+        );
+
+        test('given no daily section, fromJson -> dailyForecast is empty', () {
+          final condition = SeaCondition.fromJson({'wave_height': 1.0});
+
+          expect(condition.dailyForecast, isEmpty);
+        });
+
+        test(
+          'given a daily entry with an unparseable time, fromJson -> skips it rather than throwing',
+          () {
+            final condition = SeaCondition.fromJson({
+              'daily': {
+                'time': ['not a date', '2026-07-02'],
+                'wave_height_max': [0.9, 1.4],
+              },
+            });
+
+            expect(condition.dailyForecast, hasLength(1));
+            expect(
+              condition.dailyForecast.single.date,
+              DateTime.parse('2026-07-02'),
+            );
+            expect(condition.dailyForecast.single.waveHeightMax, 1.4);
+          },
+        );
+
+        test(
+          'given a daily wave_height_max list shorter than time, fromJson -> the missing value is null',
+          () {
+            final condition = SeaCondition.fromJson({
+              'daily': {
+                'time': ['2026-07-01', '2026-07-02'],
+                'wave_height_max': [0.9],
+              },
+            });
+
+            expect(condition.dailyForecast[0].waveHeightMax, 0.9);
+            expect(condition.dailyForecast[1].waveHeightMax, isNull);
+          },
+        );
+      });
     });
   });
 }

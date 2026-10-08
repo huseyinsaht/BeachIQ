@@ -63,8 +63,10 @@ pick survives an app restart):
 
   Wind speed, rain chance and water depth each show a short colored status word
   (e.g. "Calm", "High", "Gentle") alongside their value. Below the grid, a scrollable
-  hourly forecast row (with colored, time-of-day-aware weather icons) rounds out the
-  dashboard.
+  hourly forecast row (with colored, time-of-day-aware weather icons), then a 7-14 day
+  outlook — one row per day with the same good/caution/poor swim verdict as the
+  suggestion pill plus that day's high/low temperature — round out the dashboard. A
+  candidate Pro feature, built ungated for now (no entitlement system exists yet).
 - **Every stat tile except wave direction opens its own detail screen**: a min/max/now
   summary and metric-specific context, most with an hourly chart (a value scale and
   time-of-day labels on its axes) — UV index's five colored risk bands and a

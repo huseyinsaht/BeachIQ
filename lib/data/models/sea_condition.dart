@@ -28,6 +28,18 @@ class SeaHourly {
   });
 }
 
+/// One day's maximum wave height, from Open-Meteo's `daily.wave_height_max`
+/// array (issue #273: the 7-14 day outlook). [waveHeightMax] is nullable,
+/// same reasoning as every other marine field — a day the model has no
+/// wave data for shows "No data" rather than a guessed height.
+class SeaDailyForecast {
+  const SeaDailyForecast({required this.date, this.waveHeightMax});
+
+  /// Local calendar date for this entry (midnight, from `daily.time`).
+  final DateTime date;
+  final double? waveHeightMax;
+}
+
 class SeaCondition {
   final double? waveHeight;
   final double? waveDirection;
@@ -71,6 +83,11 @@ class SeaCondition {
   /// response has no `hourly` section (issue #154).
   final List<SeaHourly> hourly;
 
+  /// One entry per forecast day with a parseable `daily.time` (issue
+  /// #273's 7-14 day outlook). Empty when the response has no
+  /// `daily.time`, same "no data" fallback as [hourly].
+  final List<SeaDailyForecast> dailyForecast;
+
   SeaCondition({
     this.waveHeight,
     this.waveDirection,
@@ -79,6 +96,7 @@ class SeaCondition {
     this.currentVelocity,
     this.currentDirection,
     this.hourly = const [],
+    this.dailyForecast = const [],
   });
 
   factory SeaCondition.fromJson(Map<String, dynamic> json) {
@@ -115,6 +133,27 @@ class SeaCondition {
       }
     }
 
+    final dailyJson = json['daily'];
+    final dailyForecast = <SeaDailyForecast>[];
+    if (dailyJson is Map<String, dynamic>) {
+      final dailyTimes = dailyJson['time'];
+      final dailyWaveMax = dailyJson['wave_height_max'];
+      if (dailyTimes is List) {
+        for (var i = 0; i < dailyTimes.length; i++) {
+          final date = DateTime.tryParse(dailyTimes[i].toString());
+          // No parseable date, no entry — matches the "no invented
+          // values" rule the hourly fields above already follow.
+          if (date == null) continue;
+          dailyForecast.add(
+            SeaDailyForecast(
+              date: date,
+              waveHeightMax: _listValue(dailyWaveMax, i),
+            ),
+          );
+        }
+      }
+    }
+
     return SeaCondition(
       waveHeight: _asDouble(json['wave_height']),
       waveDirection: _asDouble(json['wave_direction']),
@@ -123,6 +162,7 @@ class SeaCondition {
       currentVelocity: _asDouble(json['ocean_current_velocity']),
       currentDirection: _asDouble(json['ocean_current_direction']),
       hourly: hourlyList,
+      dailyForecast: dailyForecast,
     );
   }
 }

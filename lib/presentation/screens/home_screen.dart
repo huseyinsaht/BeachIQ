@@ -13,6 +13,7 @@ import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/daily_outlook.dart';
 import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/condition_alert_dispatcher.dart';
 import '../../logic/providers/depth_provider.dart';
@@ -33,6 +34,7 @@ import '../../logic/wind_status.dart';
 import '../navigation/detail_routes.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
+import '../widgets/daily_outlook_list.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
@@ -452,6 +454,11 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
 /// location detail": a header, condition row, [LocationMapCard], a smart
 /// suggestion pill, a 2x2 [StatTile] grid, and a scrollable hourly row of
 /// [HourlyForecastItem]s.
+///
+/// Below the hourly row sits a "7-14 day outlook" ([DailyOutlookList],
+/// issue #273): one row per forecast day with a swim verdict and high/low
+/// temperature, built from the same weather/marine fetches via
+/// `buildDailyOutlook` -- hidden entirely when there's no daily data yet.
 ///
 /// The header, stat grid and hourly row are bound to [WeatherProvider]'s
 /// data, fetched for the currently *selected* location (#157): a point the
@@ -1162,6 +1169,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // every tile below falls back to its own "No data" via its null-safe
     // formatter, exactly like every other field in this grid.
     final seaCondition = marineProvider?.currentData;
+    // Issue #273: the 7-14 day outlook, built from the weather/marine
+    // repositories' already-fetched `daily` arrays (no extra request) —
+    // `buildDailyOutlook` reuses `scoreSwimSuitability`'s exact thresholds
+    // so a day's verdict never disagrees with today's suggestion pill.
+    final dailyOutlook = buildDailyOutlook(
+      weatherDaily: weatherData?.dailyForecast ?? const [],
+      seaDaily: seaCondition?.dailyForecast ?? const [],
+    );
     // The current-direction tile's own "status word" (issue #251's Current
     // group): the shore relation derived from the nearest beach's seaward
     // bearing, when both that bearing and a current-direction reading are
@@ -1644,6 +1659,37 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                             ),
                     ),
+                    // Issue #273: a 7-14 day outlook, hidden entirely (no
+                    // gap) when there's no daily data yet (first load, or
+                    // a fetch that failed with nothing to fall back to) —
+                    // same "hide rather than show an empty section" rule
+                    // as ForecastAlertList above.
+                    if (dailyOutlook.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_month,
+                            size: 14,
+                            color: _textSecondary,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            '7-14 day outlook',
+                            style: TextStyle(
+                              color: _textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DailyOutlookList(
+                        entries: dailyOutlook,
+                        formatTemperature: (value) =>
+                            _formatTemperature(value, unitSystem),
+                      ),
+                    ],
                   ],
                 ),
               ),

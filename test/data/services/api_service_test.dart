@@ -87,6 +87,8 @@ void main() {
             'ocean_current_velocity,ocean_current_direction';
         expect(uri.queryParameters['current'], expectedFields);
         expect(uri.queryParameters['hourly'], expectedFields);
+        expect(uri.queryParameters['daily'], 'wave_height_max');
+        expect(uri.queryParameters['forecast_days'], '14');
       }, () => mockClient);
     });
   });

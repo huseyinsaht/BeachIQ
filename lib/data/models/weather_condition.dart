@@ -9,6 +9,28 @@ class DaylightWindow {
   final DateTime sunset;
 }
 
+/// One day's forecast summary, from Open-Meteo's `daily` arrays (issue
+/// #273: the 7-14 day outlook). Only [date] is required — the rest are
+/// independently nullable, matching [WeatherHourly], so a day missing one
+/// field (e.g. no wind data yet) still renders with whatever it has rather
+/// than being dropped entirely.
+class DailyWeatherForecast {
+  const DailyWeatherForecast({
+    required this.date,
+    this.highTemperature,
+    this.lowTemperature,
+    this.windSpeedMaxKmh,
+    this.rainChanceMaxPercent,
+  });
+
+  /// Local calendar date for this entry (midnight, from `daily.time`).
+  final DateTime date;
+  final double? highTemperature;
+  final double? lowTemperature;
+  final double? windSpeedMaxKmh;
+  final double? rainChanceMaxPercent;
+}
+
 /// A single hourly forecast entry (used to render the scrollable hourly
 /// row on the Home screen).
 class WeatherHourly {
@@ -77,6 +99,13 @@ class WeatherCondition {
   // fall back to their unfiltered behaviour rather than failing closed.
   final List<DaylightWindow> daylightWindows;
 
+  /// One entry per forecast day with a parseable `daily.time`, in Open-
+  /// Meteo's returned order (today first) — issue #273's 7-14 day
+  /// outlook. Empty when the response has no `daily.time` (older fixture,
+  /// or the API omitted it); callers treat an empty list as "no outlook
+  /// data", same pattern as [daylightWindows].
+  final List<DailyWeatherForecast> dailyForecast;
+
   WeatherCondition({
     required this.temperature,
     required this.windSpeed,
@@ -88,6 +117,7 @@ class WeatherCondition {
     this.lowTemperature,
     this.hourly = const [],
     this.daylightWindows = const [],
+    this.dailyForecast = const [],
   });
 
   factory WeatherCondition.fromJson(Map<String, dynamic> json) {
@@ -195,6 +225,7 @@ class WeatherCondition {
     double? highTemperature;
     double? lowTemperature;
     final daylightWindows = <DaylightWindow>[];
+    final dailyForecast = <DailyWeatherForecast>[];
     if (dailyJson is Map<String, dynamic>) {
       final highs = dailyJson['temperature_2m_max'];
       final lows = dailyJson['temperature_2m_min'];
@@ -221,6 +252,29 @@ class WeatherCondition {
           daylightWindows.add(DaylightWindow(sunrise: sunrise, sunset: sunset));
         }
       }
+
+      final dailyTimes = dailyJson['time'];
+      final dailyHighs = dailyJson['temperature_2m_max'];
+      final dailyLows = dailyJson['temperature_2m_min'];
+      final dailyWindMax = dailyJson['wind_speed_10m_max'];
+      final dailyRainMax = dailyJson['precipitation_probability_max'];
+      if (dailyTimes is List) {
+        for (var i = 0; i < dailyTimes.length; i++) {
+          final date = DateTime.tryParse(dailyTimes[i].toString());
+          // A day with no parseable date is skipped rather than guessed,
+          // matching every other "no invented values" case in this file.
+          if (date == null) continue;
+          dailyForecast.add(
+            DailyWeatherForecast(
+              date: date,
+              highTemperature: _listValue(dailyHighs, i),
+              lowTemperature: _listValue(dailyLows, i),
+              windSpeedMaxKmh: _listValue(dailyWindMax, i),
+              rainChanceMaxPercent: _listValue(dailyRainMax, i),
+            ),
+          );
+        }
+      }
     }
 
     return WeatherCondition(
@@ -234,6 +288,7 @@ class WeatherCondition {
       lowTemperature: lowTemperature,
       hourly: hourlyList,
       daylightWindows: daylightWindows,
+      dailyForecast: dailyForecast,
     );
   }
 }
@@ -246,3 +301,8 @@ double? _asDouble(dynamic value) => value is num ? value.toDouble() : null;
 /// Safely reads a numeric JSON value as an [int], returning null for a
 /// missing/null entry or a value of an unexpected type instead of throwing.
 int? _asInt(dynamic value) => value is num ? value.toInt() : null;
+
+/// Reads index [i] of a JSON list as a [double], or null when the list
+/// isn't long enough or isn't a list at all.
+double? _listValue(dynamic list, int i) =>
+    (list is List && i < list.length) ? _asDouble(list[i]) : null;

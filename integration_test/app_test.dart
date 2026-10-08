@@ -50,7 +50,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
+import '../test/helpers/builders.dart'
+    show aDailyWeatherForecast, aSeaCondition, aSeaDailyForecast, aSeaHourly;
 import '../test/helpers/fake_http_client.dart' show FakeHttpClient;
 import '../test/helpers/fake_location.dart'
     show FakeDeviceLocationSource, FakePlacemarkLookup;
@@ -1700,6 +1701,64 @@ void main() {
       expect(find.text('0.5 m'), findsOneWidget);
       expect(find.text('1.1 m'), findsOneWidget);
       expect(find.text('18 km/h'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    '7-14 day outlook flow (#273): Home renders one row per forecast day '
+    'with a swim verdict and high/low temperature, built from the weather '
+    'and marine providers\' daily arrays with no extra network request',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 12,
+          weatherCode: 1,
+          dailyForecast: [
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 1),
+              highTemperature: 28.0,
+              lowTemperature: 20.0,
+            ),
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 2),
+              highTemperature: 31.0,
+              lowTemperature: 22.0,
+              windSpeedMaxKmh: 45.0, // crosses the "poor" threshold
+            ),
+          ],
+        ),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          dailyForecast: [
+            aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
+            aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('7-14 day outlook'));
+      expect(find.text('7-14 day outlook'), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+      // Day 1: calm wave + wind -> "good"; day 2's 45 km/h wind crosses the
+      // high threshold -> "poor", proving each day scores independently.
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(
+        find.text('Rough conditions — best to skip swimming today.'),
+        findsOneWidget,
+      );
     },
   );
 }
