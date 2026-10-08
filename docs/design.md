@@ -364,6 +364,29 @@ Left column in the mockup: price, wave height, slope, reviews. Right column: car
 café, shoes. Water temperature is not in the mockup but was requested for the beach info; add it to
 the marine group.
 
+## Screen: Compare beaches (issue #274)
+
+Not in the mockup — a candidate Pro feature, built plain/ungated for now (no entitlement system
+exists yet). Reached from the Home map card's overflow ("...") menu, a "Compare beaches" entry
+(`Icons.compare_arrows`) always present: tapping it with fewer than two nearby beaches fetched shows
+a `SnackBar` explaining why, rather than opening an empty screen.
+
+1. **Selection sheet** — a bottom sheet listing the currently fetched nearby beaches (favorites
+   marked with a filled amber star via a throwaway `FavoritesProvider`, sorted first), each a
+   `CheckboxListTile`. Checking a 4th beach while 3 are already checked is a no-op — never more than
+   3 at once. A full-width "Compare" button at the bottom, disabled until at least 2 are checked.
+2. **Comparison screen** (`CompareBeachesScreen`) — an `AppBar` titled "Compare beaches" and a
+   `Table`: one column per beach (name as the bold header), one row per metric — Wave height, Wind,
+   Water temp, Depth, Swim score. Wave height/water temp come from the already-batched
+   `NearbyBeachesProvider.seaConditionFor` (no extra request); wind is fetched per beach via a
+   dedicated `WeatherRepository` (`HomeScreen.compareWeatherRepository`, separate from the single
+   selected location's own); Depth reuses #256's `classifyShallowEntry`/`shallowEntryStatusLabel`
+   (Gentle/Moderate/Steep) via a dedicated `BathymetryService`
+   (`HomeScreen.compareBathymetryService`); Swim score reuses the Home pill's own
+   `scoreSwimSuitability`, shown as a short word (Good/Caution/Poor), not the full sentence. Any
+   metric with nothing to show (no repository/service supplied, or a fetch failed) renders "No
+   data", matching this doc's existing "never invent a value" rule everywhere else.
+
 ## Components implied by this design
 
 Reusable widgets worth extracting rather than rebuilding per-screen:

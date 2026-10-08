@@ -1599,6 +1599,236 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen compare beaches (issue #274)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// Two distinct beaches (unlike the single-beach `fixtureClient()`
+    /// used elsewhere in this file) so `NearbyBeachesProvider.beaches` has
+    /// enough candidates for "Compare beaches" to work with.
+    FakeHttpClient twoBeachClient() {
+      return FakeHttpClient()
+        ..queueJson(
+          host: 'overpass-api.de',
+          json: {
+            'elements': [
+              {
+                'type': 'way',
+                'id': 1,
+                'tags': {
+                  'natural': 'beach',
+                  'name': 'Alpha Beach',
+                  'addr:city': 'Alpha City',
+                  'fee': 'no',
+                },
+                'geometry': [
+                  {'lat': 38.40, 'lon': 26.40},
+                  {'lat': 38.41, 'lon': 26.40},
+                ],
+              },
+              {
+                'type': 'way',
+                'id': 2,
+                'tags': {
+                  'natural': 'beach',
+                  'name': 'Beta Beach',
+                  'addr:city': 'Beta City',
+                  'fee': 'no',
+                },
+                'geometry': [
+                  {'lat': 38.50, 'lon': 26.50},
+                  {'lat': 38.51, 'lon': 26.50},
+                ],
+              },
+            ],
+          },
+        )
+        ..queueJson(
+          host: 'marine-api.open-meteo.com',
+          json: [
+            {
+              'current': {'wave_height': 0.5, 'sea_surface_temperature': 22.0},
+            },
+            {
+              'current': {'wave_height': 1.1, 'sea_surface_temperature': 25.0},
+            },
+          ],
+        );
+    }
+
+    Future<void> pumpLoadedHome(
+      WidgetTester tester,
+      NearbyBeachesProvider provider,
+    ) async {
+      await pumpApp(tester, HomeScreen(nearbyBeachesProvider: provider));
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    testWidgets(
+      'the map overflow menu always has a "Compare beaches" entry',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Compare beaches'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given fewer than two nearby beaches fetched, tapping "Compare '
+      'beaches" shows a SnackBar instead of opening an empty screen',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.byKey(const Key('compare-select-confirm')), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given two nearby beaches fetched, tapping "Compare beaches" opens '
+      'a selection sheet listing both, and checking both then tapping '
+      '"Compare" opens the comparison screen for them',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Alpha Beach'), findsOneWidget);
+        expect(find.text('Beta Beach'), findsOneWidget);
+        final confirmFinder = find.byKey(
+          const Key('compare-select-confirm'),
+        );
+        expect(tester.widget<ElevatedButton>(confirmFinder).onPressed, isNull);
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        expect(
+          tester.widget<ElevatedButton>(confirmFinder).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(confirmFinder);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Compare beaches'), findsWidgets);
+        expect(find.text('Alpha Beach'), findsOneWidget);
+        expect(find.text('Beta Beach'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a compareWeatherRepository, forwards it to the comparison '
+      'screen so its wind/swim-score columns show real values rather than '
+      '"No data"',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpApp(
+          tester,
+          HomeScreen(
+            nearbyBeachesProvider: provider,
+            compareWeatherRepository: FakeWeatherRepository(
+              data: aWeatherCondition(windSpeed: 15),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 10));
+        await tester.pump(const Duration(milliseconds: 10));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('15 km/h'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'given more than three nearby beaches, a fourth checkbox tap is '
+      'ignored -- never more than 3 selected at once',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'overpass-api.de',
+            json: {
+              'elements': [
+                for (var i = 0; i < 4; i++)
+                  {
+                    'type': 'way',
+                    'id': i,
+                    'tags': {
+                      'natural': 'beach',
+                      'name': 'Beach $i',
+                      'addr:city': 'City $i',
+                      'fee': 'no',
+                    },
+                    'geometry': [
+                      {'lat': 38.40 + i * 0.1, 'lon': 26.40},
+                      {'lat': 38.41 + i * 0.1, 'lon': 26.40},
+                    ],
+                  },
+              ],
+            },
+          )
+          ..queueJson(
+            host: 'marine-api.open-meteo.com',
+            json: [for (var i = 0; i < 4; i++) {'current': {}}],
+          );
+        final provider = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        for (var i = 0; i < 4; i++) {
+          await tester.tap(find.byKey(Key('compare-select-Beach $i')));
+          await tester.pump();
+        }
+
+        expect(
+          tester.widget<Checkbox>(
+            find.descendant(
+              of: find.byKey(const Key('compare-select-Beach 3')),
+              matching: find.byType(Checkbox),
+            ),
+          ).value,
+          isFalse,
+        );
+      },
+    );
+  });
 }
 
 /// A no-op [LocalNotificationsPlugin] for the alerts-toggle widget tests
