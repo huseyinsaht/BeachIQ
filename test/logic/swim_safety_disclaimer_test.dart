@@ -3,12 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('swimSafetyDisclaimer', () {
-    test('given the disclaimer text, never claims the suggestion is "safe"', () {
-      expect(
-        RegExp(r'\bsafe\b').hasMatch(swimSafetyDisclaimer.toLowerCase()),
-        isFalse,
-      );
-    });
+    test(
+      'given the disclaimer text, never claims the suggestion is "safe"',
+      () {
+        expect(
+          RegExp(r'\bsafe\b').hasMatch(swimSafetyDisclaimer.toLowerCase()),
+          isFalse,
+        );
+      },
+    );
 
     test('given the disclaimer text, states it is not a guarantee', () {
       expect(swimSafetyDisclaimer.toLowerCase(), contains('not a'));
@@ -21,9 +24,12 @@ void main() {
   });
 
   group('swimSafetyDisclaimerTitle', () {
-    test('given the title, is non-empty and short enough for a sheet header', () {
-      expect(swimSafetyDisclaimerTitle, isNotEmpty);
-      expect(swimSafetyDisclaimerTitle.length, lessThan(40));
-    });
+    test(
+      'given the title, is non-empty and short enough for a sheet header',
+      () {
+        expect(swimSafetyDisclaimerTitle, isNotEmpty);
+        expect(swimSafetyDisclaimerTitle.length, lessThan(40));
+      },
+    );
   });
 }

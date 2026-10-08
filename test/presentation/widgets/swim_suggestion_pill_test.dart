@@ -96,25 +96,24 @@ void main() {
   );
 
   group('safety disclaimer (#271)', () {
-    testWidgets(
-      'given the pill, renders an info icon that does not show the '
-      'disclaimer before being tapped',
-      (tester) async {
-        const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
+    testWidgets('given the pill, renders an info icon that does not show the '
+        'disclaimer before being tapped', (tester) async {
+      const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
 
-        await tester.pumpWidget(wrap(const SwimSuggestionPill(verdict: verdict)));
+      await tester.pumpWidget(wrap(const SwimSuggestionPill(verdict: verdict)));
 
-        expect(find.byIcon(Icons.info_outline), findsOneWidget);
-        expect(find.text(swimSafetyDisclaimer), findsNothing);
-      },
-    );
+      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+      expect(find.text(swimSafetyDisclaimer), findsNothing);
+    });
 
     testWidgets(
       'given a tap on the info icon, shows the safety disclaimer sheet',
       (tester) async {
         const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
 
-        await tester.pumpWidget(wrap(const SwimSuggestionPill(verdict: verdict)));
+        await tester.pumpWidget(
+          wrap(const SwimSuggestionPill(verdict: verdict)),
+        );
         await tester.tap(find.byKey(const Key('swim-suggestion-pill-info')));
         await tester.pumpAndSettle();
 
@@ -128,7 +127,9 @@ void main() {
       (tester) async {
         const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
 
-        await tester.pumpWidget(wrap(const SwimSuggestionPill(verdict: verdict)));
+        await tester.pumpWidget(
+          wrap(const SwimSuggestionPill(verdict: verdict)),
+        );
         await tester.tap(find.byKey(const Key('swim-suggestion-pill-info')));
         await tester.pumpAndSettle();
 
