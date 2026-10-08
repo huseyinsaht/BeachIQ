@@ -319,6 +319,7 @@ void main() {
         HomeScreen(
           weatherProvider: weatherProvider,
           marineProvider: marineProvider,
+          now: () => DateTime(2026, 7, 1),
         ),
       );
 

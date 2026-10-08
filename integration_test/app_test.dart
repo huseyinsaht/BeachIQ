@@ -1744,6 +1744,7 @@ void main() {
             tileProvider: _FakeTileProvider(),
             weatherProvider: weatherProvider,
             marineProvider: marineProvider,
+            now: () => DateTime(2026, 7, 1),
           ),
         ),
       );
