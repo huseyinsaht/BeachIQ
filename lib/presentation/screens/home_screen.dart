@@ -8,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../data/repositories/weather_repository.dart';
+import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
@@ -37,6 +39,7 @@ import '../widgets/location_map_card.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/stat_tile_group.dart';
 import '../widgets/swim_suggestion_pill.dart';
+import 'compare_beaches_screen.dart';
 import 'search_screen.dart';
 
 const String _noData = 'No data';
@@ -171,6 +174,7 @@ Future<void> _showMapOverflowMenu(
   VoidCallback? onUseMyLocation,
   UnitPreferencesProvider? unitPreferencesProvider,
   ConditionAlertDispatcher? conditionAlertDispatcher,
+  VoidCallback? onCompare,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -188,6 +192,19 @@ Future<void> _showMapOverflowMenu(
                 onBeaches();
               },
             ),
+            // Issue #274: compares 2-3 favorite/nearby beaches side by
+            // side. Null (no `onCompare` supplied) hides the entry, the
+            // same optional pattern as "Use my location"/"Units" below.
+            if (onCompare != null)
+              ListTile(
+                key: const Key('map-overflow-compare'),
+                leading: const Icon(Icons.compare_arrows),
+                title: const Text('Compare beaches'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onCompare();
+                },
+              ),
             // Issue #254: an explicit, opt-in action — tapping this is the
             // *only* thing that ever triggers a location-permission
             // prompt; it never happens on app start. Null (no
@@ -287,6 +304,91 @@ Future<void> _showUnitSystemSheet(
   );
 }
 
+/// Issue #274: lets the user check 2-3 of [candidates] (already sorted
+/// favorites-first by the caller) to compare, with a star marking which
+/// ones [favoritesProvider] has favorited. Resolves to the checked
+/// beaches on "Compare", or `null` if dismissed without confirming.
+/// `StatefulBuilder` keeps the checkboxes' and the "Compare" button's
+/// enabled state in sync with each tap, the same pattern
+/// `_showMapOverflowMenu`'s "Alerts" switch above uses.
+Future<List<Beach>?> _showCompareSelectionSheet(
+  BuildContext context,
+  List<Beach> candidates,
+  FavoritesProvider favoritesProvider,
+) {
+  final selected = <Beach>{};
+  return showModalBottomSheet<List<Beach>>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      return StatefulBuilder(
+        builder: (sbContext, setSheetState) {
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sbContext).size.height * 0.7,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'Pick 2-3 beaches to compare',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final beach in candidates)
+                          CheckboxListTile(
+                            key: Key('compare-select-${beach.name}'),
+                            value: selected.contains(beach),
+                            secondary: favoritesProvider.isFavorite(beach)
+                                ? const Icon(Icons.star, color: Colors.amber)
+                                : null,
+                            title: Text(beach.name),
+                            subtitle: Text(beach.city),
+                            onChanged: (checked) {
+                              setSheetState(() {
+                                if (checked == true && selected.length < 3) {
+                                  selected.add(beach);
+                                } else if (checked == false) {
+                                  selected.remove(beach);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        key: const Key('compare-select-confirm'),
+                        onPressed: selected.length < 2
+                            ? null
+                            : () => Navigator.of(
+                                sheetContext,
+                              ).pop(selected.toList()),
+                        child: const Text('Compare'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
 /// The rain chance stat tile's headline number alone (no "%" unit — that
 /// is a separate [StatTile.unit] run).
 String _formatPercentValue(double? percent) {
@@ -374,6 +476,8 @@ class HomeScreen extends StatefulWidget {
     this.deviceLocationService,
     this.reverseGeocodingService,
     this.conditionAlertDispatcher,
+    this.compareWeatherRepository,
+    this.compareBathymetryService,
     this.now,
   });
 
@@ -432,6 +536,20 @@ class HomeScreen extends StatefulWidget {
   /// pass one, e.g. most widget/integration tests) hides that entry
   /// entirely, unchanged from before this toggle existed.
   final ConditionAlertDispatcher? conditionAlertDispatcher;
+
+  /// Drives the wind/swim-score columns on [CompareBeachesScreen] (issue
+  /// #274) -- a separate instance from [weatherProvider] since Compare
+  /// fetches weather for 2-3 *other* beaches, not the single selected
+  /// location. Null (the default, e.g. most widget/integration tests)
+  /// shows "No data" for those columns instead of fetching, same pattern
+  /// as every other optional provider/service here.
+  final WeatherRepository? compareWeatherRepository;
+
+  /// Drives the depth column on [CompareBeachesScreen] (issue #274),
+  /// separate from [depthProvider] for the same reason
+  /// [compareWeatherRepository] is separate from [weatherProvider]. Null
+  /// (the default) shows "No data" for that column instead of fetching.
+  final BathymetryService? compareBathymetryService;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -492,6 +610,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
   /// await is still pending.
   bool _openingSearch = false;
+
+  /// Same guard as [_openingSearch], for [_openCompareSelection] (issue
+  /// #274).
+  bool _openingCompare = false;
 
   /// True once [build] has ever seen [MarineProvider.currentData] non-null
   /// for this screen instance. The full-screen loading/error shell (see
@@ -841,6 +963,66 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Issue #274: lets the user pick 2-3 of the currently fetched nearby
+  /// beaches (favorites surfaced first, via a throwaway [FavoritesProvider]
+  /// exactly like [_openSearch] builds one) and opens [CompareBeachesScreen]
+  /// for them. With fewer than 2 nearby beaches fetched yet, there is
+  /// nothing to compare -- a [SnackBar] says so rather than opening an
+  /// empty/single-column screen.
+  Future<void> _openCompareSelection(BuildContext context) async {
+    if (_openingCompare) return;
+    _openingCompare = true;
+    try {
+      final candidates = widget.nearbyBeachesProvider?.beaches ?? const [];
+      if (candidates.length < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Not enough nearby beaches fetched yet to compare. Pick a '
+              'map location with at least two nearby beaches first.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      if (!context.mounted) return;
+      final favoritesProvider = FavoritesProvider(prefs);
+      final sorted = [
+        ...favoritesProvider.favoritesAmong(candidates),
+        ...candidates.where((beach) => !favoritesProvider.isFavorite(beach)),
+      ];
+
+      if (!context.mounted) return;
+      final selected = await _showCompareSelectionSheet(
+        context,
+        sorted,
+        favoritesProvider,
+      );
+      if (selected == null || selected.length < 2) return;
+      if (!context.mounted) return;
+
+      final nearbyBeachesProvider = widget.nearbyBeachesProvider;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => CompareBeachesScreen(
+            beaches: selected,
+            seaConditions: {
+              for (final beach in selected)
+                beach: nearbyBeachesProvider?.seaConditionFor(beach),
+            },
+            weatherRepository: widget.compareWeatherRepository,
+            bathymetryService: widget.compareBathymetryService,
+            unitPreferencesProvider: widget.unitPreferencesProvider,
+          ),
+        ),
+      );
+    } finally {
+      _openingCompare = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
@@ -1140,6 +1322,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         unitPreferencesProvider: widget.unitPreferencesProvider,
                         conditionAlertDispatcher:
                             widget.conditionAlertDispatcher,
+                        onCompare: () =>
+                            unawaited(_openCompareSelection(context)),
                       ),
                     ),
                     // #214: the beach picked in `SearchScreen`'s results is

@@ -17,8 +17,8 @@ pick survives an app restart):
   beach card in the Search screen returns to Home with that beach selected: the map
   re-centers on it, highlights it with a distinct white border among the gold
   outlines, and a compact info row for it appears below the map. The map card's
-  overflow menu opens "Beaches" (the Search screen), "Use my location", and, when
-  available, "Units".
+  overflow menu opens "Beaches" (the Search screen), "Compare beaches", "Use my
+  location", and, when available, "Units".
 - "Use my location": an opt-in device-location pick from the map card's overflow
   menu — the only action that can ever show a location-permission prompt (never on
   app launch). A successful pick is treated exactly like a map tap, and its coarse
@@ -103,6 +103,12 @@ pick survives an app restart):
 - Beach results are cached on-device (by map grid cell) so repeat visits to the same
   area don't always re-query Overpass, and fall back to a static placeholder list if
   offline with nothing cached.
+
+**Compare beaches** — from Home's map card overflow menu, pick 2-3 of the currently
+fetched nearby beaches (favorites marked with a star) to compare side by side: wave
+height, wind, water temperature, a plain-language depth/non-swimmer verdict and the
+same swim score as Home's suggestion pill, one column per beach. A candidate Pro
+feature, built ungated for now (no entitlement system exists yet).
 
 **Cross-cutting**
 
