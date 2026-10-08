@@ -995,7 +995,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ];
 
       if (!context.mounted) return;
-      final selected = await _showCompareSelectionSheet(context, sorted, favoritesProvider);
+      final selected = await _showCompareSelectionSheet(
+        context,
+        sorted,
+        favoritesProvider,
+      );
       if (selected == null || selected.length < 2) return;
       if (!context.mounted) return;
 

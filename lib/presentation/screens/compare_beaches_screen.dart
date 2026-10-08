@@ -213,9 +213,7 @@ class _CompareBeachesScreenState extends State<CompareBeachesScreen> {
       );
     }
     final kmh = _weather[beach]?.windSpeed;
-    return _cellText(
-      kmh == null ? _noData : formatWindSpeed(kmh, _unitSystem),
-    );
+    return _cellText(kmh == null ? _noData : formatWindSpeed(kmh, _unitSystem));
   }
 
   Widget _waterTempCell(Beach beach) {

@@ -48,7 +48,10 @@ void main() {
     (tester) async {
       await pumpApp(
         tester,
-        CompareBeachesScreen(beaches: [beachA, beachB], seaConditions: const {}),
+        CompareBeachesScreen(
+          beaches: [beachA, beachB],
+          seaConditions: const {},
+        ),
       );
 
       expect(find.text('No data'), findsWidgets);
@@ -80,27 +83,24 @@ void main() {
     },
   );
 
-  testWidgets(
-    'given a weatherRepository that fails, shows "No data" for wind '
-    'instead of spinning forever',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: CompareBeachesScreen(
-            beaches: [beachA],
-            seaConditions: {beachA: aSeaCondition()},
-            weatherRepository: FakeWeatherRepository(
-              error: Exception('network down'),
-            ),
+  testWidgets('given a weatherRepository that fails, shows "No data" for wind '
+      'instead of spinning forever', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CompareBeachesScreen(
+          beaches: [beachA],
+          seaConditions: {beachA: aSeaCondition()},
+          weatherRepository: FakeWeatherRepository(
+            error: Exception('network down'),
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('No data'), findsWidgets);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(find.text('No data'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'given a bathymetryService, fetches and shows a short depth verdict '

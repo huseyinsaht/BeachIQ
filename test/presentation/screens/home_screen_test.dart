@@ -1667,33 +1667,31 @@ void main() {
       await tester.pump(const Duration(milliseconds: 10));
     }
 
-    testWidgets(
-      'the map overflow menu always has a "Compare beaches" entry',
-      (tester) async {
-        await pumpApp(tester, const HomeScreen());
+    testWidgets('the map overflow menu always has a "Compare beaches" entry', (
+      tester,
+    ) async {
+      await pumpApp(tester, const HomeScreen());
 
-        await tester.tap(find.byTooltip('More'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
 
-        expect(find.text('Compare beaches'), findsOneWidget);
-      },
-    );
+      expect(find.text('Compare beaches'), findsOneWidget);
+    });
 
-    testWidgets(
-      'given fewer than two nearby beaches fetched, tapping "Compare '
-      'beaches" shows a SnackBar instead of opening an empty screen',
-      (tester) async {
-        await pumpApp(tester, const HomeScreen());
+    testWidgets('given fewer than two nearby beaches fetched, tapping "Compare '
+        'beaches" shows a SnackBar instead of opening an empty screen', (
+      tester,
+    ) async {
+      await pumpApp(tester, const HomeScreen());
 
-        await tester.tap(find.byTooltip('More'));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Compare beaches'));
-        await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compare beaches'));
+      await tester.pumpAndSettle();
 
-        expect(find.byType(SnackBar), findsOneWidget);
-        expect(find.byKey(const Key('compare-select-confirm')), findsNothing);
-      },
-    );
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.byKey(const Key('compare-select-confirm')), findsNothing);
+    });
 
     testWidgets(
       'given two nearby beaches fetched, tapping "Compare beaches" opens '
@@ -1713,9 +1711,7 @@ void main() {
 
         expect(find.text('Alpha Beach'), findsOneWidget);
         expect(find.text('Beta Beach'), findsOneWidget);
-        final confirmFinder = find.byKey(
-          const Key('compare-select-confirm'),
-        );
+        final confirmFinder = find.byKey(const Key('compare-select-confirm'));
         expect(tester.widget<ElevatedButton>(confirmFinder).onPressed, isNull);
 
         await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
@@ -1801,7 +1797,9 @@ void main() {
           )
           ..queueJson(
             host: 'marine-api.open-meteo.com',
-            json: [for (var i = 0; i < 4; i++) {'current': {}}],
+            json: [
+              for (var i = 0; i < 4; i++) {'current': {}},
+            ],
           );
         final provider = await fakeNearbyBeachesProvider(client: client);
         addTearDown(provider.dispose);
@@ -1818,12 +1816,14 @@ void main() {
         }
 
         expect(
-          tester.widget<Checkbox>(
-            find.descendant(
-              of: find.byKey(const Key('compare-select-Beach 3')),
-              matching: find.byType(Checkbox),
-            ),
-          ).value,
+          tester
+              .widget<Checkbox>(
+                find.descendant(
+                  of: find.byKey(const Key('compare-select-Beach 3')),
+                  matching: find.byType(Checkbox),
+                ),
+              )
+              .value,
           isFalse,
         );
       },
