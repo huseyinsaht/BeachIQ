@@ -94,6 +94,28 @@ then upgrades to a real reverse-geocoded city name (`ReverseGeocodingService`, e
 moment later if/when that lookup succeeds — coordinates remain the permanent fallback whenever it fails
 or isn't available.
 
+> **Layout decision (Vaen, 2026-10-08): map-first with a bottom sheet ("option A").** This supersedes the
+> stacked, scrolling layout described in the numbered list below; the list still describes each
+> element's content and behavior, but the *placement* changes as follows. Mockup:
+> `docs/assets/home-map-first-mockup.png` (schematic — not a real screen; sizes and spacing are
+> adjustable, only the structure is decided).
+>
+> - The **map fills the whole screen** behind everything (no fixed 200 dp card). The search field floats
+>   at the top (the former search icon/expanding `SearchField` of #158 becomes this always-visible
+>   field); map controls (my location #254, zoom) float on the right edge. The overflow menu entries
+>   (Beaches, Use my location, Units, Alerts, Compare beaches) stay reachable from the search field's
+>   trailing menu.
+> - A **draggable bottom sheet** (rounded top corners, grab handle) holds the selected location. Collapsed
+>   it shows: place name + coordinates/distance subtitle, current temperature, the verdict pill, the day-prefixed
+>   alert line (#252/#258), and the three **Sea** metrics (wave height, water temp, water depth) with
+>   status words, plus a "swipe up for all details" hint. Expanded it shows the full Current, Air groups
+>   and the hourly forecast as in the current Home screen.
+> - Tapping the map still selects a point exactly as before; the sheet updates in place and stays in its
+>   current state. Amenity markers, the legend chips and beach overlays are unchanged and must stay
+>   usable above the collapsed sheet.
+> - Unchanged: header content rules (#253), verdict palette, 3x3 stat grouping (#251), Water depth
+>   cross-section and verdict (#256).
+
 Top to bottom:
 
 1. **Header row** — location label stack on the left: the selected location's real place name, bold,
