@@ -36,7 +36,10 @@ pick survives an app restart):
 - A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
   green/orange/red-orange to match, from wave height, wind speed and rain chance —
   though the wave-height input is only filled in after a pull-to-refresh or a fresh
-  location pick (see `docs/architecture.md` § State flow).
+  location pick (see `docs/architecture.md` § State flow). An info icon on the pill
+  opens a short disclaimer ("A guide, not a guarantee") making clear the suggestion is
+  a model estimate from forecast data, not a safety guarantee, and that local flags
+  and lifeguard instructions always take precedence.
 - An upcoming-alerts list between the suggestion pill and the stat grid: heads-up,
   one-line warnings (wind, waves, incoming current, clouds, rain) for a fast rise or
   threshold crossing later in the day, colored by severity and sorted most-severe
