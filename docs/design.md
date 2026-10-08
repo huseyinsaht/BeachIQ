@@ -150,6 +150,12 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
+
+   **Safety disclaimer** (issue #271) — a small trailing info icon (`Icons.info_outline`, same
+   foreground color as the pill's text/icon) opens a bottom sheet: title "A guide, not a guarantee" and
+   `swimSafetyDisclaimer` (`lib/logic/swim_safety_disclaimer.dart`), stating the verdict is a model
+   estimate, not a safety guarantee, and that local flags/lifeguards take precedence. Never uses the
+   word "safe", mirroring `depthApproximationCaveat`'s wording rule.
 5. **Home: alert list** (issue #169, extended by #229) — not in the mockup; this extends it. Sits
    directly under the smart suggestion pill and above the Sea section/stat grid. Two kinds of row,
    `ForecastAlertList`:
