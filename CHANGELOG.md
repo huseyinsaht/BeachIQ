@@ -22,6 +22,19 @@ All notable changes to this project are documented here. Format loosely follows
   (#261)
 - Additional test coverage for the `unableToDetermine` location-permission case in
   `DeviceLocationService` (#263)
+- An "Alerts" toggle in the Home map card's overflow menu (alongside "Units") turns
+  the "conditions turned favorable" notification on or off; on by default (#268)
+- A swim-safety disclaimer, one tap away via an info icon on the Home screen's
+  suggestion pill: makes clear the suggestion is a model estimate from forecast data,
+  not a safety guarantee, and that local flags/lifeguard instructions take precedence
+  (#277)
+- A "Compare beaches" screen, opened from the map card's overflow menu: pick 2-3 of
+  the currently fetched nearby or favorited beaches to compare wave height, wind,
+  water temperature, water depth and swim score side by side (#278)
+- A "7-14 day outlook" section on the Home screen, below the hourly forecast row: one
+  row per forecast day with its own swim verdict (reusing the suggestion pill's
+  thresholds) and that day's high/low temperature (#279)
+- Additional test coverage for `ConditionAlertDispatcher.stop()` (#281)
 
 ### Changed
 
@@ -53,6 +66,10 @@ All notable changes to this project are documented here. Format loosely follows
 - Flaky Home integration tests: the boot/navigation tests now inject fixture
   `WeatherProvider`/`MarineProvider` instances instead of depending on a real,
   possibly-still-pending network fetch (#250)
+- The 7-14 day outlook's wider forecast window (`forecast_days=14`) was leaking into
+  the near-term-only upcoming-alerts list and "next hour" note, which could flag a
+  threshold crossing many days out as an imminent change; both are now capped back to
+  the next ~24 hours (#280)
 
 ## [2026.10.8] - 2026-10-06
 
