@@ -280,6 +280,125 @@ void main() {
         expect(find.textContaining('Waves cross'), findsOneWidget);
       },
     );
+
+    testWidgets('given a wind crossing more than 24 hours out (issue #273: '
+        'forecast_days=14 widened the raw hourly series to up to 14 days), '
+        'build -> does not treat it as an upcoming alert', (tester) async {
+      final farNow = DateTime(2026, 7, 1, 0, 0);
+      // A dense, one-entry-per-hour series (as the real API returns),
+      // calm throughout except the last hour -- two days out, well beyond
+      // the ~24h cap near-term-only features must apply to the now-wider
+      // daily series. A sparse series would defeat the entry-count cap
+      // (it only has as many entries as actually provided), so this must
+      // mirror real hourly density for the cap to have anything to do.
+      final hourly = [
+        for (var hour = 1; hour <= 49; hour++)
+          aWeatherHourly(
+            time: farNow.add(Duration(hours: hour)),
+            windSpeed: hour == 49 ? 45 : 10, // crosses 40 km/h, two days out
+          ),
+      ];
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(hourly: hourly),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+      );
+
+      expect(find.byType(ForecastAlertList), findsNothing);
+    });
+
+    testWidgets(
+      'given a wind crossing on the 24th upcoming hour (inside the cap), '
+      'build -> still shows the alert',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final hourly = [
+          for (var hour = 1; hour <= 24; hour++)
+            aWeatherHourly(
+              time: farNow.add(Duration(hours: hour)),
+              windSpeed: hour == 24 ? 45 : 10, // crosses 40 km/h at +24h
+            ),
+        ];
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: hourly),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a wind crossing on the 25th upcoming hour (just outside the '
+      '24-entry cap), build -> does not show the alert',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final hourly = [
+          for (var hour = 1; hour <= 25; hour++)
+            aWeatherHourly(
+              time: farNow.add(Duration(hours: hour)),
+              windSpeed: hour == 25 ? 45 : 10, // crosses 40 km/h, at +25h
+            ),
+        ];
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: hourly),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a wave crossing more than 24 hours out on the marine series, '
+      'build -> does not treat it as an upcoming alert either',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              for (var hour = 1; hour <= 49; hour++)
+                aWeatherHourly(time: farNow.add(Duration(hours: hour))),
+            ],
+          ),
+        );
+        // Same reasoning as the wind test above: a dense, one-entry-per-
+        // hour series, calm throughout except the last (two days out).
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            hourly: [
+              for (var hour = 1; hour <= 49; hour++)
+                aSeaHourly(
+                  time: farNow.add(Duration(hours: hour)),
+                  waveHeight: hour == 49 ? 1.3 : 0.4, // crosses 1.2m
+                ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => farNow,
+          ),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
   });
 
   group('HomeScreen 7-14 day outlook (issue #273)', () {
