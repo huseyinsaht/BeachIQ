@@ -121,7 +121,10 @@ Top to bottom:
    as a map tap would. The overflow menu itself now opens a small sheet with "Beaches" (→
    `SearchScreen`, the beach list/favorites/filter), when available, "Use my location" (issue
    #254: device location via `geolocator`, hidden entirely when no `DeviceLocationService` is
-   supplied), and, when available, "Units". "Use my location" is the *only* thing on this screen
+   supplied), when available, "Units", and, when available, "Alerts" (issue #267: a switch for the
+   "conditions turned favorable" notification, backed by `ConditionAlertDispatcher.alertsEnabled`/
+   `setAlertsEnabled`, hidden entirely when no `ConditionAlertDispatcher` is supplied). "Use my
+   location" is the *only* thing on this screen
    that can ever show a location-permission prompt — it never happens on app start or any other
    pick. On success the device position is selected exactly like a map pick (header, weather,
    marine data, nearby beaches, persistence); on a denied permission or an unavailable/disabled

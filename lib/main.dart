@@ -77,12 +77,12 @@ void main() async {
   // likely appears sooner rather than on the first alert.
   final notificationService = NotificationService();
   unawaited(notificationService.init());
-  ConditionAlertDispatcher(
+  final conditionAlertDispatcher = ConditionAlertDispatcher(
     weatherProvider: weatherProvider,
     marineProvider: marineProvider,
     notificationService: notificationService,
     prefs: prefs,
-  ).start();
+  )..start();
 
   runApp(
     MarineApp(
@@ -94,6 +94,7 @@ void main() async {
       depthProvider: depthProvider,
       deviceLocationService: deviceLocationService,
       reverseGeocodingService: reverseGeocodingService,
+      conditionAlertDispatcher: conditionAlertDispatcher,
     ),
   );
 }
@@ -110,6 +111,7 @@ class MarineApp extends StatelessWidget {
     this.depthProvider,
     this.deviceLocationService,
     this.reverseGeocodingService,
+    this.conditionAlertDispatcher,
   });
 
   /// Overridable so integration tests can avoid the real tile network.
@@ -163,6 +165,12 @@ class MarineApp extends StatelessWidget {
   /// unchanged from before #254.
   final ReverseGeocodingService? reverseGeocodingService;
 
+  /// Drives the map card overflow menu's "Alerts" switch (issue #267). Null
+  /// (the default for any existing call site that doesn't pass one, e.g.
+  /// most widget/integration tests) hides that entry entirely, unchanged
+  /// from before this toggle existed.
+  final ConditionAlertDispatcher? conditionAlertDispatcher;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -197,6 +205,7 @@ class MarineApp extends StatelessWidget {
             depthProvider: depthProvider,
             deviceLocationService: deviceLocationService,
             reverseGeocodingService: reverseGeocodingService,
+            conditionAlertDispatcher: conditionAlertDispatcher,
           ),
         ),
       ),

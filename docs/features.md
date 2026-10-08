@@ -49,9 +49,9 @@ pick survives an app restart):
   as already past.
 - A real notification when conditions turn favorable: if the swim verdict for the
   selected location flips from caution/poor/unknown to good while the app is running,
-  a local notification is shown (after a one-time permission prompt). There is no
-  settings screen yet to turn this off, and it only fires while the app is open —
-  there's no background/scheduled check.
+  a local notification is shown (after a one-time permission prompt). An "Alerts"
+  switch in the Home map card's overflow menu turns this on or off (issue #267); it
+  only fires while the app is open — there's no background/scheduled check.
 - A single 3×3 grid of nine equally-sized stat tiles, once marine data has loaded,
   grouped under three labels:
   - **Sea** — wave height, water temperature, water depth.
@@ -122,9 +122,9 @@ pick survives an app restart):
 From the roadmap on `README.md`:
 
 - Google Play launch
-- A settings screen to turn condition alerts off, and background/scheduled delivery
-  so the "conditions turned favorable" notification can fire while the app isn't
-  open (today it only fires while the app is running — see "Today" above)
+- Background/scheduled delivery so the "conditions turned favorable" notification
+  can fire while the app isn't open (today it only fires while the app is running,
+  and only when the "Alerts" switch above is on — see "Today" above)
 
 The core wave-height dashboard and nearby beach search from the original roadmap are
 now implemented, as described above.

@@ -6,9 +6,11 @@ import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
+import 'package:beachiq/data/services/notification_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
+import 'package:beachiq/logic/providers/condition_alert_dispatcher.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
@@ -32,6 +34,7 @@ import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/stat_tile_group.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
@@ -1508,6 +1511,108 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen alerts toggle (issue #267)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// A real [ConditionAlertDispatcher] wired to throwaway providers/
+    /// notification service — this group only exercises the overflow
+    /// menu's switch, never a verdict transition, so nothing here ever
+    /// polls or shows a notification.
+    Future<ConditionAlertDispatcher> aDispatcher({bool enabled = true}) async {
+      SharedPreferences.setMockInitialValues({
+        if (!enabled) alertsEnabledPrefsKey: false,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      return ConditionAlertDispatcher(
+        weatherProvider: WeatherProvider(
+          WeatherRepository(WeatherApiService()),
+        ),
+        marineProvider: MarineProvider(MarineRepository(MarineApiService())),
+        notificationService: NotificationService(plugin: _NoopPlugin()),
+        prefs: prefs,
+      );
+    }
+
+    testWidgets(
+      'given no conditionAlertDispatcher, the map overflow menu has no '
+      '"Alerts" entry',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Alerts'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a conditionAlertDispatcher with alerts enabled, the overflow '
+      'menu shows an "Alerts" switch reflecting that, and tapping it calls '
+      'setAlertsEnabled(false)',
+      (tester) async {
+        final dispatcher = await aDispatcher();
+
+        await pumpApp(tester, HomeScreen(conditionAlertDispatcher: dispatcher));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byKey(
+          const Key('map-overflow-alerts-switch'),
+        );
+        expect(switchFinder, findsOneWidget);
+        expect(tester.widget<Switch>(switchFinder).value, isTrue);
+
+        await tester.tap(switchFinder);
+        await tester.pumpAndSettle();
+
+        expect(dispatcher.alertsEnabled, isFalse);
+        expect(tester.widget<Switch>(switchFinder).value, isFalse);
+      },
+    );
+
+    testWidgets(
+      'given a conditionAlertDispatcher with alerts already disabled, the '
+      'overflow menu\'s "Alerts" switch starts off and tapping it calls '
+      'setAlertsEnabled(true)',
+      (tester) async {
+        final dispatcher = await aDispatcher(enabled: false);
+
+        await pumpApp(tester, HomeScreen(conditionAlertDispatcher: dispatcher));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byKey(
+          const Key('map-overflow-alerts-switch'),
+        );
+        expect(tester.widget<Switch>(switchFinder).value, isFalse);
+
+        await tester.tap(switchFinder);
+        await tester.pumpAndSettle();
+
+        expect(dispatcher.alertsEnabled, isTrue);
+      },
+    );
+  });
+}
+
+/// A no-op [LocalNotificationsPlugin] for the alerts-toggle widget tests
+/// above, which never trigger a notification — only [NotificationService]'s
+/// constructor needs a plugin instance.
+class _NoopPlugin implements LocalNotificationsPlugin {
+  @override
+  Future<bool?> initialize(InitializationSettings settings) async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> show(int id, String? title, String? body) async {}
 }
 
 /// A [MarineRepository] whose first call succeeds (seeding "the previous

@@ -12,6 +12,7 @@ import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/forecast_alerts.dart';
+import '../../logic/providers/condition_alert_dispatcher.dart';
 import '../../logic/providers/depth_provider.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
@@ -162,12 +163,14 @@ String? _windSpeedUnit(double? kmh, UnitSystem unitSystem) {
 /// Opens the Home screen's map-card overflow ("...") menu (#158): a
 /// "Beaches" entry that always opens [SearchScreen] (the old standalone,
 /// non-editable "Enter cities" entry point this replaces), plus a "Units"
-/// entry when [unitPreferencesProvider] is supplied.
+/// entry when [unitPreferencesProvider] is supplied and an "Alerts" entry
+/// when [conditionAlertDispatcher] is supplied (issue #267).
 Future<void> _showMapOverflowMenu(
   BuildContext context, {
   required VoidCallback onBeaches,
   VoidCallback? onUseMyLocation,
   UnitPreferencesProvider? unitPreferencesProvider,
+  ConditionAlertDispatcher? conditionAlertDispatcher,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -209,6 +212,34 @@ Future<void> _showMapOverflowMenu(
                 onTap: () {
                   Navigator.of(sheetContext).pop();
                   _showUnitSystemSheet(context, unitPreferencesProvider);
+                },
+              ),
+            // Issue #267: lets a user silence the "conditions turned
+            // favorable" notification (#221) without denying the OS
+            // notification permission outright. `StatefulBuilder` keeps the
+            // switch's visual state in sync with itself immediately on tap
+            // — `ConditionAlertDispatcher` is a plain class, not a
+            // `ChangeNotifier`, so nothing else would trigger a rebuild of
+            // this sheet.
+            if (conditionAlertDispatcher != null)
+              StatefulBuilder(
+                builder: (sbContext, setSheetState) {
+                  return ListTile(
+                    key: const Key('map-overflow-alerts'),
+                    leading: const Icon(Icons.notifications_outlined),
+                    title: const Text('Alerts'),
+                    trailing: Switch(
+                      key: const Key('map-overflow-alerts-switch'),
+                      value: conditionAlertDispatcher.alertsEnabled,
+                      onChanged: (value) {
+                        setSheetState(() {
+                          unawaited(
+                            conditionAlertDispatcher.setAlertsEnabled(value),
+                          );
+                        });
+                      },
+                    ),
+                  );
                 },
               ),
           ],
@@ -342,6 +373,7 @@ class HomeScreen extends StatefulWidget {
     this.depthProvider,
     this.deviceLocationService,
     this.reverseGeocodingService,
+    this.conditionAlertDispatcher,
     this.now,
   });
 
@@ -393,6 +425,13 @@ class HomeScreen extends StatefulWidget {
   /// existing call site that doesn't pass one) leaves both picks showing
   /// [formatCoordinates], unchanged from before #254.
   final ReverseGeocodingService? reverseGeocodingService;
+
+  /// Drives the map card overflow menu's "Alerts" switch (issue #267),
+  /// which turns the "conditions turned favorable" notification (#221) on
+  /// or off. Null (the default for any existing call site that doesn't
+  /// pass one, e.g. most widget/integration tests) hides that entry
+  /// entirely, unchanged from before this toggle existed.
+  final ConditionAlertDispatcher? conditionAlertDispatcher;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -1099,6 +1138,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? null
                             : () => unawaited(_handleUseMyLocation(context)),
                         unitPreferencesProvider: widget.unitPreferencesProvider,
+                        conditionAlertDispatcher:
+                            widget.conditionAlertDispatcher,
                       ),
                     ),
                     // #214: the beach picked in `SearchScreen`'s results is

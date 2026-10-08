@@ -276,6 +276,28 @@ void main() {
           expect(notificationPlugin.calls, hasLength(1));
         },
       );
+
+      test('given setAlertsEnabled(false) was called, a freshly constructed '
+          'dispatcher on the same prefs -> reads alertsEnabled back as false '
+          '(issue #267)', () async {
+        final dispatcher = await buildDispatcher();
+        expect(dispatcher.alertsEnabled, isTrue);
+
+        await dispatcher.setAlertsEnabled(false);
+        expect(dispatcher.alertsEnabled, isFalse);
+
+        // Simulate an app restart: a brand-new dispatcher reads the same
+        // persisted prefs key (`alertsEnabledPrefsKey`) rather than
+        // defaulting back to enabled.
+        final restarted = ConditionAlertDispatcher(
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+          notificationService: _fakeNotificationService(notificationPlugin),
+          prefs: prefs,
+        );
+
+        expect(restarted.alertsEnabled, isFalse);
+      });
     });
   });
 }
