@@ -5,11 +5,15 @@ import '../theme/verdict_palette.dart';
 
 const _weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-/// A short weekday label for [date] ("Today" for the first day, otherwise
-/// the three-letter weekday name), per [DailyOutlookList]'s own doc
-/// comment.
-String dayLabelFor(DateTime date, {required bool isFirst}) {
-  if (isFirst) return 'Today';
+/// A short weekday label for [date]: "Today" when [date] is the same
+/// calendar day as [now], otherwise the three-letter weekday name.
+/// Comparing against [now] rather than "is this the first entry" means a
+/// stale first entry (e.g. cached data checked after midnight, with no
+/// fresh fetch yet) never mislabels a past day as "Today".
+String dayLabelFor(DateTime date, {required DateTime now}) {
+  if (date.year == now.year && date.month == now.month && date.day == now.day) {
+    return 'Today';
+  }
   return _weekdayLabels[date.weekday - 1];
 }
 
@@ -33,6 +37,7 @@ class DailyOutlookList extends StatelessWidget {
     super.key,
     required this.entries,
     required this.formatTemperature,
+    this.now,
   });
 
   final List<DailyOutlookEntry> entries;
@@ -42,16 +47,26 @@ class DailyOutlookList extends StatelessWidget {
   /// screen's header/hourly row use.
   final String Function(double? value) formatTemperature;
 
+  /// "Current time" for deciding which row (if any) reads "Today" — see
+  /// [dayLabelFor]. Defaults to the real clock; the Home screen passes its
+  /// own `effectiveNow` so widget tests can pin it, matching
+  /// `HourlyForecastItem.time`'s same reasoning.
+  final DateTime? now;
+
+  static const _textSecondary = Color(0xFF8B93A6);
+
   @override
   Widget build(BuildContext context) {
+    final effectiveNow = now ?? DateTime.now();
     return Column(
       key: const Key('daily-outlook-list'),
       children: [
         for (var i = 0; i < entries.length; i++) ...[
-          if (i > 0) const Divider(height: 1, color: Color(0xFF2A3145)),
+          if (i > 0)
+            Divider(height: 1, color: _textSecondary.withValues(alpha: 0.15)),
           _DailyOutlookRow(
             entry: entries[i],
-            dayLabel: dayLabelFor(entries[i].date, isFirst: i == 0),
+            dayLabel: dayLabelFor(entries[i].date, now: effectiveNow),
             formatTemperature: formatTemperature,
           ),
         ],

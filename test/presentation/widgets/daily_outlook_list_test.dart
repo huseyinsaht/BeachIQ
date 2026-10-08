@@ -9,12 +9,14 @@ import '../../helpers/pump_app.dart';
 void main() {
   group('DailyOutlookList', () {
     testWidgets(
-      'given multiple entries, renders -> one row per day, "Today" for the first',
+      'given multiple entries, renders -> one row per day, "Today" for the '
+      'one matching now\'s calendar date',
       (tester) async {
         await pumpApp(
           tester,
           Material(
             child: DailyOutlookList(
+              now: DateTime(2026, 7, 1),
               entries: [
                 DailyOutlookEntry(
                   date: DateTime(2026, 7, 1),
@@ -43,6 +45,7 @@ void main() {
 
         expect(find.byKey(const Key('daily-outlook-list')), findsOneWidget);
         expect(find.text('Today'), findsOneWidget);
+        expect(find.text('Thu'), findsOneWidget); // 2026-07-02
         expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
         expect(
           find.text('Rough conditions — best to skip swimming today.'),
@@ -50,6 +53,69 @@ void main() {
         );
         expect(find.text('28°C'), findsOneWidget);
         expect(find.text('20°C'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a now that has moved past the first entry\'s date (a stale '
+      'cache checked after midnight), does not mislabel it "Today"',
+      (tester) async {
+        await pumpApp(
+          tester,
+          Material(
+            child: DailyOutlookList(
+              now: DateTime(2026, 7, 2), // a day after entries[0].date
+              entries: [
+                DailyOutlookEntry(
+                  date: DateTime(2026, 7, 1),
+                  verdict: const SwimVerdict(
+                    SwimSuitabilityLevel.good,
+                    'Calm seas — good time for a swim.',
+                  ),
+                ),
+              ],
+              formatTemperature: (value) => '--°',
+            ),
+          ),
+        );
+
+        expect(find.text('Today'), findsNothing);
+        expect(find.text('Wed'), findsOneWidget); // 2026-07-01
+      },
+    );
+
+    testWidgets(
+      'given a now that has rolled over to the second entry\'s date, moves '
+      '"Today" to that row instead of leaving it on the first',
+      (tester) async {
+        await pumpApp(
+          tester,
+          Material(
+            child: DailyOutlookList(
+              now: DateTime(2026, 7, 2), // matches entries[1].date
+              entries: [
+                DailyOutlookEntry(
+                  date: DateTime(2026, 7, 1),
+                  verdict: const SwimVerdict(
+                    SwimSuitabilityLevel.good,
+                    'Calm seas — good time for a swim.',
+                  ),
+                ),
+                DailyOutlookEntry(
+                  date: DateTime(2026, 7, 2),
+                  verdict: const SwimVerdict(
+                    SwimSuitabilityLevel.poor,
+                    'Rough conditions — best to skip swimming today.',
+                  ),
+                ),
+              ],
+              formatTemperature: (value) => '--°',
+            ),
+          ),
+        );
+
+        expect(find.text('Today'), findsOneWidget);
+        expect(find.text('Wed'), findsOneWidget); // entries[0] (2026-07-01)
       },
     );
 

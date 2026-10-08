@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../data/repositories/weather_repository.dart';
@@ -434,21 +435,37 @@ String _hourLabel(DateTime time, {required bool isFirst}) {
 }
 
 /// Open-Meteo's `hourly` section returns a full day of entries starting at
-/// local midnight, not from the current time — so `hourly.first` is
-/// usually hours in the past by the time this renders. Slices down to the
-/// entry matching (or immediately preceding) [now] onward, capped to the
-/// next 24 entries so the row doesn't scroll through an entire remaining
-/// day. Assumes [hourly] is sorted ascending by time, as the API returns it.
-List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
-  if (hourly.isEmpty) return hourly;
+/// local midnight, not from the current time — so `list.first` is usually
+/// hours in the past by the time this renders. Slices down to the entry
+/// matching (or immediately preceding) [now] onward, capped to the next
+/// [max] entries. Assumes [list] is sorted ascending by time, as the API
+/// returns it.
+///
+/// Issue #273: `forecast_days=14` makes both `WeatherCondition.hourly` and
+/// `SeaCondition.hourly` span up to 14 days instead of the previous ~7, so
+/// every near-term-only consumer of the raw hourly series (the hourly row,
+/// `buildForecastAlerts`, `buildNextHourNote`) must go through this cap —
+/// otherwise a threshold crossing many days out would read as an "upcoming"
+/// heads-up. The actual multi-day outlook reads `dailyForecast` instead, a
+/// separate array, so it is unaffected by this cap.
+List<T> _upcomingEntries<T>(
+  List<T> list,
+  DateTime now,
+  DateTime Function(T) timeOf, {
+  int max = 24,
+}) {
+  if (list.isEmpty) return list;
   var startIndex = 0;
-  for (var i = 0; i < hourly.length; i++) {
-    if (hourly[i].time.isAfter(now)) break;
+  for (var i = 0; i < list.length; i++) {
+    if (timeOf(list[i]).isAfter(now)) break;
     startIndex = i;
   }
-  final upcoming = hourly.sublist(startIndex);
-  return upcoming.length > 24 ? upcoming.sublist(0, 24) : upcoming;
+  final upcoming = list.sublist(startIndex);
+  return upcoming.length > max ? upcoming.sublist(0, max) : upcoming;
 }
+
+List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) =>
+    _upcomingEntries(hourly, now, (h) => h.time);
 
 /// The Home / location-detail screen, per docs/design.md § "Screen: Home /
 /// location detail": a header, condition row, [LocationMapCard], a smart
@@ -1190,24 +1207,36 @@ class _HomeScreenState extends State<HomeScreen> {
             convention: DirectionConvention.flowingToward,
             seawardBearingDegrees: seawardBearingDegrees,
           );
+    // Issue #273: the sea hourly series capped to the next ~24 upcoming
+    // entries, same reasoning as [_upcomingHourly] above — `forecast_days
+    // =14` now makes the raw `hourly` list span up to 14 days, and
+    // ForecastAlertList/the next-hour note are near-term-only features.
+    final upcomingSeaHourly = _upcomingEntries<SeaHourly>(
+      marineProvider?.currentData?.hourly ?? const [],
+      effectiveNow,
+      (h) => h.time,
+    );
     // #169/#229: upcoming heads-ups for the selected location, computed
     // fresh on every build from the same WeatherProvider/MarineProvider
     // hourly data the stat grid and Sea section already use — never a
     // hard-coded list. Restricted to the selected location's own daylight
     // (sunrise-sunset) windows when the API returned them; an empty
     // `daylightWindows` (missing from the response) leaves the list
-    // unfiltered instead of dropping every alert.
+    // unfiltered instead of dropping every alert. Both series are already
+    // capped to the next ~24 hours ([hourly]/[upcomingSeaHourly]) so a
+    // threshold crossing many days out (issue #273's wider `forecast_days`)
+    // never reads as an "upcoming" heads-up.
     final forecastAlerts = buildForecastAlerts(
-      weather: weatherData?.hourly ?? const [],
-      sea: marineProvider?.currentData?.hourly ?? const [],
+      weather: hourly,
+      sea: upcomingSeaHourly,
       daylight: weatherData?.daylightWindows ?? const [],
       now: effectiveNow,
     );
     // #229: a single "what changes in the next hour" note, based on the
     // current time rather than daylight — still shown after sunset.
     final nextHourNote = buildNextHourNote(
-      weather: weatherData?.hourly ?? const [],
-      sea: marineProvider?.currentData?.hourly ?? const [],
+      weather: hourly,
+      sea: upcomingSeaHourly,
       now: effectiveNow,
     );
     return Scaffold(
@@ -1688,6 +1717,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         entries: dailyOutlook,
                         formatTemperature: (value) =>
                             _formatTemperature(value, unitSystem),
+                        now: effectiveNow,
                       ),
                     ],
                   ],
