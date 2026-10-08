@@ -270,17 +270,14 @@ void main() {
         },
       );
 
-      test(
-        'given stop() was called twice, the second call -> is a no-op '
-        '(does not throw)',
-        () async {
-          final dispatcher = await buildDispatcher();
+      test('given stop() was called twice, the second call -> is a no-op '
+          '(does not throw)', () async {
+        final dispatcher = await buildDispatcher();
 
-          dispatcher.stop();
+        dispatcher.stop();
 
-          expect(dispatcher.stop, returnsNormally);
-        },
-      );
+        expect(dispatcher.stop, returnsNormally);
+      });
     });
 
     group('persistence', () {
