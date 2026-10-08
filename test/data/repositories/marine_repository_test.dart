@@ -89,6 +89,42 @@ void main() {
       );
 
       test(
+        'given a response with daily, getMarineData -> populates dailyForecast (issue #273)',
+        () async {
+          final repository = MarineRepository(
+            _FakeMarineApiService({
+              'current': {'wave_height': 1.2},
+              'daily': {
+                'time': ['2026-07-01', '2026-07-02'],
+                'wave_height_max': [0.9, 1.4],
+              },
+            }),
+          );
+
+          final condition = await repository.getMarineData(38.3, 26.3);
+
+          expect(condition.dailyForecast, hasLength(2));
+          expect(condition.dailyForecast[0].waveHeightMax, 0.9);
+          expect(condition.dailyForecast[1].waveHeightMax, 1.4);
+        },
+      );
+
+      test(
+        'given a response without daily, getMarineData -> dailyForecast is an empty list',
+        () async {
+          final repository = MarineRepository(
+            _FakeMarineApiService({
+              'current': {'wave_height': 1.2},
+            }),
+          );
+
+          final condition = await repository.getMarineData(38.3, 26.3);
+
+          expect(condition.dailyForecast, isEmpty);
+        },
+      );
+
+      test(
         'given no current field, getMarineData -> throws a clear error',
         () async {
           final repository = MarineRepository(_FakeMarineApiService({}));

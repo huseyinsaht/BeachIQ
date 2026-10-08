@@ -92,8 +92,10 @@ void main() {
         );
         expect(
           uri.queryParameters['daily'],
-          'temperature_2m_max,temperature_2m_min,sunrise,sunset',
+          'temperature_2m_max,temperature_2m_min,sunrise,sunset,'
+          'wind_speed_10m_max,precipitation_probability_max',
         );
+        expect(uri.queryParameters['forecast_days'], '14');
       }, () => mockClient);
     });
   });

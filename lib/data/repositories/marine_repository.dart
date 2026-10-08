@@ -11,10 +11,15 @@ class MarineRepository {
     if (currentData is! Map<String, dynamic>) {
       throw Exception("Marine data response is missing the 'current' field");
     }
-    // Merge the sibling 'hourly' section alongside the current fields
-    // (unchanged in shape) so SeaCondition.fromJson can derive the hourly
-    // forecast series, mirroring WeatherRepository.getWeatherData.
-    final merged = <String, dynamic>{...currentData, 'hourly': data['hourly']};
+    // Merge the sibling 'hourly'/'daily' sections alongside the current
+    // fields (unchanged in shape) so SeaCondition.fromJson can derive the
+    // hourly and daily forecast series, mirroring
+    // WeatherRepository.getWeatherData.
+    final merged = <String, dynamic>{
+      ...currentData,
+      'hourly': data['hourly'],
+      'daily': data['daily'],
+    };
     return SeaCondition.fromJson(merged);
   }
 }

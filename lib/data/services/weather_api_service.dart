@@ -11,8 +11,14 @@ class WeatherApiService {
       'current': 'temperature_2m,wind_speed_10m,weather_code',
       'hourly':
           'temperature_2m,weather_code,uv_index,precipitation_probability,pressure_msl,wind_speed_10m,wind_gusts_10m,cloud_cover',
-      'daily': 'temperature_2m_max,temperature_2m_min,sunrise,sunset',
+      'daily':
+          'temperature_2m_max,temperature_2m_min,sunrise,sunset,'
+          'wind_speed_10m_max,precipitation_probability_max',
       'timezone': 'auto',
+      // Issue #273: a 7-14 day outlook needs more than Open-Meteo's
+      // 7-day default; 14 is the upper end of the issue's requested range
+      // and well within the API's supported horizon.
+      'forecast_days': '14',
     };
 
     final uri = Uri.parse(_baseUrl).replace(queryParameters: queryParams);

@@ -61,6 +61,7 @@ SeaCondition aSeaCondition({
   double? currentVelocity = 6.0,
   double? currentDirection = 135,
   List<SeaHourly> hourly = const [],
+  List<SeaDailyForecast> dailyForecast = const [],
 }) {
   return SeaCondition(
     waveHeight: waveHeight,
@@ -70,7 +71,15 @@ SeaCondition aSeaCondition({
     currentVelocity: currentVelocity,
     currentDirection: currentDirection,
     hourly: hourly,
+    dailyForecast: dailyForecast,
   );
+}
+
+SeaDailyForecast aSeaDailyForecast({
+  required DateTime date,
+  double? waveHeightMax,
+}) {
+  return SeaDailyForecast(date: date, waveHeightMax: waveHeightMax);
 }
 
 WeatherCondition aWeatherCondition({
@@ -84,6 +93,7 @@ WeatherCondition aWeatherCondition({
   double? lowTemperature,
   List<WeatherHourly> hourly = const [],
   List<DaylightWindow> daylightWindows = const [],
+  List<DailyWeatherForecast> dailyForecast = const [],
 }) {
   return WeatherCondition(
     temperature: temperature,
@@ -96,6 +106,23 @@ WeatherCondition aWeatherCondition({
     lowTemperature: lowTemperature,
     hourly: hourly,
     daylightWindows: daylightWindows,
+    dailyForecast: dailyForecast,
+  );
+}
+
+DailyWeatherForecast aDailyWeatherForecast({
+  required DateTime date,
+  double? highTemperature,
+  double? lowTemperature,
+  double? windSpeedMaxKmh,
+  double? rainChanceMaxPercent,
+}) {
+  return DailyWeatherForecast(
+    date: date,
+    highTemperature: highTemperature,
+    lowTemperature: lowTemperature,
+    windSpeedMaxKmh: windSpeedMaxKmh,
+    rainChanceMaxPercent: rainChanceMaxPercent,
   );
 }
 

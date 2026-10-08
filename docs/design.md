@@ -257,6 +257,15 @@ Top to bottom:
    rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
    moon instead of the sun icon at night, decided per entry from its own hour (a fixed 06:00-20:00
    bucket, not a sunrise/sunset calculation).
+9. **7-14 day outlook** (issue #273) — below the hourly row, the same section-label style (small
+   calendar icon + `text.secondary` label) introduces a plain vertical list, one row per forecast
+   day: a weekday label ("Today" for the first row), the swim-verdict icon/color (`paletteForVerdict`
+   — the same good/caution/poor/unknown mapping as the smart suggestion pill), the verdict's one-line
+   message, and the day's high/low temperature. A thin low-opacity divider separates rows, no card
+   background, matching the hourly row and stat grid. The whole section is hidden (no gap) when there
+   is no daily data yet, same "hide rather than show empty" rule as `ForecastAlertList`. A candidate
+   Pro feature per the market-analysis notes, built ungated for now (no entitlement system exists yet,
+   same stance as Compare beaches).
 
 ## Screen: Metric detail
 
@@ -405,6 +414,8 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
 - `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
   rows, sorted most severe first and rendering nothing when empty.
 - `HourlyForecastItem` — time + icon + temperature, used in the scrollable hourly row.
+- `DailyOutlookList` — the 7-14 day outlook's vertical rows (day label + swim-verdict icon/message +
+  high/low temperature), built from `buildDailyOutlook`.
 - `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
   beach overlay (gold polygons/lines).
 - `SearchField` — the rounded paper search input, reusable on any screen that needs city search.

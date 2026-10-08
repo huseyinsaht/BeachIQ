@@ -282,6 +282,67 @@ void main() {
     );
   });
 
+  group('HomeScreen 7-14 day outlook (issue #273)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets('given weather and marine providers with daily data, shows the '
+        'outlook section with one row per day', (tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(
+          dailyForecast: [
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 1),
+              highTemperature: 28.0,
+              lowTemperature: 20.0,
+            ),
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 2),
+              highTemperature: 29.0,
+              lowTemperature: 21.0,
+            ),
+          ],
+        ),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          dailyForecast: [
+            aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
+            aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
+          ],
+        ),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+        ),
+      );
+
+      expect(find.text('7-14 day outlook'), findsOneWidget);
+      expect(find.byKey(const Key('daily-outlook-list')), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+    });
+
+    testWidgets(
+      'given no daily data on either provider, hides the outlook section '
+      'entirely',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        expect(find.text('7-14 day outlook'), findsNothing);
+        expect(find.byKey(const Key('daily-outlook-list')), findsNothing);
+      },
+    );
+  });
+
   group('HomeScreen stat grid status words (issue #215)', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
