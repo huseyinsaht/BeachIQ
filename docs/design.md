@@ -106,8 +106,8 @@ or isn't available.
 >   (Beaches, Use my location, Units, Alerts, Compare beaches) stay reachable from the search field's
 >   trailing menu.
 > - A **draggable bottom sheet** (rounded top corners, grab handle) holds the selected location. Collapsed
->   it shows: place name + coordinates/distance subtitle, current temperature, the verdict pill, the day-prefixed
->   alert line (#252/#258), and the three **Sea** metrics (wave height, water temp, water depth) with
+>   it shows: place name + coordinates/distance subtitle, current temperature, the verdict pill, the single
+>   next-hour note (see "Forecast screen" below), and the three **Sea** metrics (wave height, water temp, water depth) with
 >   status words, plus a "swipe up for all details" hint. Expanded it shows the full Current, Air groups
 >   and the hourly forecast as in the current Home screen.
 > - Tapping the map still selects a point exactly as before; the sheet updates in place and stays in its
@@ -115,6 +115,22 @@ or isn't available.
 >   usable above the collapsed sheet.
 > - Unchanged: header content rules (#253), verdict palette, 3x3 stat grouping (#251), Water depth
 >   cross-section and verdict (#256).
+>
+> **Forecast screen (Vaen decision, 2026-10-08): one note on Home, everything else in a detail screen.**
+> Supersedes the Home placement of items 5 (alert list) and 9 (7-14 day outlook) below; their content and
+> thresholds are unchanged.
+>
+> - Home (collapsed and expanded sheet) shows **at most one note**: the **next-hour note**
+>   (`buildNextHourNote`, with its "Next hour" label). It is **not** replaced by an alert when absent: no
+>   next-hour note means no note and no gap. It is a short sentence that **wraps instead of being
+>   ellipsized**. The per-type daylight alert rows (`ForecastAlertList` rows) and the 7-14 day outlook list no
+>   longer appear on Home.
+> - A new **Forecast screen** is opened from a single row on Home ("Forecast and 7-14 day outlook  >") and by tapping the
+>   next-hour note. It has two sections: **Alerts** (all day-prefixed alerts from `buildForecastAlerts`, severity
+>   sorted, full text, wrapped, no ellipsis; "No alerts" when empty) and **7-14 day outlook**
+>   (`DailyOutlookList`, full verdict message wrapped, high/low). Same dark background and section-label style as
+>   the Metric detail screen, with a back button; it reads the selected location's data and updates with it.
+> - The "conditions turned favorable" notification (#267) and the alert thresholds are unchanged.
 
 Top to bottom:
 
