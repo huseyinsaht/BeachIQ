@@ -11,9 +11,9 @@ android {
     // own default (flutter.compileSdkVersion) is lower and fails the manifest merge.
     compileSdk = 36
     // Plugins (flutter_local_notifications, path_provider_android,
-    // shared_preferences_android, url_launcher_android) require NDK 27;
-    // Flutter 3.32 defaults to 26.3 and warns on every build.
-    ndkVersion = "27.0.12077973"
+    // shared_preferences_android, url_launcher_android, integration_test)
+    // require NDK 28.2; Flutter's own default is lower and warns on every build.
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -21,10 +21,6 @@ android {
         // Required by flutter_local_notifications (#221), which needs core
         // library desugaring enabled for :app.
         isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
     defaultConfig {
@@ -53,6 +49,12 @@ dependencies {
     // Required because flutter_local_notifications needs core library
     // desugaring enabled (see compileOptions above).
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+    }
 }
 
 flutter {
