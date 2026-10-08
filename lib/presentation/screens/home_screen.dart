@@ -283,24 +283,26 @@ Future<void> _showUnitSystemSheet(
     context: context,
     builder: (sheetContext) {
       return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final option in UnitSystem.values)
-              RadioListTile<UnitSystem>(
-                title: Text(
-                  option == UnitSystem.metric
-                      ? 'Metric (m, °C, km/h)'
-                      : 'Imperial (ft, °F, mph)',
+        child: RadioGroup<UnitSystem>(
+          groupValue: provider.unitSystem,
+          onChanged: (value) {
+            if (value != null) provider.setUnitSystem(value);
+            Navigator.of(sheetContext).pop();
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in UnitSystem.values)
+                RadioListTile<UnitSystem>(
+                  title: Text(
+                    option == UnitSystem.metric
+                        ? 'Metric (m, °C, km/h)'
+                        : 'Imperial (ft, °F, mph)',
+                  ),
+                  value: option,
                 ),
-                value: option,
-                groupValue: provider.unitSystem,
-                onChanged: (value) {
-                  if (value != null) provider.setUnitSystem(value);
-                  Navigator.of(sheetContext).pop();
-                },
-              ),
-          ],
+            ],
+          ),
         ),
       );
     },
