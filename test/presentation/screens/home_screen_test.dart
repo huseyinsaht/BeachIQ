@@ -1733,6 +1733,41 @@ void main() {
     );
 
     testWidgets(
+      'given Beta Beach is already a favorite, the selection sheet marks '
+      'it with a star and lists it before the non-favorite Alpha Beach',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        // `FavoritesProvider.keyFor`'s own format ("name|city"), seeded
+        // after `fakeNearbyBeachesProvider` (which resets the mock prefs
+        // to `{}` internally) and before `_openCompareSelection` builds
+        // its own throwaway `FavoritesProvider` from `SharedPreferences`.
+        SharedPreferences.setMockInitialValues({
+          'favorite_beaches': ['Beta Beach|Beta City'],
+        });
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        final tiles = tester
+            .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+            .toList();
+        expect(tiles, hasLength(2));
+        expect((tiles.first.title as Text).data, 'Beta Beach');
+        expect(tiles.first.secondary, isA<Icon>());
+        expect((tiles.first.secondary as Icon).icon, Icons.star);
+
+        expect((tiles.last.title as Text).data, 'Alpha Beach');
+        expect(tiles.last.secondary, isNull);
+      },
+    );
+
+    testWidgets(
       'given a compareWeatherRepository, forwards it to the comparison '
       'screen so its wind/swim-score columns show real values rather than '
       '"No data"',
