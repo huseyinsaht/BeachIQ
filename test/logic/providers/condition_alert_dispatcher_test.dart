@@ -250,6 +250,36 @@ void main() {
       });
     });
 
+    group('stop', () {
+      test(
+        'given stop() was called, a subsequent poor-to-good transition -> '
+        'never fires (the dispatcher detached from both providers)',
+        () async {
+          final dispatcher = await buildDispatcher();
+
+          // Establish a "poor" baseline before detaching.
+          await poll(_poorSea, _poorWeather);
+
+          dispatcher.stop();
+
+          // Without stop(), this poor-to-good transition would fire (see
+          // the 'transition to good' group above).
+          await poll(_goodSea, _goodWeather);
+
+          expect(notificationPlugin.calls, isEmpty);
+        },
+      );
+
+      test('given stop() was called twice, the second call -> is a no-op '
+          '(does not throw)', () async {
+        final dispatcher = await buildDispatcher();
+
+        dispatcher.stop();
+
+        expect(dispatcher.stop, returnsNormally);
+      });
+    });
+
     group('persistence', () {
       test(
         'given a dispatcher already saw a good verdict, a freshly constructed '
