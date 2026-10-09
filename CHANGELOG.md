@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.11] - 2026-10-09
+
 ### Added
 
 - A "Forecast" screen reachable from Home's expanded bottom sheet (or by tapping the
