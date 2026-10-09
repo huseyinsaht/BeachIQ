@@ -113,6 +113,16 @@ or isn't available.
 > - Tapping the map still selects a point exactly as before; the sheet updates in place and stays in its
 >   current state. Amenity markers, the legend chips and beach overlays are unchanged and must stay
 >   usable above the collapsed sheet.
+> - **Selected-beach info row** (issue #214, extended by #257) — once a beach has been picked from
+>   Search, the expanded sheet also shows its `BeachResultCard` (place name, temperature, entry fee,
+>   wave height, water temperature, shoe advice, parking/beach club/cafe), fully rounded rather than
+>   the Search result sheet's top-only radius. It carries a **water-depth / non-swimmer summary**: a
+>   small waves icon plus the #256 verdict sentence (gentle/moderate/steep, colored the same green/
+>   orange/red, or "Depth: no data"/"Depth: checking…" while unknown/loading — never a guessed verdict),
+>   and, when known, a second line combining the stand-up distance with a shortened approximation
+>   caveat (`depthApproximationCaveatShort`). Tapping the summary opens the same water-depth detail
+>   screen the Home stat tile does, where the full caveat is shown. `SearchScreen`'s own result list
+>   never fetches a depth profile per result, so it never shows this summary.
 > - Unchanged: header content rules (#253), verdict palette, 3x3 stat grouping (#251), Water depth
 >   cross-section and verdict (#256).
 >
@@ -458,7 +468,8 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
   beach overlay (gold polygons/lines).
 - `SearchField` — the rounded paper search input, reusable on any screen that needs city search.
 - `BeachResultCard` — the paper bottom-sheet result row + a two-column block of plain text info
-  lines (no chip boxes) for the nearby beach.
+  lines (no chip boxes) for the nearby beach, plus an optional water-depth summary row (issue #257,
+  Home's selected-beach info row only — see "Layout decision" above).
 
 ## Out of scope for this doc
 

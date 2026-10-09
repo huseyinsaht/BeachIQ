@@ -13,6 +13,7 @@ import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/condition_alert_dispatcher.dart';
+import 'package:beachiq/logic/providers/depth_provider.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/place_search_provider.dart';
@@ -778,6 +779,7 @@ void main() {
       WidgetTester tester,
       NearbyBeachesProvider provider, {
       DraggableScrollableController? sheetController,
+      DepthProvider? depthProvider,
     }) async {
       final weatherProvider = await aLoadedWeatherProvider(
         aWeatherCondition(temperature: 27),
@@ -788,6 +790,7 @@ void main() {
           nearbyBeachesProvider: provider,
           weatherProvider: weatherProvider,
           sheetController: sheetController,
+          depthProvider: depthProvider,
         ),
       );
       await tester.pump(const Duration(milliseconds: 10));
@@ -900,6 +903,132 @@ void main() {
 
       expect(find.byType(SearchScreen), findsNothing);
       expect(find.byType(BeachResultCard), findsNothing);
+    });
+
+    group('selected-beach depth summary (issue #257)', () {
+      const gentleProfile = DepthProfile(
+        available: true,
+        samples: [
+          DepthSample(distanceMeters: 0, depthMeters: 0.3),
+          DepthSample(distanceMeters: 100, depthMeters: 1.0),
+          DepthSample(distanceMeters: 200, depthMeters: 1.5),
+        ],
+      );
+
+      Future<void> pickFixtureBeach(
+        WidgetTester tester,
+        DraggableScrollableController sheetController, {
+        DepthProvider? depthProvider,
+      }) async {
+        final client = fixtureClient();
+        final provider = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(
+          tester,
+          provider,
+          sheetController: sheetController,
+          depthProvider: depthProvider,
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Beaches'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Fixture Beach'));
+        await tester.pumpAndSettle();
+        await expandSheet(tester, sheetController);
+      }
+
+      testWidgets(
+        'no DepthProvider: the card shows "Depth: no data", never a crash',
+        (tester) async {
+          final sheetController = DraggableScrollableController();
+          await pickFixtureBeach(tester, sheetController);
+
+          expect(tester.takeException(), isNull);
+          expect(find.text('Depth: no data'), findsOneWidget);
+        },
+      );
+
+      testWidgets('a loaded DepthProvider with a gentle profile shows the #256 '
+          'verdict and the stand-up distance in the selected-beach card', (
+        tester,
+      ) async {
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+        final sheetController = DraggableScrollableController();
+        await pickFixtureBeach(
+          tester,
+          sheetController,
+          depthProvider: depthProvider,
+        );
+        await tester.pump(const Duration(milliseconds: 10));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Stand-up water until about 200 m · '
+            'Approximate (~115 m data). Not a safety guarantee.',
+          ),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets(
+        'tapping the depth summary opens DepthDetailScreen, back returns '
+        'to Home',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final sheetController = DraggableScrollableController();
+          await pickFixtureBeach(
+            tester,
+            sheetController,
+            depthProvider: depthProvider,
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byType(DepthDetailScreen), findsOneWidget);
+
+          await tester.tap(find.byTooltip('Back'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(DepthDetailScreen), findsNothing);
+          expect(find.byType(HomeScreen), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'SearchScreen\'s own result rows never show a depth summary (no '
+        'per-result depth fetch)',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final client = fixtureClient();
+          final provider = await fakeNearbyBeachesProvider(client: client);
+          addTearDown(provider.dispose);
+          await pumpLoadedHome(tester, provider, depthProvider: depthProvider);
+
+          await tester.tap(find.byTooltip('More'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Beaches'));
+          await tester.pumpAndSettle();
+
+          expect(find.byType(SearchScreen), findsOneWidget);
+          expect(find.textContaining('Depth:'), findsNothing);
+          expect(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+            findsNothing,
+          );
+        },
+      );
     });
   });
 
