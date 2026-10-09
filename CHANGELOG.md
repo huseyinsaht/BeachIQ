@@ -5,6 +5,39 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- A "Forecast" screen reachable from Home's expanded bottom sheet (or by tapping the
+  next-hour note): every upcoming alert (severity sorted, full text) and the full 7-14
+  day outlook, both shown in full instead of truncated. Home itself now shows at most
+  one note — the single next-hour heads-up — instead of the full per-type alert list
+  and inline outlook (#292)
+- The selected-beach info row on Home now shows a one-line depth / non-swimmer verdict
+  (reusing the water-depth tile's exact wording and color bands) with the stand-up
+  distance and a shortened caveat when known; tapping it opens the same water-depth
+  detail screen as the stat tile (#294)
+- Additional test coverage for `DepthProvider`'s dispose-while-fetch-in-flight guard,
+  matching the existing `MarineProvider`/`WeatherProvider` coverage (#296)
+
+### Changed
+
+- Home is now a map-first layout: the map fills the whole screen behind a floating
+  search field and floating zoom/"my location" controls, with the selected location's
+  details (place name, temperature, suggestion pill, next-hour note, stat tiles,
+  hourly row) in a draggable bottom sheet that can be collapsed to just the essentials
+  or expanded for everything else (#291)
+- Upgraded to Flutter 3.47.6, Gradle 9.1, Android Gradle Plugin 9.0.1, Kotlin 2.3.20
+  and NDK 28.2.13676358 (#286, #287)
+- Refreshed `pubspec.lock` to pick up newer transitive dependency versions already
+  allowed by `pubspec.yaml` (e.g. `geolocator`, `shared_preferences`, `url_launcher`);
+  no application code changed (#290)
+
+### Fixed
+
+- `BeachResultCard`'s info rows (used on Search results and Home's selected-beach
+  card) no longer overflow horizontally at a narrow width with a large text scale
+  (#295)
+
 ## [2026.10.9] - 2026-10-07
 
 ### Added
