@@ -1,5 +1,7 @@
 import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/logic/beach_gear_advisor.dart';
+import 'package:beachiq/logic/shallow_entry_verdict.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:flutter/material.dart';
@@ -313,6 +315,224 @@ void main() {
 
       final inkWell = tester.widget<InkWell>(find.byType(InkWell));
       expect(inkWell.onTap, isNull);
+    });
+  });
+
+  group('depth summary (#257)', () {
+    const gentleProfile = DepthProfile(
+      available: true,
+      samples: [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+        DepthSample(distanceMeters: 200, depthMeters: 1.5),
+      ],
+    );
+    const steepProfile = DepthProfile(
+      available: true,
+      samples: [
+        DepthSample(distanceMeters: 0, depthMeters: 1.0),
+        DepthSample(distanceMeters: 100, depthMeters: 3.5),
+        DepthSample(distanceMeters: 200, depthMeters: 6.0),
+      ],
+    );
+
+    testWidgets(
+      'showDepthSummary false (the default, e.g. SearchScreen results): no '
+      'depth row and no behavior change at all',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const BeachResultCard(
+              placeName: 'Altinkum Beach',
+              areaSubtitle: 'Cesme, Izmir',
+              temperature: '27°',
+              depthProfile: gentleProfile,
+            ),
+          ),
+        );
+
+        expect(find.byIcon(Icons.waves), findsNothing);
+        expect(find.textContaining('Depth'), findsNothing);
+        // Only the card's own InkWell (onTap) exists -- no second one for a
+        // depth row that isn't there.
+        expect(find.byType(InkWell), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'isDepthLoading true shows a loading placeholder, never a verdict',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const BeachResultCard(
+              placeName: 'Altinkum Beach',
+              areaSubtitle: 'Cesme, Izmir',
+              temperature: '27°',
+              showDepthSummary: true,
+              isDepthLoading: true,
+              depthProfile: null,
+            ),
+          ),
+        );
+
+        expect(find.text('Depth: checking…'), findsOneWidget);
+        expect(find.text('Depth: no data'), findsNothing);
+      },
+    );
+
+    testWidgets('no profile (and not loading) shows "Depth: no data", never a '
+        'guessed verdict', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            showDepthSummary: true,
+          ),
+        ),
+      );
+
+      expect(find.text('Depth: no data'), findsOneWidget);
+    });
+
+    testWidgets('an unavailable profile also shows "Depth: no data"', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            showDepthSummary: true,
+            depthProfile: DepthProfile.unavailable(),
+          ),
+        ),
+      );
+
+      expect(find.text('Depth: no data'), findsOneWidget);
+    });
+
+    testWidgets('a gentle profile shows the #256 verdict wording, the stand-up '
+        'distance, and the shortened caveat', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            showDepthSummary: true,
+            depthProfile: gentleProfile,
+          ),
+        ),
+      );
+
+      expect(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Stand-up water until about 200 m · '
+          '$depthApproximationCaveatShort',
+        ),
+        findsOneWidget,
+      );
+      // The full caveat is never duplicated here -- only on the detail
+      // screen a tap opens.
+      expect(find.textContaining('not captured'), findsNothing);
+    });
+
+    testWidgets('a steep profile shows the steep verdict in red', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            showDepthSummary: true,
+            depthProfile: steepProfile,
+          ),
+        ),
+      );
+
+      final verdict = tester.widget<Text>(
+        find.text('Drops away quickly. Not suitable for non-swimmers.'),
+      );
+      expect(verdict.style!.color, const Color(0xFFEF5350));
+    });
+
+    testWidgets(
+      'the depth summary row itself does not overflow at a narrow (360dp) '
+      'width with a large text scale',
+      (tester) async {
+        // Deliberately omits the other optional beach-info fields (fee,
+        // wave height, shoe advice, ...): this isolates the new depth
+        // summary row -- the "Beaches Near" two-column block's own
+        // overflow behavior at this size is unrelated to issue #257 and
+        // has its own, separate test coverage.
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: Scaffold(
+                    body: BeachResultCard(
+                      placeName: 'Altinkum Beach',
+                      areaSubtitle: 'Cesme, Izmir',
+                      temperature: '27°',
+                      showDepthSummary: true,
+                      depthProfile: gentleProfile,
+                      onDepthTap: () {},
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('tapping the depth summary calls onDepthTap, not onTap', (
+      tester,
+    ) async {
+      var depthTapCount = 0;
+      var cardTapCount = 0;
+      await tester.pumpWidget(
+        wrap(
+          BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            showDepthSummary: true,
+            depthProfile: gentleProfile,
+            onDepthTap: () => depthTapCount++,
+            onTap: () => cardTapCount++,
+          ),
+        ),
+      );
+
+      await tester.tap(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+      );
+      await tester.pump();
+
+      expect(depthTapCount, 1);
+      expect(cardTapCount, 0);
     });
   });
 

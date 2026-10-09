@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/depth_profile.dart';
 import '../../data/models/place.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
@@ -1509,7 +1510,25 @@ class _HomeScreenState extends State<HomeScreen> {
         // matching the mockup's collapsed state having no space for it.
         if (expanded && _selectedBeach != null) ...[
           const SizedBox(height: 16),
-          _buildSelectedBeachInfo(_selectedBeach!, unitSystem),
+          _buildSelectedBeachInfo(
+            _selectedBeach!,
+            unitSystem,
+            depthProfile: depthProfile,
+            isDepthLoading: widget.depthProvider?.isLoading ?? false,
+            onDepthTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.depth,
+                hourly: const [],
+                depthProfile: depthProfile,
+                beach: depthBeach,
+                currentWaveHeightMeters: seaCondition?.waveHeight,
+                currentValue: seaCondition?.currentVelocity,
+                currentDirectionValue: seaCondition?.currentDirection,
+                seawardBearingDegrees: seawardBearingDegrees,
+                unitSystem: unitSystem,
+              ),
+            ),
+          ),
         ],
         const SizedBox(height: 16),
         SwimSuggestionPill(verdict: swimVerdict),
@@ -2101,7 +2120,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// once it resolves. [isSameBeach] resolves the live instance for that
   /// lookup instead, the same value-based matching `LocationMapCard` uses
   /// for its highlight.
-  Widget _buildSelectedBeachInfo(Beach beach, UnitSystem unitSystem) {
+  Widget _buildSelectedBeachInfo(
+    Beach beach,
+    UnitSystem unitSystem, {
+    required DepthProfile? depthProfile,
+    required bool isDepthLoading,
+    required VoidCallback onDepthTap,
+  }) {
     final liveBeach = (widget.nearbyBeachesProvider?.beaches ?? const [])
         .firstWhere((b) => isSameBeach(b, beach), orElse: () => beach);
     final seaCondition = widget.nearbyBeachesProvider?.seaConditionFor(
@@ -2123,6 +2148,14 @@ class _HomeScreenState extends State<HomeScreen> {
       hasCafe: liveBeach.hasCafe,
       unitSystem: unitSystem,
       borderRadius: BorderRadius.circular(24),
+      // #257: a one/two-line water-depth / non-swimmer summary, shown only
+      // here -- SearchScreen's result list never fetches a depth profile
+      // per result, so it never passes these and renders exactly as
+      // before.
+      showDepthSummary: true,
+      isDepthLoading: isDepthLoading,
+      depthProfile: depthProfile,
+      onDepthTap: onDepthTap,
     );
   }
 
