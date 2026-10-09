@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/place.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
@@ -39,6 +40,7 @@ import '../widgets/daily_outlook_list.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
+import '../widgets/search_field.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/stat_tile_group.dart';
 import '../widgets/swim_suggestion_pill.dart';
@@ -505,6 +507,7 @@ class HomeScreen extends StatefulWidget {
     this.compareWeatherRepository,
     this.compareBathymetryService,
     this.now,
+    this.sheetController,
   });
 
   /// Overridable so widget tests can avoid hitting the real tile network.
@@ -582,6 +585,15 @@ class HomeScreen extends StatefulWidget {
   /// of depending on the real clock. Defaults to [DateTime.now].
   final DateTime Function()? now;
 
+  /// Issue #284's map-first layout: drives the draggable bottom sheet
+  /// holding the selected location's details. Overridable so a widget test
+  /// can force the sheet open/closed deterministically (`jumpTo`/`animateTo`)
+  /// instead of simulating a real drag gesture, the same reason
+  /// [tileProvider]/[mapController]-style overrides exist elsewhere on this
+  /// screen. Null (the default) makes this screen own and dispose its own
+  /// controller.
+  final DraggableScrollableController? sheetController;
+
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
@@ -595,6 +607,10 @@ class _HomeScreenState extends State<HomeScreen> {
   // away-from-shore shore-relation label, reused here for the Sea
   // section's inline error (see [_buildSectionError]).
   static const _colorWarning = Color(0xFFEF5350);
+  // `location_map_card.dart`'s own `_textOnPaper` — reused here (issue
+  // #284) for the floating search field's results panel, which now lives
+  // on this screen instead of inside that widget's docked bar.
+  static const _mapTextOnPaper = Color(0xFF2E3057);
 
   /// The first-run default, per docs/design.md — used only until the user
   /// has ever picked a location (on the map or via search) or one was
@@ -666,12 +682,54 @@ class _HomeScreenState extends State<HomeScreen> {
   /// pattern.
   int _placeNameRequestToken = 0;
 
+  // Issue #284: the map-first layout shares one `MapController` between
+  // this screen's own floating +/- zoom buttons and the full-screen
+  // `LocationMapCard` underneath, so a button press actually moves the same
+  // camera the map renders (mirroring `LocationMapCard.mapController`'s own
+  // "shared controller" pattern).
+  final MapController _mapController = MapController();
+
+  /// The draggable bottom sheet's own fractional size (0..1 of the screen
+  /// height), per docs/design.md's "Layout decision" — collapsed shows the
+  /// place name/temperature/pill/next alert/Sea tiles/hint, expanded adds
+  /// everything else. `widget.sheetController`, when supplied, lets a
+  /// widget test drive this deterministically (`jumpTo`/`animateTo`)
+  /// instead of simulating a real drag.
+  late final DraggableScrollableController _sheetController =
+      widget.sheetController ?? DraggableScrollableController();
+
+  static const double _sheetMinSize = 0.34;
+  static const double _sheetMaxSize = 0.90;
+
+  /// The fractional size above which the sheet is considered "expanded"
+  /// (see [_sheetExpanded]) — roughly the midpoint between
+  /// [_sheetMinSize]/[_sheetMaxSize], so a small drag off either resting
+  /// size doesn't flicker between states.
+  static const double _sheetExpandThreshold =
+      (_sheetMinSize + _sheetMaxSize) / 2;
+
+  /// Whether the sheet currently shows its expanded content (Current/Air
+  /// groups, hourly row, 7-14 day outlook) or just its collapsed content
+  /// (place name, temperature, pill, next alert, Sea group, hint) — kept as
+  /// its own flag (rather than inferred inline from the sheet's raw size on
+  /// every build) so the expanded/collapsed *content* only swaps at
+  /// [_sheetExpandThreshold], not on every pixel of drag.
+  bool _sheetExpanded = false;
+
+  /// The text currently typed into the floating search field (issue #284,
+  /// replacing the former in-map-card search icon's own `_searchQuery`) —
+  /// drives [_buildSearchResults]' loading/empty/error/loaded states
+  /// exactly as that in-map-card search did.
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     widget.marineProvider?.addListener(_onProviderChanged);
     widget.weatherProvider?.addListener(_onProviderChanged);
     widget.unitPreferencesProvider?.addListener(_onProviderChanged);
+    _sheetController.addListener(_onSheetSizeChanged);
     // Needed so the Sea section's shore-relation bearing (derived from
     // nearbyBeachesProvider.beaches, see seawardBearingDegrees below)
     // actually appears once the beaches list resolves — without this,
@@ -901,7 +959,72 @@ class _HomeScreenState extends State<HomeScreen> {
     widget.unitPreferencesProvider?.removeListener(_onProviderChanged);
     widget.nearbyBeachesProvider?.removeListener(_onProviderChanged);
     widget.depthProvider?.removeListener(_onProviderChanged);
+    _sheetController.removeListener(_onSheetSizeChanged);
+    // Only dispose a controller this screen created itself — disposing a
+    // caller-supplied one (widget.sheetController, e.g. a widget test's own)
+    // is that caller's job, the same pattern `LocationMapCard.mapController`
+    // already follows.
+    if (widget.sheetController == null) _sheetController.dispose();
+    _mapController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  /// Keeps [_sheetExpanded] in sync with [_sheetController]'s own fractional
+  /// size, only flipping (and rebuilding) at [_sheetExpandThreshold] rather
+  /// than on every drag frame.
+  void _onSheetSizeChanged() {
+    if (!_sheetController.isAttached || !mounted) return;
+    final expanded = _sheetController.size > _sheetExpandThreshold;
+    if (expanded != _sheetExpanded) setState(() => _sheetExpanded = expanded);
+  }
+
+  /// The floating +/- zoom buttons (issue #284): moves [_mapController] by
+  /// [delta] zoom levels around its current center, clamped to
+  /// [kLocationMapMinZoom]/[kLocationMapMaxZoom] — the same floor
+  /// `LocationMapCard` itself already enforces via `MapOptions.minZoom`
+  /// (now also `maxZoom`), so these buttons can never drive the camera
+  /// somewhere a pinch gesture couldn't. A no-op before the underlying
+  /// `FlutterMap` has rendered at least once (e.g. still on the full-screen
+  /// loading/error shell, where these buttons aren't shown anyway).
+  void _zoomBy(double delta) {
+    try {
+      final camera = _mapController.camera;
+      final nextZoom = (camera.zoom + delta).clamp(
+        kLocationMapMinZoom,
+        kLocationMapMaxZoom,
+      );
+      _mapController.move(camera.center, nextZoom);
+    } on Exception {
+      // Not attached yet — nothing to zoom.
+    }
+  }
+
+  /// The floating search field's own live geocoding (issue #284, replacing
+  /// the former in-map-card search icon's expansion): drives
+  /// [widget.placeSearchProvider] exactly as that expansion did.
+  void _handleSearchChanged(String value) {
+    setState(() => _searchQuery = value);
+    widget.placeSearchProvider?.search(value);
+  }
+
+  /// Picks [place] exactly as a map tap would ([_handleLocationPicked]):
+  /// recenters the map (via `_selectedLocation` flowing back into
+  /// `LocationMapCard.center`) and reports the new point upward — but with
+  /// the place's real looked-up name, never [formatCoordinates]'s fallback.
+  /// Unlike a map tap or a beach pick, nothing else calls
+  /// `nearbyBeachesProvider.pickLocation` for a place-search pick, so this
+  /// does so explicitly, mirroring [_handleBeachPicked]/
+  /// [_handleUseMyLocation]'s same explicit call for the same reason (the
+  /// former in-map-card search icon used to do this itself, in
+  /// `LocationMapCard._selectPlace`).
+  void _selectSearchPlace(Place place) {
+    final point = LatLng(place.latitude, place.longitude);
+    setState(() => _searchQuery = '');
+    _searchController.clear();
+    widget.placeSearchProvider?.search('');
+    widget.nearbyBeachesProvider?.pickLocation(point);
+    _handleLocationPicked(point, place.name);
   }
 
   /// Kicks off (or skips, when nothing changed) [widget.depthProvider]'s
@@ -1241,6 +1364,441 @@ class _HomeScreenState extends State<HomeScreen> {
       sea: upcomingSeaHourly,
       now: effectiveNow,
     );
+    // Issue #284: collapsed shows at most one alert row — whichever one
+    // `ForecastAlertList` would have drawn first (the next-hour note when
+    // there is one, otherwise the single most-severe daylight alert) — by
+    // literally feeding that real widget a trimmed-down `alerts` list,
+    // rather than a second, parallel rendering of an alert row that could
+    // drift from the real one. Expanded keeps the full list untouched.
+    final collapsedAlerts = nextHourNote != null || forecastAlerts.isEmpty
+        ? const <ForecastAlert>[]
+        : [sortAlertsBySeverity(forecastAlerts).first];
+
+    Widget buildGrabHandle() => Center(
+      child: Container(
+        key: const Key('sheet-grab-handle'),
+        width: 36,
+        height: 4,
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: _textSecondary.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+    );
+
+    // The pre-#284 header row, unchanged content/logic (#253) — just moved
+    // into the sheet.
+    Widget buildHeader() => Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                _placeName,
+                style: const TextStyle(
+                  color: _textPrimary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              if (_headerSubtitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _headerSubtitle!,
+                  style: const TextStyle(color: _textSecondary, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+        ),
+        Text(
+          _formatTemperature(weatherData?.temperature, unitSystem),
+          style: const TextStyle(
+            color: _textPrimary,
+            fontWeight: FontWeight.bold,
+            fontSize: 44,
+          ),
+        ),
+      ],
+    );
+
+    // The pre-#284 condition row (condition text + H/L), unchanged content —
+    // not part of the mockup's collapsed sheet, so only shown expanded (see
+    // docs/design.md's "Layout decision": "the list still describes each
+    // element's content and behavior" for everything not explicitly named
+    // in the collapsed sheet's own contents).
+    Widget buildConditionRow() => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          weatherData != null
+              ? weatherCodeDescription(weatherData.weatherCode)
+              : _noData,
+          style: const TextStyle(color: _textSecondary, fontSize: 13),
+        ),
+        Text(
+          'H:${_formatTemperature(weatherData?.highTemperature, unitSystem)} '
+          'L:${_formatTemperature(weatherData?.lowTemperature, unitSystem)}',
+          style: const TextStyle(color: _textSecondary, fontSize: 13),
+        ),
+      ],
+    );
+
+    Widget buildSwipeUpHint() => const Padding(
+      padding: EdgeInsets.only(top: 4),
+      child: Row(
+        key: Key('sheet-swipe-up-hint'),
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.keyboard_arrow_up, size: 16, color: _textSecondary),
+          SizedBox(width: 4),
+          // `Flexible` (not a bare `Text`) so a narrow screen/large text
+          // scale wraps this hint onto a second line instead of
+          // overflowing — the Row itself is `mainAxisSize.max` (the
+          // default) rather than `.min`, since `.min` would size to the
+          // text's own unconstrained intrinsic width and overflow before
+          // `Flexible` ever got a chance to shrink it.
+          Flexible(
+            child: Text(
+              'swipe up for all details',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: _textSecondary, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Shared by both the collapsed and expanded sheet content — the
+    // expanded body is this plus everything below it (Current/Air groups,
+    // hourly row, 7-14 day outlook), per docs/design.md's "Layout decision":
+    // "Expanded it shows the full Current, Air groups and the hourly
+    // forecast as in the current Home screen."
+    List<Widget> buildSheetTopContent({required bool expanded}) {
+      final alertsToShow = expanded ? forecastAlerts : collapsedAlerts;
+      return [
+        buildGrabHandle(),
+        buildHeader(),
+        if (expanded) ...[const SizedBox(height: 12), buildConditionRow()],
+        // #214: the beach picked in `SearchScreen`'s results is already
+        // highlighted on the full-screen map behind this sheet
+        // (`selectedBeach` flows into `LocationMapCard`); this is its
+        // compact info row — only room for it once the sheet is expanded,
+        // matching the mockup's collapsed state having no space for it.
+        if (expanded && _selectedBeach != null) ...[
+          const SizedBox(height: 16),
+          _buildSelectedBeachInfo(_selectedBeach!, unitSystem),
+        ],
+        const SizedBox(height: 16),
+        SwimSuggestionPill(verdict: swimVerdict),
+        // #169/#229: hidden entirely (no gap) when there is neither an
+        // upcoming alert nor a next-hour note — see ForecastAlertList's own
+        // doc comment.
+        if (alertsToShow.isNotEmpty || nextHourNote != null) ...[
+          const SizedBox(height: 16),
+          ForecastAlertList(
+            alerts: alertsToShow,
+            nextHourNote: nextHourNote,
+            now: effectiveNow,
+          ),
+        ],
+        // #213/#228: a fetch in flight for a new pick, or one that failed
+        // outright, shows a loading/error note here instead of either the
+        // previous pick's values or a silent blank gap — but (issue #251)
+        // never hides the Sea group below it: each tile already falls back
+        // to "No data" on its own null-safe formatter when there's nothing
+        // to show yet.
+        if (marineLoading) ...[
+          const SizedBox(height: 20),
+          _buildSectionLoading(height: 40),
+        ] else if (marineErrorMessage != null) ...[
+          const SizedBox(height: 20),
+          _buildSectionError(marineErrorMessage),
+        ],
+        const SizedBox(height: 20),
+        StatTileGroup(
+          label: 'Sea',
+          icon: Icons.waves,
+          tiles: [
+            StatTile(
+              key: const Key('wave-height-tile'),
+              icon: Icons.waves,
+              label: 'Wave height',
+              value: _formatSeaWaveHeight(seaCondition?.waveHeight, unitSystem),
+              onTap: () => Navigator.of(context).push(
+                buildDetailRoute(
+                  DetailMetric.waveHeight,
+                  hourly: const [],
+                  seaHourly: seaCondition?.hourly ?? const [],
+                  currentValue: seaCondition?.waveHeight,
+                  unitSystem: unitSystem,
+                ),
+              ),
+            ),
+            StatTile(
+              key: const Key('water-temperature-tile'),
+              icon: Icons.thermostat,
+              label: 'Water temp',
+              value: _formatSeaWaterTemperature(
+                seaCondition?.seaSurfaceTemperature,
+                unitSystem,
+              ),
+              onTap: () => Navigator.of(context).push(
+                buildDetailRoute(
+                  DetailMetric.waterTemperature,
+                  hourly: const [],
+                  seaHourly: seaCondition?.hourly ?? const [],
+                  currentValue: seaCondition?.seaSurfaceTemperature,
+                  unitSystem: unitSystem,
+                ),
+              ),
+            ),
+            StatTile(
+              key: const Key('water-depth-tile'),
+              icon: Icons.waves,
+              label: 'Water depth',
+              value: depthValue,
+              statusLabel: depthStatusLabel,
+              statusColor: depthStatusColor,
+              onTap: () => Navigator.of(context).push(
+                buildDetailRoute(
+                  DetailMetric.depth,
+                  hourly: const [],
+                  depthProfile: depthProfile,
+                  beach: depthBeach,
+                  currentWaveHeightMeters: seaCondition?.waveHeight,
+                  currentValue: seaCondition?.currentVelocity,
+                  currentDirectionValue: seaCondition?.currentDirection,
+                  seawardBearingDegrees: seawardBearingDegrees,
+                  unitSystem: unitSystem,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ];
+    }
+
+    // Everything the expanded sheet adds on top of `buildSheetTopContent`:
+    // the Current/Air groups, the hourly row and the 7-14 day outlook —
+    // today's exact content/logic, just moved into the sheet.
+    List<Widget> buildSheetExpandedExtras() => [
+      const SizedBox(height: 20),
+      _buildGroupDivider(),
+      const SizedBox(height: 20),
+      StatTileGroup(
+        label: 'Current',
+        icon: Icons.explore,
+        tiles: [
+          StatTile(
+            key: const Key('current-speed-tile'),
+            icon: Icons.speed,
+            label: 'Current speed',
+            value: _formatSeaCurrentSpeed(
+              seaCondition?.currentVelocity,
+              unitSystem,
+            ),
+            onTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.current,
+                hourly: const [],
+                seaHourly: seaCondition?.hourly ?? const [],
+                currentValue: seaCondition?.currentVelocity,
+                currentDirectionValue: seaCondition?.currentDirection,
+                seawardBearingDegrees: seawardBearingDegrees,
+                unitSystem: unitSystem,
+              ),
+            ),
+          ),
+          StatTile(
+            key: const Key('current-direction-tile'),
+            icon: Icons.navigation,
+            iconRotationDegrees: seaCondition?.currentDirection,
+            label: 'Current direction',
+            value: _seaCurrentDirectionLabel(seaCondition?.currentDirection),
+            statusLabel: currentShoreRelation == null
+                ? null
+                : _shoreRelationLabel(currentShoreRelation),
+            statusColor: currentShoreRelation == null
+                ? null
+                : (currentShoreRelation == ShoreRelation.awayFromShore
+                      ? _colorWarning
+                      : _textSecondary),
+            statusBold: currentShoreRelation == ShoreRelation.awayFromShore,
+            onTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.current,
+                hourly: const [],
+                seaHourly: seaCondition?.hourly ?? const [],
+                currentValue: seaCondition?.currentVelocity,
+                currentDirectionValue: seaCondition?.currentDirection,
+                seawardBearingDegrees: seawardBearingDegrees,
+                unitSystem: unitSystem,
+              ),
+            ),
+          ),
+          StatTile(
+            key: const Key('wave-direction-tile'),
+            icon: Icons.navigation,
+            iconRotationDegrees: seaCondition?.waveDirection == null
+                ? null
+                : seaCondition!.waveDirection! + 180,
+            label: 'Wave direction',
+            value: _seaWaveDirectionLabel(seaCondition?.waveDirection),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      _buildGroupDivider(),
+      const SizedBox(height: 20),
+      StatTileGroup(
+        label: 'Air',
+        icon: Icons.air,
+        tiles: [
+          StatTile(
+            icon: Icons.air,
+            label: 'Wind speed',
+            value: _formatWindSpeedValue(weatherData?.windSpeed, unitSystem),
+            unit: _windSpeedUnit(weatherData?.windSpeed, unitSystem),
+            statusLabel: windStatus == null
+                ? null
+                : windStatusLabel(windStatus),
+            statusColor: windStatus == null
+                ? null
+                : windStatusColor(windStatus),
+            onTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.wind,
+                hourly: weatherData?.hourly ?? const [],
+                currentValue: weatherData?.windSpeed,
+                unitSystem: unitSystem,
+                now: widget.now,
+              ),
+            ),
+          ),
+          StatTile(
+            icon: Icons.water_drop_outlined,
+            label: 'Rain chance',
+            value: _formatPercentValue(weatherData?.rainChancePercent),
+            unit: _percentUnit(weatherData?.rainChancePercent),
+            statusLabel: rainStatus == null
+                ? null
+                : rainChanceStatusLabel(rainStatus),
+            statusColor: rainStatus == null
+                ? null
+                : rainChanceStatusColor(rainStatus),
+            onTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.rainChance,
+                hourly: weatherData?.hourly ?? const [],
+                currentValue: weatherData?.rainChancePercent,
+                now: widget.now,
+              ),
+            ),
+          ),
+          StatTile(
+            icon: Icons.wb_sunny_outlined,
+            label: 'UV index',
+            value: _formatUvIndex(weatherData?.uvIndex),
+            statusLabel: uvBand == null ? null : uvBandLabel(uvBand),
+            statusColor: uvBand == null ? null : uvBandColor(uvBand),
+            onTap: () => Navigator.of(context).push(
+              buildDetailRoute(
+                DetailMetric.uvIndex,
+                hourly: weatherData?.hourly ?? const [],
+                currentValue: weatherData?.uvIndex,
+                now: widget.now,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 20),
+      const Row(
+        children: [
+          Icon(Icons.access_time, size: 14, color: _textSecondary),
+          SizedBox(width: 6),
+          Text(
+            'Hourly forecast',
+            style: TextStyle(color: _textSecondary, fontSize: 13),
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        height: 90,
+        child: weatherLoading
+            ? _buildSectionLoading()
+            : ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: hourly.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 20),
+                itemBuilder: (context, index) {
+                  final entry = hourly[index];
+                  return HourlyForecastItem(
+                    timeLabel: _hourLabel(entry.time, isFirst: index == 0),
+                    icon: _iconForWeatherCode(entry.weatherCode),
+                    temperature: _formatTemperature(
+                      entry.temperature,
+                      unitSystem,
+                    ),
+                    time: entry.time,
+                  );
+                },
+              ),
+      ),
+      if (dailyOutlook.isNotEmpty) ...[
+        const SizedBox(height: 20),
+        const Row(
+          children: [
+            Icon(Icons.calendar_month, size: 14, color: _textSecondary),
+            SizedBox(width: 6),
+            Text(
+              '7-14 day outlook',
+              style: TextStyle(color: _textSecondary, fontSize: 13),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        DailyOutlookList(
+          entries: dailyOutlook,
+          formatTemperature: (value) => _formatTemperature(value, unitSystem),
+          now: effectiveNow,
+        ),
+      ],
+    ];
+
+    Widget buildSheetBody(ScrollController scrollController) {
+      final children = buildSheetTopContent(expanded: _sheetExpanded);
+      if (_sheetExpanded) {
+        children.addAll(buildSheetExpandedExtras());
+      } else {
+        children.addAll([const SizedBox(height: 16), buildSwipeUpHint()]);
+      }
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          color: _bgGradientBottom,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: RefreshIndicator(
+          onRefresh: _handleRefresh,
+          child: SingleChildScrollView(
+            key: const Key('home-sheet-scroll-view'),
+            controller: scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       body: Stack(
         children: [
@@ -1253,482 +1811,255 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          // The faint cloud texture from docs/design.md, top-right behind
-          // the header. Positioned ahead of (i.e. visually under) the real
-          // content below, and `IgnorePointer`/`RepaintBoundary`-wrapped by
-          // `CloudBackdrop` itself, so it never intercepts taps on anything
-          // stacked above it and never repaints while that content scrolls.
+          // The faint cloud texture from docs/design.md. Positioned ahead
+          // of (i.e. visually under) the real content below, and
+          // `IgnorePointer`/`RepaintBoundary`-wrapped by `CloudBackdrop`
+          // itself, so it never intercepts taps on anything stacked above
+          // it and never repaints while that content scrolls.
           const Positioned(top: 0, right: 0, child: CloudBackdrop()),
           SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _handleRefresh,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _placeName,
-                                style: const TextStyle(
-                                  color: _textPrimary,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 20,
-                                ),
-                              ),
-                              // #253 (Vaen's 2026-10-06 feedback): the
-                              // header used to say the hard-coded "My
-                              // Location" above the real place name, which
-                              // is misleading — there is no device GPS at
-                              // all (see #254), so it is never actually the
-                              // user's location. The place name is now the
-                              // primary title; this secondary line adds the
-                              // coordinates only when they say something the
-                              // title doesn't already — a bare map tap's
-                              // `_placeName` IS `formatCoordinates(point)`
-                              // (no reverse geocoding, #254), so showing it
-                              // twice would be redundant.
-                              if (_headerSubtitle != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  _headerSubtitle!,
-                                  style: const TextStyle(
-                                    color: _textSecondary,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        Text(
-                          _formatTemperature(
-                            weatherData?.temperature,
-                            unitSystem,
-                          ),
-                          style: const TextStyle(
-                            color: _textPrimary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 44,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          weatherData != null
-                              ? weatherCodeDescription(weatherData.weatherCode)
-                              : _noData,
-                          style: const TextStyle(
-                            color: _textSecondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                        Text(
-                          'H:${_formatTemperature(weatherData?.highTemperature, unitSystem)} '
-                          'L:${_formatTemperature(weatherData?.lowTemperature, unitSystem)}',
-                          style: const TextStyle(
-                            color: _textSecondary,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    LocationMapCard(
-                      center: _selectedLocation,
-                      placeName: _placeName,
-                      tileProvider: widget.tileProvider,
-                      nearbyBeachesProvider: widget.nearbyBeachesProvider,
-                      placeSearchProvider: widget.placeSearchProvider,
-                      onLocationPicked: _handleLocationPicked,
-                      selectedBeach: _selectedBeach,
-                      // #158: the standalone, non-editable "Enter cities"
-                      // entry point below the map card is gone — the map
-                      // card's own search icon is now the only place-search
-                      // entry on Home, and `SearchScreen` (beach list,
-                      // favorites, filter) stays reachable via "Beaches" in
-                      // this overflow menu instead.
-                      onOverflowPressed: () => _showMapOverflowMenu(
-                        context,
-                        onBeaches: () => _openSearch(context),
-                        onUseMyLocation: widget.deviceLocationService == null
-                            ? null
-                            : () => unawaited(_handleUseMyLocation(context)),
-                        unitPreferencesProvider: widget.unitPreferencesProvider,
-                        conditionAlertDispatcher:
-                            widget.conditionAlertDispatcher,
-                        onCompare: () =>
-                            unawaited(_openCompareSelection(context)),
-                      ),
-                    ),
-                    // #214: the beach picked in `SearchScreen`'s results is
-                    // already highlighted on the map above (`selectedBeach`
-                    // flows into `LocationMapCard`); this is its compact
-                    // info row, visible without another tap. Reuses
-                    // `BeachResultCard`'s own fields/formatting — sourced
-                    // from `nearbyBeachesProvider`'s re-fetched marine data
-                    // once it resolves, "No data" until then, matching
-                    // `SearchScreen`'s own cards exactly.
-                    if (_selectedBeach != null) ...[
-                      const SizedBox(height: 16),
-                      _buildSelectedBeachInfo(_selectedBeach!, unitSystem),
-                    ],
-                    const SizedBox(height: 16),
-                    SwimSuggestionPill(verdict: swimVerdict),
-                    // #169/#229: sits between the smart suggestion pill and
-                    // the Sea section/stat grid, hidden entirely (no gap)
-                    // when there is neither an upcoming alert nor a
-                    // next-hour note — see ForecastAlertList's own doc
-                    // comment.
-                    if (forecastAlerts.isNotEmpty || nextHourNote != null) ...[
-                      const SizedBox(height: 16),
-                      ForecastAlertList(
-                        alerts: forecastAlerts,
-                        nextHourNote: nextHourNote,
-                        now: effectiveNow,
-                      ),
-                    ],
-                    // #213/#228: a fetch in flight for a new pick, or one
-                    // that failed outright, shows a loading/error note here
-                    // instead of either the previous pick's values or a
-                    // silent blank gap — but (issue #251) never hides the
-                    // 3x3 grid below it: each tile already falls back to
-                    // "No data" on its own null-safe formatter when there's
-                    // nothing to show yet, exactly like every other "No
-                    // data" case in this grid, so Water depth and the Air
-                    // group (neither of which depend on marine data) stay
-                    // visible and correct regardless of this fetch's state.
-                    if (marineLoading) ...[
-                      const SizedBox(height: 20),
-                      _buildSectionLoading(height: 40),
-                    ] else if (marineErrorMessage != null) ...[
-                      const SizedBox(height: 20),
-                      _buildSectionError(marineErrorMessage),
-                    ],
-                    const SizedBox(height: 20),
-                    // #251: the former 2x2 stat grid (wind/rain/depth/UV)
-                    // and the former horizontally-scrolling Sea section are
-                    // now one 3x3 grid of equally-sized StatTiles in three
-                    // labelled groups (Sea/Current/Air), each separated by
-                    // a thin divider — all nine data points one visual
-                    // size, with no trend row on any of them (the detail
-                    // screens keep their own).
-                    StatTileGroup(
-                      label: 'Sea',
-                      icon: Icons.waves,
-                      tiles: [
-                        StatTile(
-                          key: const Key('wave-height-tile'),
-                          icon: Icons.waves,
-                          label: 'Wave height',
-                          value: _formatSeaWaveHeight(
-                            seaCondition?.waveHeight,
-                            unitSystem,
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.waveHeight,
-                              hourly: const [],
-                              seaHourly: seaCondition?.hourly ?? const [],
-                              currentValue: seaCondition?.waveHeight,
-                              unitSystem: unitSystem,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          key: const Key('water-temperature-tile'),
-                          icon: Icons.thermostat,
-                          label: 'Water temp',
-                          value: _formatSeaWaterTemperature(
-                            seaCondition?.seaSurfaceTemperature,
-                            unitSystem,
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.waterTemperature,
-                              hourly: const [],
-                              seaHourly: seaCondition?.hourly ?? const [],
-                              currentValue: seaCondition?.seaSurfaceTemperature,
-                              unitSystem: unitSystem,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          key: const Key('water-depth-tile'),
-                          icon: Icons.waves,
-                          label: 'Water depth',
-                          value: depthValue,
-                          statusLabel: depthStatusLabel,
-                          statusColor: depthStatusColor,
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.depth,
-                              hourly: const [],
-                              depthProfile: depthProfile,
-                              beach: depthBeach,
-                              currentWaveHeightMeters: seaCondition?.waveHeight,
-                              currentValue: seaCondition?.currentVelocity,
-                              currentDirectionValue:
-                                  seaCondition?.currentDirection,
-                              seawardBearingDegrees: seawardBearingDegrees,
-                              unitSystem: unitSystem,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    _buildGroupDivider(),
-                    const SizedBox(height: 20),
-                    StatTileGroup(
-                      label: 'Current',
-                      icon: Icons.explore,
-                      tiles: [
-                        StatTile(
-                          key: const Key('current-speed-tile'),
-                          icon: Icons.speed,
-                          label: 'Current speed',
-                          value: _formatSeaCurrentSpeed(
-                            seaCondition?.currentVelocity,
-                            unitSystem,
-                          ),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.current,
-                              hourly: const [],
-                              seaHourly: seaCondition?.hourly ?? const [],
-                              currentValue: seaCondition?.currentVelocity,
-                              currentDirectionValue:
-                                  seaCondition?.currentDirection,
-                              seawardBearingDegrees: seawardBearingDegrees,
-                              unitSystem: unitSystem,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          key: const Key('current-direction-tile'),
-                          icon: Icons.navigation,
-                          iconRotationDegrees: seaCondition?.currentDirection,
-                          label: 'Current direction',
-                          value: _seaCurrentDirectionLabel(
-                            seaCondition?.currentDirection,
-                          ),
-                          statusLabel: currentShoreRelation == null
-                              ? null
-                              : _shoreRelationLabel(currentShoreRelation),
-                          statusColor: currentShoreRelation == null
-                              ? null
-                              : (currentShoreRelation ==
-                                        ShoreRelation.awayFromShore
-                                    ? _colorWarning
-                                    : _textSecondary),
-                          statusBold:
-                              currentShoreRelation ==
-                              ShoreRelation.awayFromShore,
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.current,
-                              hourly: const [],
-                              seaHourly: seaCondition?.hourly ?? const [],
-                              currentValue: seaCondition?.currentVelocity,
-                              currentDirectionValue:
-                                  seaCondition?.currentDirection,
-                              seawardBearingDegrees: seawardBearingDegrees,
-                              unitSystem: unitSystem,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          key: const Key('wave-direction-tile'),
-                          icon: Icons.navigation,
-                          iconRotationDegrees:
-                              seaCondition?.waveDirection == null
-                              ? null
-                              : seaCondition!.waveDirection! + 180,
-                          label: 'Wave direction',
-                          // No status/third line (issue #251): wave
-                          // direction has no defined status at all, unlike
-                          // the current-direction tile's shore relation
-                          // above.
-                          value: _seaWaveDirectionLabel(
-                            seaCondition?.waveDirection,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    _buildGroupDivider(),
-                    const SizedBox(height: 20),
-                    StatTileGroup(
-                      label: 'Air',
-                      icon: Icons.air,
-                      tiles: [
-                        StatTile(
-                          icon: Icons.air,
-                          label: 'Wind speed',
-                          value: _formatWindSpeedValue(
-                            weatherData?.windSpeed,
-                            unitSystem,
-                          ),
-                          unit: _windSpeedUnit(
-                            weatherData?.windSpeed,
-                            unitSystem,
-                          ),
-                          statusLabel: windStatus == null
-                              ? null
-                              : windStatusLabel(windStatus),
-                          statusColor: windStatus == null
-                              ? null
-                              : windStatusColor(windStatus),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.wind,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.windSpeed,
-                              unitSystem: unitSystem,
-                              now: widget.now,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          icon: Icons.water_drop_outlined,
-                          label: 'Rain chance',
-                          value: _formatPercentValue(
-                            weatherData?.rainChancePercent,
-                          ),
-                          unit: _percentUnit(weatherData?.rainChancePercent),
-                          statusLabel: rainStatus == null
-                              ? null
-                              : rainChanceStatusLabel(rainStatus),
-                          statusColor: rainStatus == null
-                              ? null
-                              : rainChanceStatusColor(rainStatus),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.rainChance,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.rainChancePercent,
-                              now: widget.now,
-                            ),
-                          ),
-                        ),
-                        StatTile(
-                          icon: Icons.wb_sunny_outlined,
-                          label: 'UV index',
-                          value: _formatUvIndex(weatherData?.uvIndex),
-                          statusLabel: uvBand == null
-                              ? null
-                              : uvBandLabel(uvBand),
-                          statusColor: uvBand == null
-                              ? null
-                              : uvBandColor(uvBand),
-                          onTap: () => Navigator.of(context).push(
-                            buildDetailRoute(
-                              DetailMetric.uvIndex,
-                              hourly: weatherData?.hourly ?? const [],
-                              currentValue: weatherData?.uvIndex,
-                              now: widget.now,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    const Row(
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          size: 14,
-                          color: _textSecondary,
-                        ),
-                        SizedBox(width: 6),
-                        Text(
-                          'Hourly forecast',
-                          style: TextStyle(color: _textSecondary, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 90,
-                      // #213: a new pick's hourly row shows a loading
-                      // placeholder instead of the previous pick's entries
-                      // (or an empty-looking row) while its weather fetch
-                      // is still in flight.
-                      child: weatherLoading
-                          ? _buildSectionLoading()
-                          : ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: hourly.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(width: 20),
-                              itemBuilder: (context, index) {
-                                final entry = hourly[index];
-                                return HourlyForecastItem(
-                                  timeLabel: _hourLabel(
-                                    entry.time,
-                                    isFirst: index == 0,
-                                  ),
-                                  icon: _iconForWeatherCode(entry.weatherCode),
-                                  temperature: _formatTemperature(
-                                    entry.temperature,
-                                    unitSystem,
-                                  ),
-                                  time: entry.time,
-                                );
-                              },
-                            ),
-                    ),
-                    // Issue #273: a 7-14 day outlook, hidden entirely (no
-                    // gap) when there's no daily data yet (first load, or
-                    // a fetch that failed with nothing to fall back to) —
-                    // same "hide rather than show an empty section" rule
-                    // as ForecastAlertList above.
-                    if (dailyOutlook.isNotEmpty) ...[
-                      const SizedBox(height: 20),
-                      const Row(
-                        children: [
-                          Icon(
-                            Icons.calendar_month,
-                            size: 14,
-                            color: _textSecondary,
-                          ),
-                          SizedBox(width: 6),
-                          Text(
-                            '7-14 day outlook',
-                            style: TextStyle(
-                              color: _textSecondary,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      DailyOutlookList(
-                        entries: dailyOutlook,
-                        formatTemperature: (value) =>
-                            _formatTemperature(value, unitSystem),
-                        now: effectiveNow,
-                      ),
-                    ],
-                  ],
+            child: Stack(
+              children: [
+                // Issue #284: the map now fills the whole screen behind
+                // everything else, instead of a fixed 200dp card — see
+                // docs/design.md's "Layout decision".
+                Positioned.fill(
+                  child: LocationMapCard(
+                    edgeToEdge: true,
+                    center: _selectedLocation,
+                    placeName: _placeName,
+                    tileProvider: widget.tileProvider,
+                    nearbyBeachesProvider: widget.nearbyBeachesProvider,
+                    onLocationPicked: _handleLocationPicked,
+                    selectedBeach: _selectedBeach,
+                    mapController: _mapController,
+                  ),
                 ),
-              ),
+                DraggableScrollableSheet(
+                  controller: _sheetController,
+                  initialChildSize: _sheetMinSize,
+                  minChildSize: _sheetMinSize,
+                  maxChildSize: _sheetMaxSize,
+                  snap: true,
+                  snapSizes: const [_sheetMinSize, _sheetMaxSize],
+                  shouldCloseOnMinExtent: false,
+                  builder: (context, scrollController) =>
+                      buildSheetBody(scrollController),
+                ),
+                // The floating search field (#158's former in-map-card
+                // search icon, now always visible rather than a toggle) and
+                // its trailing overflow menu trigger — see
+                // `_buildFloatingSearchField`.
+                Positioned(
+                  top: 16,
+                  left: 16,
+                  right: 16,
+                  child: _buildFloatingSearchField(context),
+                ),
+                // The floating "my location"/zoom controls on the map's
+                // right edge, per docs/design.md's "Layout decision".
+                Positioned(
+                  top: 84,
+                  right: 16,
+                  child: _buildMapControls(context),
+                ),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// The always-visible floating search field (issue #284, replacing #158's
+  /// former in-map-card search icon toggle): [SearchField] wired to
+  /// [widget.placeSearchProvider] exactly as that expansion was, plus a
+  /// trailing overflow button opening the same [_showMapOverflowMenu] the
+  /// old docked location bar's "..." button used to (there is no docked bar
+  /// left for it to live in).
+  Widget _buildFloatingSearchField(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: SearchField(
+                key: const Key('home-search-field'),
+                controller: _searchController,
+                onChanged: _handleSearchChanged,
+                hintText: 'Search city or beach',
+              ),
+            ),
+            const SizedBox(width: 8),
+            _FloatingCircleButton(
+              key: const Key('home-search-overflow'),
+              icon: Icons.more_horiz,
+              tooltip: 'More',
+              onPressed: () => _showMapOverflowMenu(
+                context,
+                onBeaches: () => _openSearch(context),
+                onUseMyLocation: widget.deviceLocationService == null
+                    ? null
+                    : () => unawaited(_handleUseMyLocation(context)),
+                unitPreferencesProvider: widget.unitPreferencesProvider,
+                conditionAlertDispatcher: widget.conditionAlertDispatcher,
+                onCompare: () => unawaited(_openCompareSelection(context)),
+              ),
+            ),
+          ],
+        ),
+        _buildSearchResults(),
+      ],
+    );
+  }
+
+  /// The floating search field's own live geocoding results panel — loading/
+  /// empty/error/loaded, the same states the former in-map-card search icon
+  /// expansion (`LocationMapCard._buildPlaceResults`) showed, moved here
+  /// now that the field itself lives on `HomeScreen`.
+  Widget _buildSearchResults() {
+    final provider = widget.placeSearchProvider;
+    if (provider == null) return const SizedBox.shrink();
+
+    return AnimatedBuilder(
+      animation: provider,
+      builder: (context, _) {
+        if (_searchQuery.trim().isEmpty) return const SizedBox.shrink();
+
+        Widget content;
+        switch (provider.status) {
+          case PlaceSearchStatus.idle:
+            return const SizedBox.shrink();
+          case PlaceSearchStatus.loading:
+            content = const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            );
+          case PlaceSearchStatus.error:
+            content = Text(
+              provider.error ?? 'Could not search for places.',
+              style: const TextStyle(color: _mapTextOnPaper, fontSize: 13),
+            );
+          case PlaceSearchStatus.empty:
+            content = Text(
+              'No places match "${_searchQuery.trim()}".',
+              style: const TextStyle(color: _textSecondary, fontSize: 13),
+            );
+          case PlaceSearchStatus.loaded:
+            content = Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < provider.results.length; i++)
+                  _buildSearchResultRow(i, provider.results[i]),
+              ],
+            );
+        }
+
+        return Container(
+          key: const Key('home-search-results'),
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: content,
+        );
+      },
+    );
+  }
+
+  /// One row of the loaded search results, keyed by [index] rather than the
+  /// place's name alone — geocoding results routinely share a name (e.g.
+  /// two different "Paris"es), and a name-only key would collide and trip
+  /// Flutter's duplicate-key assertion, the same reasoning
+  /// `location_map_card.dart`'s own (pre-#284) search-result rows and
+  /// `search_screen.dart`'s "Places" rows document.
+  Widget _buildSearchResultRow(int index, Place place) {
+    final subtitleParts = [
+      if (place.admin1 != null) place.admin1!,
+      if (place.country != null) place.country!,
+    ];
+    final subtitle = subtitleParts.isEmpty ? null : subtitleParts.join(', ');
+
+    return InkWell(
+      key: ValueKey('home-search-result-$index-${place.name}'),
+      onTap: () => _selectSearchPlace(place),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.place_outlined, size: 18, color: _mapTextOnPaper),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    place.name,
+                    style: const TextStyle(
+                      color: _mapTextOnPaper,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (subtitle != null)
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        color: _textSecondary,
+                        fontSize: 12,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The floating "my location"/+/- zoom buttons on the map's right edge,
+  /// per docs/design.md's "Layout decision". The "my location" button is
+  /// hidden entirely when [widget.deviceLocationService] is null, the same
+  /// optional pattern the overflow menu's own "Use my location" entry
+  /// already follows (issue #254) — this is just a second, always-visible
+  /// entry point to the same [_handleUseMyLocation] flow.
+  Widget _buildMapControls(BuildContext context) {
+    return Column(
+      children: [
+        if (widget.deviceLocationService != null) ...[
+          _FloatingCircleButton(
+            key: const Key('home-my-location-button'),
+            icon: Icons.my_location,
+            tooltip: 'Use my location',
+            onPressed: () => unawaited(_handleUseMyLocation(context)),
+          ),
+          const SizedBox(height: 12),
+        ],
+        _FloatingCircleButton(
+          key: const Key('home-zoom-in-button'),
+          icon: Icons.add,
+          tooltip: 'Zoom in',
+          onPressed: () => _zoomBy(1),
+        ),
+        const SizedBox(height: 12),
+        _FloatingCircleButton(
+          key: const Key('home-zoom-out-button'),
+          icon: Icons.remove,
+          tooltip: 'Zoom out',
+          onPressed: () => _zoomBy(-1),
+        ),
+      ],
     );
   }
 
@@ -1846,6 +2177,40 @@ class _HomeScreenState extends State<HomeScreen> {
           const Positioned(top: 0, right: 0, child: CloudBackdrop()),
           SafeArea(child: child),
         ],
+      ),
+    );
+  }
+}
+
+/// A small circular white floating button, issue #284's shared look for the
+/// map-first layout's "my location"/+/- zoom buttons and the floating
+/// search field's trailing overflow trigger — [Material] (not a plain
+/// `IconButton`) so it gets a real elevation/shadow against the map behind
+/// it, matching the mockup's floating circles.
+class _FloatingCircleButton extends StatelessWidget {
+  const _FloatingCircleButton({
+    super.key,
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  static const _iconColor = Color(0xFF2E3057);
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      shape: const CircleBorder(),
+      elevation: 3,
+      child: IconButton(
+        icon: Icon(icon, color: _iconColor),
+        tooltip: tooltip,
+        onPressed: onPressed,
       ),
     );
   }
