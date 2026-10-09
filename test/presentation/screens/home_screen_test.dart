@@ -28,6 +28,7 @@ import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
+import 'package:beachiq/presentation/screens/forecast_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -56,17 +57,31 @@ import '../../helpers/fake_location.dart';
 import '../../helpers/pump_app.dart';
 
 /// Issue #284: `HomeScreen`'s draggable bottom sheet starts collapsed (just
-/// the place name/temperature/pill/next alert/Sea tiles/hint) — a test that
-/// needs the sheet's *expanded* content (the Current/Air groups, the hourly
-/// row, the 7-14 day outlook, the full un-trimmed `ForecastAlertList`, or
-/// the selected-beach info row, none of which are even laid out while
-/// collapsed) drives [controller] directly instead of simulating a real
-/// drag gesture, the same reason `HomeScreen.sheetController` exists.
+/// the place name/temperature/pill/next-hour note/Sea tiles/hint) — a test
+/// that needs the sheet's *expanded* content (the Current/Air groups, the
+/// hourly row, the forecast entry row (#289), or the selected-beach info
+/// row, none of which are even laid out while collapsed) drives
+/// [controller] directly instead of simulating a real drag gesture, the
+/// same reason `HomeScreen.sheetController` exists.
 Future<void> expandSheet(
   WidgetTester tester,
   DraggableScrollableController controller,
 ) async {
   controller.jumpTo(1.0);
+  await tester.pumpAndSettle();
+}
+
+/// Issue #289: expands the sheet (the "Forecast and 7-14 day outlook" row
+/// only exists once expanded) and taps it, landing on [ForecastScreen].
+Future<void> openForecastScreen(
+  WidgetTester tester,
+  DraggableScrollableController controller,
+) async {
+  await expandSheet(tester, controller);
+  final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+  await tester.ensureVisible(entryRow);
+  await tester.pumpAndSettle();
+  await tester.tap(entryRow);
   await tester.pumpAndSettle();
 }
 
@@ -181,9 +196,9 @@ void main() {
     );
 
     testWidgets(
-      'given a wind reading that crosses the high threshold, build -> '
-      'shows a ForecastAlertList row with its icon, message and time '
-      'window',
+      'given a wind reading that crosses the high threshold, build -> does '
+      'not render it on Home directly, but the Forecast screen shows a '
+      'ForecastAlertList row with its icon, message and time window',
       (tester) async {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(
@@ -193,12 +208,23 @@ void main() {
             ],
           ),
         );
+        final sheetController = DraggableScrollableController();
 
         await pumpApp(
           tester,
-          HomeScreen(weatherProvider: weatherProvider, now: () => now),
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => now,
+            sheetController: sheetController,
+          ),
         );
 
+        // Issue #289: Home itself never shows the per-type alert list.
+        expect(find.byType(ForecastAlertList), findsNothing);
+
+        await openForecastScreen(tester, sheetController);
+
+        expect(find.byType(ForecastScreen), findsOneWidget);
         expect(find.byType(ForecastAlertList), findsOneWidget);
         expect(
           find.descendant(
@@ -214,8 +240,8 @@ void main() {
 
     testWidgets(
       'given both a high-severity wind crossing and a later moderate rain '
-      'crossing, build -> lists the high-severity alert before the '
-      'moderate one',
+      'crossing, the Forecast screen lists the high-severity alert before '
+      'the moderate one',
       (tester) async {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(
@@ -245,10 +271,7 @@ void main() {
             sheetController: sheetController,
           ),
         );
-        // Issue #284: the collapsed sheet shows only the single most-severe
-        // alert — both of these need to be visible at once to assert their
-        // relative order.
-        await expandSheet(tester, sheetController);
+        await openForecastScreen(tester, sheetController);
 
         expect(find.byType(ForecastAlertList), findsOneWidget);
 
@@ -276,8 +299,8 @@ void main() {
     );
 
     testWidgets(
-      'given marine data with a wave crossing, build -> includes the wave '
-      'alert alongside the weather-driven ones',
+      'given marine data with a wave crossing, the Forecast screen includes '
+      'the wave alert alongside the weather-driven ones',
       (tester) async {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(hourly: [aWeatherHourly(time: h(9))]),
@@ -290,6 +313,7 @@ void main() {
             ],
           ),
         );
+        final sheetController = DraggableScrollableController();
 
         await pumpApp(
           tester,
@@ -297,8 +321,10 @@ void main() {
             weatherProvider: weatherProvider,
             marineProvider: marineProvider,
             now: () => now,
+            sheetController: sheetController,
           ),
         );
+        await openForecastScreen(tester, sheetController);
 
         expect(find.byType(ForecastAlertList), findsOneWidget);
         expect(
@@ -343,7 +369,7 @@ void main() {
 
     testWidgets(
       'given a wind crossing on the 24th upcoming hour (inside the cap), '
-      'build -> still shows the alert',
+      'the Forecast screen still shows the alert',
       (tester) async {
         final farNow = DateTime(2026, 7, 1, 0, 0);
         final hourly = [
@@ -356,11 +382,17 @@ void main() {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(hourly: hourly),
         );
+        final sheetController = DraggableScrollableController();
 
         await pumpApp(
           tester,
-          HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => farNow,
+            sheetController: sheetController,
+          ),
         );
+        await openForecastScreen(tester, sheetController);
 
         expect(find.byType(ForecastAlertList), findsOneWidget);
       },
@@ -430,6 +462,30 @@ void main() {
         expect(find.byType(ForecastAlertList), findsNothing);
       },
     );
+
+    testWidgets(
+      'given several upcoming alerts and no next-hour note, build -> Home '
+      'shows no note and no alert list at all (issue #289: never falls '
+      'back to the most-severe alert)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(9), windSpeed: 10),
+              aWeatherHourly(time: h(10), windSpeed: 45), // crosses 40 km/h
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => now),
+        );
+
+        expect(find.text('Next hour'), findsNothing);
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
   });
 
   group('HomeScreen 7-14 day outlook (issue #273)', () {
@@ -437,63 +493,88 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    testWidgets('given weather and marine providers with daily data, shows the '
-        'outlook section with one row per day', (tester) async {
-      final weatherProvider = await aLoadedWeatherProvider(
-        aWeatherCondition(
-          dailyForecast: [
-            aDailyWeatherForecast(
-              date: DateTime(2026, 7, 1),
-              highTemperature: 28.0,
-              lowTemperature: 20.0,
-            ),
-            aDailyWeatherForecast(
-              date: DateTime(2026, 7, 2),
-              highTemperature: 29.0,
-              lowTemperature: 21.0,
-            ),
-          ],
-        ),
-      );
-      final marineProvider = await aLoadedMarineProvider(
-        aSeaCondition(
-          dailyForecast: [
-            aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
-            aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
-          ],
-        ),
-      );
+    testWidgets(
+      'given weather and marine providers with daily data, tapping the '
+      'forecast entry row opens the Forecast screen with the outlook',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            dailyForecast: [
+              aDailyWeatherForecast(
+                date: DateTime(2026, 7, 1),
+                highTemperature: 28.0,
+                lowTemperature: 20.0,
+              ),
+              aDailyWeatherForecast(
+                date: DateTime(2026, 7, 2),
+                highTemperature: 29.0,
+                lowTemperature: 21.0,
+              ),
+            ],
+          ),
+        );
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            dailyForecast: [
+              aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
+              aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
+            ],
+          ),
+        );
 
-      final sheetController = DraggableScrollableController();
-      await pumpApp(
-        tester,
-        HomeScreen(
-          weatherProvider: weatherProvider,
-          marineProvider: marineProvider,
-          now: () => DateTime(2026, 7, 1),
-          sheetController: sheetController,
-        ),
-      );
-      // Issue #284: the outlook only exists once the sheet is expanded.
-      await expandSheet(tester, sheetController);
+        final sheetController = DraggableScrollableController();
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => DateTime(2026, 7, 1),
+            sheetController: sheetController,
+          ),
+        );
+        // Issue #289: the outlook no longer renders on Home at all — only
+        // the entry row, reachable once the sheet is expanded.
+        expect(find.byType(DailyOutlookList), findsNothing);
 
-      expect(find.text('7-14 day outlook'), findsOneWidget);
-      expect(find.byKey(const Key('daily-outlook-list')), findsOneWidget);
-      expect(find.text('Today'), findsOneWidget);
-    });
+        await openForecastScreen(tester, sheetController);
+
+        expect(find.byType(ForecastScreen), findsOneWidget);
+        expect(find.text('7-14 DAY OUTLOOK'), findsOneWidget);
+        expect(find.byKey(const Key('daily-outlook-list')), findsOneWidget);
+        expect(find.text('Today'), findsOneWidget);
+      },
+    );
 
     testWidgets(
-      'given no daily data on either provider, hides the outlook section '
-      'entirely',
+      'given no daily data and no alerts on either provider, still shows '
+      'the forecast entry row — the Forecast screen handles its own empty '
+      'states, so the row is not data-dependent',
       (tester) async {
         final weatherProvider = await aLoadedWeatherProvider(
           aWeatherCondition(),
         );
+        final sheetController = DraggableScrollableController();
 
-        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            sheetController: sheetController,
+          ),
+        );
+        await expandSheet(tester, sheetController);
 
-        expect(find.text('7-14 day outlook'), findsNothing);
-        expect(find.byKey(const Key('daily-outlook-list')), findsNothing);
+        final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+        expect(entryRow, findsOneWidget);
+        expect(find.byType(DailyOutlookList), findsNothing);
+
+        await tester.ensureVisible(entryRow);
+        await tester.pumpAndSettle();
+        await tester.tap(entryRow);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ForecastScreen), findsOneWidget);
+        expect(find.text('No alerts'), findsOneWidget);
       },
     );
   });
@@ -1001,32 +1082,32 @@ void main() {
       },
     );
 
-    testWidgets(
-      'given a daytime wind crossing inside the daylight window, build -> '
-      'still renders it as a daylight alert',
-      (tester) async {
-        final weatherProvider = await aLoadedWeatherProvider(
-          aWeatherCondition(
-            hourly: [
-              aWeatherHourly(time: h(9), windSpeed: 10),
-              aWeatherHourly(time: h(10), windSpeed: 45),
-            ],
-            daylightWindows: [aDaylightWindow(sunrise: h(6), sunset: h(20))],
-          ),
-        );
+    testWidgets('given a daytime wind crossing inside the daylight window, the '
+        'Forecast screen still renders it as a daylight alert', (tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(
+          hourly: [
+            aWeatherHourly(time: h(9), windSpeed: 10),
+            aWeatherHourly(time: h(10), windSpeed: 45),
+          ],
+          daylightWindows: [aDaylightWindow(sunrise: h(6), sunset: h(20))],
+        ),
+      );
+      final sheetController = DraggableScrollableController();
 
-        await pumpApp(
-          tester,
-          HomeScreen(
-            weatherProvider: weatherProvider,
-            now: () => DateTime(2026, 1, 1, 8, 30),
-          ),
-        );
+      await pumpApp(
+        tester,
+        HomeScreen(
+          weatherProvider: weatherProvider,
+          now: () => DateTime(2026, 1, 1, 8, 30),
+          sheetController: sheetController,
+        ),
+      );
+      await openForecastScreen(tester, sheetController);
 
-        expect(find.byType(ForecastAlertList), findsOneWidget);
-        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
-      },
-    );
+      expect(find.byType(ForecastAlertList), findsOneWidget);
+      expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+    });
 
     testWidgets(
       'given a change in the next hour after the location\'s sunset, build '
@@ -1050,6 +1131,59 @@ void main() {
 
         expect(find.byType(ForecastAlertList), findsOneWidget);
         expect(find.text('Next hour'), findsOneWidget);
+        expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a next-hour note, build -> its message has no line cap or '
+      'ellipsis (issue #289: wraps instead of being ellipsized)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(21), windSpeed: 10),
+              aWeatherHourly(time: h(22), windSpeed: 45),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => h(21)),
+        );
+
+        final text = tester.widget<Text>(
+          find.textContaining('Wind crosses 40 km/h'),
+        );
+        expect(text.maxLines, isNull);
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+      },
+    );
+
+    testWidgets(
+      'given a next-hour note, tapping it opens the Forecast screen (issue '
+      '#289: navigation from the note, not just the entry row)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: h(21), windSpeed: 10),
+              aWeatherHourly(time: h(22), windSpeed: 45),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => h(21)),
+        );
+        expect(find.byType(ForecastScreen), findsNothing);
+
+        await tester.tap(find.text('Next hour'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ForecastScreen), findsOneWidget);
         expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
       },
     );
@@ -2253,18 +2387,19 @@ void main() {
         expect(find.text('Water depth'), findsOneWidget);
 
         // Not laid out at the collapsed size: the Current/Air groups (6 of
-        // the 9 tiles), the hourly row and the 7-14 day outlook.
+        // the 9 tiles), the hourly row and the forecast entry row (issue
+        // #289: the 7-14 day outlook itself never renders on Home at all).
         expect(find.byType(StatTile), findsNWidgets(3));
         expect(find.byType(HourlyForecastItem), findsNothing);
         expect(find.text('Hourly forecast'), findsNothing);
         expect(find.byType(DailyOutlookList), findsNothing);
-        expect(find.text('7-14 day outlook'), findsNothing);
+        expect(find.byKey(const Key('home-forecast-entry-row')), findsNothing);
       },
     );
 
     testWidgets(
       'dragging/expanding the sheet reveals the rest of the content: the '
-      'Current/Air groups, the hourly row and the 7-14 day outlook',
+      'Current/Air groups, the hourly row and the forecast entry row',
       (tester) async {
         final sheetController = DraggableScrollableController();
         await pumpApp(
@@ -2285,8 +2420,9 @@ void main() {
         );
         expect(find.text('Hourly forecast'), findsOneWidget);
         expect(find.byType(HourlyForecastItem), findsWidgets);
-        expect(find.text('7-14 day outlook'), findsOneWidget);
-        expect(find.byType(DailyOutlookList), findsOneWidget);
+        // Issue #289: a single entry row, not the outlook list itself.
+        expect(find.text('Forecast and 7-14 day outlook'), findsOneWidget);
+        expect(find.byType(DailyOutlookList), findsNothing);
         // The collapsed content is still there too — expanded is additive.
         expect(find.text('Çeşme, İzmir'), findsOneWidget);
         expect(find.byType(SwimSuggestionPill), findsOneWidget);

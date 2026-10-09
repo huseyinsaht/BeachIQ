@@ -161,5 +161,37 @@ void main() {
         expect(find.text('--°'), findsNWidgets(2));
       },
     );
+
+    testWidgets(
+      'given a long verdict message, renders -> the full text with no line '
+      'cap or ellipsis (issue #289: the Forecast screen wraps instead of '
+      'truncating)',
+      (tester) async {
+        const longMessage =
+            'Rough conditions with high waves and strong wind — best to '
+            'skip swimming today and stick to the shore.';
+        await pumpApp(
+          tester,
+          Material(
+            child: DailyOutlookList(
+              entries: [
+                DailyOutlookEntry(
+                  date: DateTime(2026, 7, 1),
+                  verdict: const SwimVerdict(
+                    SwimSuitabilityLevel.poor,
+                    longMessage,
+                  ),
+                ),
+              ],
+              formatTemperature: (value) => '--°',
+            ),
+          ),
+        );
+
+        final text = tester.widget<Text>(find.text(longMessage));
+        expect(text.maxLines, isNull);
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+      },
+    );
   });
 }
