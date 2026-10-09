@@ -4,35 +4,44 @@
 
 **Home screen** — a live dashboard for a **selected location** (wherever the user last
 picked on the map or by search; Çeşme, İzmir is only the first-run default, and the
-pick survives an app restart):
+pick survives an app restart), laid out map-first: an interactive map fills the whole
+screen, with the location's details living in a sheet dragged up from the bottom.
 
-- Current temperature, condition description and daily high/low, from the Open-Meteo
-  Forecast API.
-- An interactive map card: tap anywhere to re-center on that location, a 20km
-  search-radius circle, nearby beaches drawn as gold outlines (from live OpenStreetMap
-  data), and — once zoomed in — colored pins for nearby toilets, showers, changing
-  rooms, parking, cafés and beach clubs, with a toggleable legend and a
-  tap-for-details card. A search icon in the map card expands into a live place-name
-  search; picking a result re-centers everything exactly as a map tap would. Tapping a
-  beach card in the Search screen returns to Home with that beach selected: the map
-  re-centers on it, highlights it with a distinct white border among the gold
-  outlines, and a compact info row for it appears below the map. The map card's
-  overflow menu opens "Beaches" (the Search screen), "Compare beaches", "Use my
-  location", and, when available, "Units".
-- "Use my location": an opt-in device-location pick from the map card's overflow
-  menu — the only action that can ever show a location-permission prompt (never on
-  app launch). A successful pick is treated exactly like a map tap, and its coarse
-  (city-level) position is reverse-geocoded in the background to a short place name
-  (e.g. "Çeşme, İzmir") once available, replacing the coordinate label shown while
-  that lookup is in flight; a failure (permission denied, location services off, or
-  any other device error) keeps the previous location and shows a brief message
-  instead of guessing a position.
-- The header's title is always the selected location's own real place name (not a
+- A full-screen interactive map behind everything else: tap anywhere to re-center on
+  that location, a 20km search-radius circle, nearby beaches drawn as gold outlines
+  (from live OpenStreetMap data), and — once zoomed in — colored pins for nearby
+  toilets, showers, changing rooms, parking, cafés and beach clubs, with a toggleable
+  legend and a tap-for-details card. Floating "my location" and zoom in/zoom out
+  buttons sit on the map's right edge.
+- A search field floats at the top of the screen at all times (rather than needing to
+  be opened first): typing searches real places by name; picking a result re-centers
+  everything exactly as a map tap would. Its trailing button opens an overflow menu —
+  "Beaches" (the Search screen), "Compare beaches", "Use my location", and, when
+  available, "Units" and "Alerts". Tapping a beach card in the Search screen returns
+  to Home with that beach selected: the map re-centers on it and highlights it with a
+  distinct white border among the gold outlines.
+- The location's details live in a sheet that can be dragged up from the bottom of the
+  screen. Collapsed (its resting state), it shows the place name and current
+  temperature, the smart suggestion pill, at most one heads-up note (see below), and
+  the Sea stat tiles (wave height, water temperature, water depth), with a "swipe up
+  for all details" hint. Dragged up, it expands to also show the condition
+  description and daily high/low, the selected beach's info row (when one is picked),
+  the Current and Air stat tiles, the scrollable hourly forecast row, and a "Forecast
+  and 7-14 day outlook" row.
+- A faint, decorative cloud texture behind everything.
+- "Use my location": an opt-in device-location pick, available both from the overflow
+  menu and its own floating button — the only action that can ever show a
+  location-permission prompt (never on app launch). A successful pick is treated
+  exactly like a map tap, and its coarse (city-level) position is reverse-geocoded in
+  the background to a short place name (e.g. "Çeşme, İzmir") once available, replacing
+  the coordinate label shown while that lookup is in flight; a failure (permission
+  denied, location services off, or any other device error) keeps the previous
+  location and shows a brief message instead of guessing a position.
+- The sheet's title is always the selected location's own real place name (not a
   generic "My Location" label) — the exact text a reverse-geocoded pick, a place
   search result, or a picked beach resolved to, or plain coordinates for a bare map
   tap with no resolved name yet; a coordinates line underneath only appears when it
   adds information the title doesn't already show.
-- A faint, decorative cloud texture behind the header.
 - A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
   green/orange/red-orange to match, from wave height, wind speed and rain chance —
   though the wave-height input is only filled in after a pull-to-refresh or a fresh
@@ -40,36 +49,37 @@ pick survives an app restart):
   opens a short disclaimer ("A guide, not a guarantee") making clear the suggestion is
   a model estimate from forecast data, not a safety guarantee, and that local flags
   and lifeguard instructions always take precedence.
-- An upcoming-alerts list between the suggestion pill and the stat grid: heads-up,
-  one-line warnings (wind, waves, incoming current, clouds, rain) for a fast rise or
-  threshold crossing later in the day, colored by severity and sorted most-severe
-  first, restricted to daylight hours at the selected location — shown only when
-  there's something to flag. A visually distinct "Next hour" row above it always
-  flags an imminent change in the next hour, even after sunset (unlike the rest of
-  the list, it isn't limited to daylight). A warning whose window falls on a later
-  calendar day (e.g. an evening session with only tomorrow's transition left) says so
-  in plain words ("tomorrow", a weekday name) instead of a bare hour that could read
-  as already past.
+- At most one heads-up note shown on Home itself: a "Next hour" note flagging an
+  imminent change (wind, waves, incoming current, clouds, rain) in the next hour,
+  shown even after sunset. Tapping it — or the sheet's "Forecast and 7-14 day outlook"
+  row — opens a dedicated Forecast screen with the full list of upcoming warnings for
+  the day (colored by severity and sorted most-severe first, restricted to daylight
+  hours at the selected location, "No alerts" when there's nothing to flag; a warning
+  whose window falls on a later calendar day, e.g. an evening session with only
+  tomorrow's transition left, says so in plain words — "tomorrow", a weekday name —
+  instead of a bare hour that could read as already past) and the 7-14 day outlook
+  (one row per day with the same good/caution/poor swim verdict as the suggestion
+  pill, plus that day's high/low temperature).
 - A real notification when conditions turn favorable: if the swim verdict for the
   selected location flips from caution/poor/unknown to good while the app is running,
   a local notification is shown (after a one-time permission prompt). An "Alerts"
-  switch in the Home map card's overflow menu turns this on or off (issue #267); it
-  only fires while the app is open — there's no background/scheduled check.
-- A single 3×3 grid of nine equally-sized stat tiles, once marine data has loaded,
-  grouped under three labels:
-  - **Sea** — wave height, water temperature, water depth.
+  switch in the overflow menu turns this on or off (issue #267); it only fires while
+  the app is open — there's no background/scheduled check.
+- A grid of nine equally-sized stat tiles, once marine data has loaded, grouped under
+  three labels:
+  - **Sea** — wave height, water temperature, water depth. Always visible, even with
+    the sheet at its resting (collapsed) size.
   - **Current** — current speed, current direction, wave direction. When the nearest
     beach's shoreline can be derived from OpenStreetMap data, the current-direction
     tile also says whether the water is moving toward, away from, or along the
     shore, with a visible warning when it's moving away (drift-out/rip-current risk).
-  - **Air** — wind speed, rain chance, UV index.
+    Visible once the sheet is dragged up.
+  - **Air** — wind speed, rain chance, UV index. Also only visible once the sheet is
+    dragged up.
 
   Wind speed, rain chance and water depth each show a short colored status word
-  (e.g. "Calm", "High", "Gentle") alongside their value. Below the grid, a scrollable
-  hourly forecast row (with colored, time-of-day-aware weather icons), then a 7-14 day
-  outlook — one row per day with the same good/caution/poor swim verdict as the
-  suggestion pill plus that day's high/low temperature — round out the dashboard. A
-  candidate Pro feature, built ungated for now (no entitlement system exists yet).
+  (e.g. "Calm", "High", "Gentle") alongside their value. A candidate Pro feature,
+  built ungated for now (no entitlement system exists yet).
 - **Every stat tile except wave direction opens its own detail screen**: a min/max/now
   summary and metric-specific context, most with an hourly chart (a value scale and
   time-of-day labels on its axes) — UV index's five colored risk bands and a
@@ -86,10 +96,16 @@ pick survives an app restart):
   drops away (gentle/moderate/steep), plus lifeguard presence, current wave height
   and a drift-out warning as context — an approximate, non-swimmer indication from a
   coarse offshore depth dataset, never a safety guarantee.
+- When a beach picked from Search is shown in the expanded sheet, its info row also
+  includes a one-line depth/non-swimmer summary (the same plain-language verdict as
+  the water depth detail screen, e.g. "Gets deep fairly quickly. Non-swimmers should
+  stay close to shore."), with a second line giving the stand-up distance when it's
+  known, or "Depth: checking…"/"Depth: no data" while that's still loading/unavailable
+  — never a guessed verdict. Tapping it opens the same water-depth detail screen as
+  the Sea group's water depth tile, so the two can never disagree.
 - Pull-to-refresh re-fetches weather and marine data for the currently selected
   location.
-- A metric/imperial unit toggle (via the map card's overflow menu), persisted across
-  restarts.
+- A metric/imperial unit toggle (via the overflow menu), persisted across restarts.
 
 **Search screen** — real nearby beaches, not a placeholder list:
 
@@ -109,7 +125,7 @@ pick survives an app restart):
   area don't always re-query Overpass, and fall back to a static placeholder list if
   offline with nothing cached.
 
-**Compare beaches** — from Home's map card overflow menu, pick 2-3 of the currently
+**Compare beaches** — from Home's overflow menu, pick 2-3 of the currently
 fetched nearby beaches (favorites marked with a star) to compare side by side: wave
 height, wind, water temperature, a plain-language depth/non-swimmer verdict and the
 same swim score as Home's suggestion pill, one column per beach. A candidate Pro
