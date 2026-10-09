@@ -835,8 +835,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Wave height/water temp are in the Sea group, visible collapsed; wave
+    // direction/current speed/current direction are in the Current group,
+    // only laid out once the sheet is expanded (issue #284).
     expect(find.text('0.9 m'), findsOneWidget);
     expect(find.text('24°C'), findsOneWidget);
+
+    await expandHomeSheet(tester);
+
     expect(find.text('from NW'), findsOneWidget);
     expect(find.text('4 km/h'), findsOneWidget);
     expect(find.text('toward SE'), findsOneWidget);
