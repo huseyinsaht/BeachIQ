@@ -233,6 +233,80 @@ void main() {
       );
     });
 
+    group('wrap (issue #289)', () {
+      testWidgets(
+        'given wrap: false (the default), build -> caps the message at one '
+        'ellipsized line',
+        (tester) async {
+          final single = alert(
+            message:
+                'Wind picks up between 09:00 and '
+                '10:00, then eases off again by the afternoon.',
+          );
+
+          await tester.pumpWidget(wrap(ForecastAlertList(alerts: [single])));
+
+          final text = tester.widget<Text>(
+            find.text(
+              'Wind picks up between 09:00 and 10:00, then eases off '
+              'again by the afternoon.',
+            ),
+          );
+          expect(text.maxLines, 1);
+          expect(text.overflow, TextOverflow.ellipsis);
+        },
+      );
+
+      testWidgets(
+        'given wrap: true, build -> shows the full message with no line '
+        'cap or ellipsis',
+        (tester) async {
+          final single = alert(
+            message:
+                'Wind picks up between 09:00 and '
+                '10:00, then eases off again by the afternoon.',
+          );
+
+          await tester.pumpWidget(
+            wrap(ForecastAlertList(alerts: [single], wrap: true)),
+          );
+
+          final text = tester.widget<Text>(
+            find.text(
+              'Wind picks up between 09:00 and 10:00, then eases off '
+              'again by the afternoon.',
+            ),
+          );
+          expect(text.maxLines, isNull);
+          expect(text.overflow, isNot(TextOverflow.ellipsis));
+        },
+      );
+
+      testWidgets(
+        'given wrap: true and a nextHourNote, build -> the note\'s message '
+        'also has no line cap or ellipsis',
+        (tester) async {
+          final note = alert(message: 'Wind picks up in the next hour.');
+
+          await tester.pumpWidget(
+            wrap(
+              ForecastAlertList(
+                alerts: const [],
+                nextHourNote: note,
+                wrap: true,
+              ),
+            ),
+          );
+
+          final text = tester.widget<Text>(
+            find.text('Wind picks up in the next hour.'),
+          );
+          expect(text.maxLines, isNull);
+          expect(text.overflow, isNot(TextOverflow.ellipsis));
+        },
+      );
+    });
+
     group('nextHourNote', () {
       testWidgets(
         'given only a nextHourNote and no alerts, build -> renders it, '

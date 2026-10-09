@@ -36,7 +36,6 @@ import '../../logic/wind_status.dart';
 import '../navigation/detail_routes.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
-import '../widgets/daily_outlook_list.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
@@ -45,6 +44,7 @@ import '../widgets/stat_tile.dart';
 import '../widgets/stat_tile_group.dart';
 import '../widgets/swim_suggestion_pill.dart';
 import 'compare_beaches_screen.dart';
+import 'forecast_screen.dart';
 import 'search_screen.dart';
 
 const String _noData = 'No data';
@@ -502,10 +502,15 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) =>
 /// suggestion pill, a 2x2 [StatTile] grid, and a scrollable hourly row of
 /// [HourlyForecastItem]s.
 ///
-/// Below the hourly row sits a "7-14 day outlook" ([DailyOutlookList],
-/// issue #273): one row per forecast day with a swim verdict and high/low
-/// temperature, built from the same weather/marine fetches via
-/// `buildDailyOutlook` -- hidden entirely when there's no daily data yet.
+/// Issue #289 (Vaen decision 2026-10-08): the full per-type alert list and
+/// the "7-14 day outlook" no longer render on Home at all. Between the pill
+/// and the Sea section/stat grid sits at most one note — the single
+/// next-hour note from `buildNextHourNote` (#229), rendered via
+/// [ForecastAlertList] with an empty `alerts` list, hidden entirely (no
+/// gap) when there is none — and the expanded sheet ends with a single
+/// "Forecast and 7-14 day outlook" row. Both open [ForecastScreen], which
+/// shows the full, severity-sorted alert list (`buildForecastAlerts`) and
+/// the day-by-day outlook (`buildDailyOutlook`) that used to live here.
 ///
 /// The header, stat grid and hourly row are bound to [WeatherProvider]'s
 /// data, fetched for the currently *selected* location (#157): a point the
@@ -513,10 +518,7 @@ List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) =>
 /// `SharedPreferences`, never a fixed city — Çeşme is only the first-run
 /// default before anything has ever been picked. [MarineProvider] drives
 /// the loading/error states (#69) and, once loaded, the [SeaConditionsRow]
-/// under the smart suggestion pill (#163). Between the pill and the Sea
-/// section/stat grid sits [ForecastAlertList] (#169): upcoming heads-ups
-/// built from both providers' hourly series via `buildForecastAlerts`,
-/// hidden entirely (no gap) whenever there are none.
+/// under the smart suggestion pill (#163).
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -1373,15 +1375,24 @@ class _HomeScreenState extends State<HomeScreen> {
       sea: upcomingSeaHourly,
       now: effectiveNow,
     );
-    // Issue #284: collapsed shows at most one alert row — whichever one
-    // `ForecastAlertList` would have drawn first (the next-hour note when
-    // there is one, otherwise the single most-severe daylight alert) — by
-    // literally feeding that real widget a trimmed-down `alerts` list,
-    // rather than a second, parallel rendering of an alert row that could
-    // drift from the real one. Expanded keeps the full list untouched.
-    final collapsedAlerts = nextHourNote != null || forecastAlerts.isEmpty
-        ? const <ForecastAlert>[]
-        : [sortAlertsBySeverity(forecastAlerts).first];
+
+    // Issue #289: opens the Forecast screen with a snapshot of the
+    // selected location's already-computed alerts/outlook — reachable
+    // from both the next-hour note (when shown) and the dedicated entry
+    // row in the expanded sheet.
+    void openForecastScreen() {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: const RouteSettings(name: '/forecast'),
+          builder: (context) => ForecastScreen(
+            alerts: forecastAlerts,
+            dailyOutlook: dailyOutlook,
+            formatTemperature: (value) => _formatTemperature(value, unitSystem),
+            now: widget.now,
+          ),
+        ),
+      );
+    }
 
     Widget buildGrabHandle() => Center(
       child: Container(
@@ -1487,7 +1498,6 @@ class _HomeScreenState extends State<HomeScreen> {
     // "Expanded it shows the full Current, Air groups and the hourly
     // forecast as in the current Home screen."
     List<Widget> buildSheetTopContent({required bool expanded}) {
-      final alertsToShow = expanded ? forecastAlerts : collapsedAlerts;
       return [
         buildGrabHandle(),
         buildHeader(),
@@ -1503,15 +1513,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
         const SizedBox(height: 16),
         SwimSuggestionPill(verdict: swimVerdict),
-        // #169/#229: hidden entirely (no gap) when there is neither an
-        // upcoming alert nor a next-hour note — see ForecastAlertList's own
-        // doc comment.
-        if (alertsToShow.isNotEmpty || nextHourNote != null) ...[
+        // #289: Home shows at most one note — the next-hour note — never
+        // the per-type daylight alert rows (moved to the Forecast screen).
+        // Hidden entirely (no gap) when there is no next-hour note; never
+        // replaced by a daylight alert when absent. Tapping it opens the
+        // Forecast screen, same as the dedicated entry row below.
+        if (nextHourNote != null) ...[
           const SizedBox(height: 16),
-          ForecastAlertList(
-            alerts: alertsToShow,
-            nextHourNote: nextHourNote,
-            now: effectiveNow,
+          GestureDetector(
+            onTap: openForecastScreen,
+            child: ForecastAlertList(
+              alerts: const [],
+              nextHourNote: nextHourNote,
+              now: effectiveNow,
+              wrap: true,
+            ),
           ),
         ],
         // #213/#228: a fetch in flight for a new pick, or one that failed
@@ -1759,25 +1775,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
       ),
-      if (dailyOutlook.isNotEmpty) ...[
-        const SizedBox(height: 20),
-        const Row(
+      const SizedBox(height: 20),
+      InkWell(
+        key: const Key('home-forecast-entry-row'),
+        onTap: openForecastScreen,
+        child: const Row(
           children: [
             Icon(Icons.calendar_month, size: 14, color: _textSecondary),
             SizedBox(width: 6),
-            Text(
-              '7-14 day outlook',
-              style: TextStyle(color: _textSecondary, fontSize: 13),
+            Expanded(
+              child: Text(
+                'Forecast and 7-14 day outlook',
+                style: TextStyle(color: _textSecondary, fontSize: 13),
+              ),
             ),
+            Icon(Icons.chevron_right, size: 18, color: _textSecondary),
           ],
         ),
-        const SizedBox(height: 8),
-        DailyOutlookList(
-          entries: dailyOutlook,
-          formatTemperature: (value) => _formatTemperature(value, unitSystem),
-          now: effectiveNow,
-        ),
-      ],
+      ),
     ];
 
     Widget buildSheetBody(ScrollController scrollController) {

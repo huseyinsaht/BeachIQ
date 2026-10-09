@@ -30,11 +30,13 @@ import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart'
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
+import 'package:beachiq/presentation/screens/forecast_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
+import 'package:beachiq/presentation/widgets/daily_outlook_list.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
@@ -133,12 +135,12 @@ final _transparentPixelPng = base64Decode(
 );
 
 /// Issue #284: `HomeScreen`'s draggable bottom sheet starts collapsed (just
-/// the place name/temperature/pill/next alert/Sea tiles/hint) — a flow that
-/// needs the sheet's *expanded* content (the Current/Air groups, the hourly
-/// row, the 7-14 day outlook, none of which are even laid out while
-/// collapsed) calls this instead of simulating a real drag gesture. Reads
-/// the already-pumped `DraggableScrollableSheet`'s own controller
-/// (`HomeScreen` always supplies one, owned or caller-supplied).
+/// the place name/temperature/pill/next-hour note/Sea tiles/hint) — a flow
+/// that needs the sheet's *expanded* content (the Current/Air groups, the
+/// hourly row, the forecast entry row (#289), none of which are even laid
+/// out while collapsed) calls this instead of simulating a real drag
+/// gesture. Reads the already-pumped `DraggableScrollableSheet`'s own
+/// controller (`HomeScreen` always supplies one, owned or caller-supplied).
 Future<void> expandHomeSheet(WidgetTester tester) async {
   final sheet = tester.widget<DraggableScrollableSheet>(
     find.byType(DraggableScrollableSheet),
@@ -1052,10 +1054,12 @@ void main() {
     },
   );
 
-  testWidgets('Forecast alert list flow (#169): a real wind crossing from '
-      "WeatherProvider's hourly series renders as a visible alert row "
-      'between the smart suggestion pill and the stat grid, with no real '
-      'network involved (WeatherProvider/MarineProvider are faked via '
+  testWidgets('Forecast alert list flow (#169, moved to the Forecast screen '
+      'by #289): a real wind crossing from WeatherProvider\'s hourly series '
+      "is not shown on Home directly (there's no next-hour note for this "
+      'data), but opening the Forecast screen from Home\'s entry row shows '
+      'it as a visible alert row, with no real network involved '
+      '(WeatherProvider/MarineProvider are faked via '
       'test/helpers/pump_app.dart, the same fakes the other Home flows '
       'above use)', (WidgetTester tester) async {
     final weatherProvider = await aLoadedWeatherProvider(
@@ -1093,6 +1097,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Issue #289: no next-hour note for this data (both hourly entries are
+    // after `now`), so Home shows neither a note nor the alert list.
+    expect(find.byType(ForecastAlertList), findsNothing);
+
+    await expandHomeSheet(tester);
+    final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+    await tester.ensureVisible(entryRow);
+    await tester.pumpAndSettle();
+    await tester.tap(entryRow);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ForecastScreen), findsOneWidget);
     expect(find.byType(ForecastAlertList), findsOneWidget);
     expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
     expect(find.text('09:00 - 10:00'), findsOneWidget);
@@ -1739,9 +1755,11 @@ void main() {
   );
 
   testWidgets(
-    '7-14 day outlook flow (#273): Home renders one row per forecast day '
-    'with a swim verdict and high/low temperature, built from the weather '
-    'and marine providers\' daily arrays with no extra network request',
+    '7-14 day outlook flow (#273, moved to the Forecast screen by #289): '
+    'opening the Forecast screen from Home\'s entry row renders one row '
+    'per forecast day with a swim verdict and high/low temperature, built '
+    'from the weather and marine providers\' daily arrays with no extra '
+    'network request',
     (WidgetTester tester) async {
       final weatherProvider = await aLoadedWeatherProvider(
         WeatherCondition(
@@ -1784,11 +1802,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Issue #284: the 7-14 day outlook only exists once the sheet is
-      // expanded.
+      // Issue #289: the 7-14 day outlook no longer renders on Home at all
+      // — only the entry row, reachable once the sheet is expanded.
       await expandHomeSheet(tester);
-      await tester.ensureVisible(find.text('7-14 day outlook'));
-      expect(find.text('7-14 day outlook'), findsOneWidget);
+      expect(find.byType(DailyOutlookList), findsNothing);
+      final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+      await tester.ensureVisible(entryRow);
+      await tester.pumpAndSettle();
+      await tester.tap(entryRow);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForecastScreen), findsOneWidget);
       expect(find.text('Today'), findsOneWidget);
       // Day 1: calm wave + wind -> "good"; day 2's 45 km/h wind crosses the
       // high threshold -> "poor", proving each day scores independently.
