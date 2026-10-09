@@ -1477,10 +1477,12 @@ void main() {
   );
 
   testWidgets(
-    'Water-depth flow (#217): picking up a beach fetches its nearshore '
-    'depth profile from a faked BathymetryService, the Home water-depth '
-    'tile shows the classified value/status, tapping it opens '
-    'DepthDetailScreen, and the back button returns to Home',
+    'Water-depth flow (#217, extended by #257): picking up a beach fetches '
+    'its nearshore depth profile from a faked BathymetryService, the Home '
+    'water-depth tile shows the classified value/status, tapping it opens '
+    'DepthDetailScreen, the back button returns to Home, and picking that '
+    'same beach from Search shows the same verdict in its selected-beach '
+    'depth summary, also opening DepthDetailScreen when tapped',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final nearbyClient = _FixtureNetworkClient();
@@ -1560,6 +1562,43 @@ void main() {
       // The detail screen's own hero value/chip agree with Home's tile.
       expect(find.text('<= 1.2 m beyond 400 m'), findsOneWidget);
       expect(find.text('Gentle'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(DepthDetailScreen), findsNothing);
+
+      // #257: picking that same beach from Search shows the identical
+      // gentle verdict in its selected-beach info row's depth summary —
+      // Home and the selected-beach card never disagree, since both read
+      // the same DepthProvider.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fixture Beach'));
+      await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
+
+      await expandHomeSheet(tester);
+      expect(find.byType(BeachResultCard), findsOneWidget);
+      final infoCard = tester.widget<BeachResultCard>(
+        find.byType(BeachResultCard),
+      );
+      expect(infoCard.showDepthSummary, isTrue);
+
+      expect(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DepthDetailScreen), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();

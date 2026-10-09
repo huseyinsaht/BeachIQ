@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/depth_profile.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/shallow_entry.dart';
+import '../../logic/shallow_entry_status.dart';
+import '../../logic/shallow_entry_verdict.dart';
 import '../../logic/unit_preferences.dart';
 
 /// A single label/value line shown in [BeachResultCard]'s two-column
@@ -125,6 +129,10 @@ class BeachResultCard extends StatelessWidget {
     this.unitSystem = UnitSystem.metric,
     this.onTap,
     this.borderRadius = const BorderRadius.vertical(top: Radius.circular(32)),
+    this.showDepthSummary = false,
+    this.isDepthLoading = false,
+    this.depthProfile,
+    this.onDepthTap,
   });
 
   /// The beach/location name shown bold in the result row (e.g. "Altinkum
@@ -190,6 +198,30 @@ class BeachResultCard extends StatelessWidget {
   /// row, #214, not anchored to a screen edge) can pass a fully rounded
   /// shape instead.
   final BorderRadius borderRadius;
+
+  /// Shows a one/two-line water-depth summary under the result row (issue
+  /// #257) -- never shown unless a caller explicitly opts in, so
+  /// [SearchScreen]'s result list (which never fetches a depth profile per
+  /// result) renders exactly as before. Only `HomeScreen`'s selected-beach
+  /// info row passes `true`.
+  final bool showDepthSummary;
+
+  /// Whether the depth fetch for this beach is still in flight -- shows a
+  /// small loading placeholder instead of guessing a verdict. Ignored when
+  /// [showDepthSummary] is `false`.
+  final bool isDepthLoading;
+
+  /// The selected beach's depth profile, or `null` when there is none yet
+  /// (and [isDepthLoading] is `false`) -- renders "Depth: no data", never a
+  /// guessed verdict. Ignored when [showDepthSummary] is `false`.
+  final DepthProfile? depthProfile;
+
+  /// Called when the depth summary row is tapped, to open the full
+  /// water-depth detail screen (issue #256) -- the one place the full
+  /// [depthApproximationCaveat] is shown, so the summary itself only needs
+  /// [depthApproximationCaveatShort]. Ignored when [showDepthSummary] is
+  /// `false`.
+  final VoidCallback? onDepthTap;
 
   static const _surfacePaper = Color(0xFFFFFFFF);
   static const _textOnPaper = Color(0xFF2E3057);
@@ -322,6 +354,15 @@ class BeachResultCard extends StatelessWidget {
                         ),
                     ],
                   ),
+                  if (showDepthSummary) ...[
+                    const SizedBox(height: 12),
+                    _DepthSummaryRow(
+                      isLoading: isDepthLoading,
+                      profile: depthProfile,
+                      unitSystem: unitSystem,
+                      onTap: onDepthTap,
+                    ),
+                  ],
                   if (_hasBeachInfo) ...[
                     const SizedBox(height: 16),
                     const Divider(
@@ -347,6 +388,104 @@ class BeachResultCard extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The optional water-depth / non-swimmer summary row (issue #257): a
+/// small icon, a one-line plain-language verdict (reusing
+/// [shallowEntryVerdictLine]'s exact wording, never a new paraphrase), and
+/// a secondary line combining the stand-up distance (when known) and the
+/// shortened approximation caveat. Tapping it opens the full water-depth
+/// detail screen, where [depthApproximationCaveat] is shown in full.
+class _DepthSummaryRow extends StatelessWidget {
+  const _DepthSummaryRow({
+    required this.isLoading,
+    required this.profile,
+    required this.unitSystem,
+    required this.onTap,
+  });
+
+  final bool isLoading;
+  final DepthProfile? profile;
+  final UnitSystem unitSystem;
+  final VoidCallback? onTap;
+
+  static const _textOnPaper = Color(0xFF2E3057);
+  static const _textSecondary = Color(0xFF8B93A6);
+
+  @override
+  Widget build(BuildContext context) {
+    final classification = profile == null
+        ? null
+        : classifyShallowEntry(profile!);
+    final steepness = classification?.steepness;
+
+    String verdictText;
+    Color verdictColor;
+    String? secondaryText;
+    if (isLoading) {
+      verdictText = 'Depth: checking…';
+      verdictColor = _textSecondary;
+    } else if (classification == null ||
+        steepness == ShallowEntrySteepness.unknown) {
+      verdictText = 'Depth: no data';
+      verdictColor = _textSecondary;
+    } else {
+      verdictText = shallowEntryVerdictLine(steepness!);
+      verdictColor = shallowEntryStatusColor(steepness) ?? _textOnPaper;
+      final distanceLabel = standUpDistanceLabel(
+        classification,
+        profile!,
+        unitSystem,
+      );
+      secondaryText = distanceLabel == null
+          ? depthApproximationCaveatShort
+          : '$distanceLabel · $depthApproximationCaveatShort';
+    }
+
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.waves, size: 18, color: verdictColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      verdictText,
+                      style: TextStyle(
+                        color: verdictColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (secondaryText != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        secondaryText,
+                        style: const TextStyle(
+                          color: _textSecondary,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
