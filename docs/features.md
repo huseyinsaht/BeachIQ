@@ -17,8 +17,8 @@ pick survives an app restart):
   beach card in the Search screen returns to Home with that beach selected: the map
   re-centers on it, highlights it with a distinct white border among the gold
   outlines, and a compact info row for it appears below the map. The map card's
-  overflow menu opens "Beaches" (the Search screen), "Use my location", and, when
-  available, "Units".
+  overflow menu opens "Beaches" (the Search screen), "Compare beaches", "Use my
+  location", and, when available, "Units".
 - "Use my location": an opt-in device-location pick from the map card's overflow
   menu — the only action that can ever show a location-permission prompt (never on
   app launch). A successful pick is treated exactly like a map tap, and its coarse
@@ -36,7 +36,10 @@ pick survives an app restart):
 - A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
   green/orange/red-orange to match, from wave height, wind speed and rain chance —
   though the wave-height input is only filled in after a pull-to-refresh or a fresh
-  location pick (see `docs/architecture.md` § State flow).
+  location pick (see `docs/architecture.md` § State flow). An info icon on the pill
+  opens a short disclaimer ("A guide, not a guarantee") making clear the suggestion is
+  a model estimate from forecast data, not a safety guarantee, and that local flags
+  and lifeguard instructions always take precedence.
 - An upcoming-alerts list between the suggestion pill and the stat grid: heads-up,
   one-line warnings (wind, waves, incoming current, clouds, rain) for a fast rise or
   threshold crossing later in the day, colored by severity and sorted most-severe
@@ -49,9 +52,9 @@ pick survives an app restart):
   as already past.
 - A real notification when conditions turn favorable: if the swim verdict for the
   selected location flips from caution/poor/unknown to good while the app is running,
-  a local notification is shown (after a one-time permission prompt). There is no
-  settings screen yet to turn this off, and it only fires while the app is open —
-  there's no background/scheduled check.
+  a local notification is shown (after a one-time permission prompt). An "Alerts"
+  switch in the Home map card's overflow menu turns this on or off (issue #267); it
+  only fires while the app is open — there's no background/scheduled check.
 - A single 3×3 grid of nine equally-sized stat tiles, once marine data has loaded,
   grouped under three labels:
   - **Sea** — wave height, water temperature, water depth.
@@ -63,8 +66,10 @@ pick survives an app restart):
 
   Wind speed, rain chance and water depth each show a short colored status word
   (e.g. "Calm", "High", "Gentle") alongside their value. Below the grid, a scrollable
-  hourly forecast row (with colored, time-of-day-aware weather icons) rounds out the
-  dashboard.
+  hourly forecast row (with colored, time-of-day-aware weather icons), then a 7-14 day
+  outlook — one row per day with the same good/caution/poor swim verdict as the
+  suggestion pill plus that day's high/low temperature — round out the dashboard. A
+  candidate Pro feature, built ungated for now (no entitlement system exists yet).
 - **Every stat tile except wave direction opens its own detail screen**: a min/max/now
   summary and metric-specific context, most with an hourly chart (a value scale and
   time-of-day labels on its axes) — UV index's five colored risk bands and a
@@ -104,6 +109,12 @@ pick survives an app restart):
   area don't always re-query Overpass, and fall back to a static placeholder list if
   offline with nothing cached.
 
+**Compare beaches** — from Home's map card overflow menu, pick 2-3 of the currently
+fetched nearby beaches (favorites marked with a star) to compare side by side: wave
+height, wind, water temperature, a plain-language depth/non-swimmer verdict and the
+same swim score as Home's suggestion pill, one column per beach. A candidate Pro
+feature, built ungated for now (no entitlement system exists yet).
+
 **Cross-cutting**
 
 - OpenStreetMap attribution is shown on the map, as required by OSM's license.
@@ -122,9 +133,9 @@ pick survives an app restart):
 From the roadmap on `README.md`:
 
 - Google Play launch
-- A settings screen to turn condition alerts off, and background/scheduled delivery
-  so the "conditions turned favorable" notification can fire while the app isn't
-  open (today it only fires while the app is running — see "Today" above)
+- Background/scheduled delivery so the "conditions turned favorable" notification
+  can fire while the app isn't open (today it only fires while the app is running,
+  and only when the "Alerts" switch above is on — see "Today" above)
 
 The core wave-height dashboard and nearby beach search from the original roadmap are
 now implemented, as described above.

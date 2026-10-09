@@ -13,7 +13,11 @@ class MarineApiService {
       'longitude': lon.toString(),
       'current': marineFields,
       'hourly': marineFields,
+      // Issue #273: daily max wave height drives the 7-14 day outlook's
+      // per-day swim score, same horizon as WeatherApiService's daily.
+      'daily': 'wave_height_max',
       'timezone': 'auto',
+      'forecast_days': '14',
     };
 
     final uri = Uri.parse(_baseUrl).replace(queryParameters: queryParams);

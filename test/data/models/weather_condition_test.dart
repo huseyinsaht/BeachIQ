@@ -248,5 +248,74 @@ void main() {
         );
       });
     });
+
+    group('dailyForecast (issue #273)', () {
+      test('parses daily time/high/low/wind/rain into dailyForecast', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'time': ['2024-01-01', '2024-01-02'],
+            'temperature_2m_max': [26.0, 27.0],
+            'temperature_2m_min': [18.0, 19.0],
+            'wind_speed_10m_max': [22.0, 30.0],
+            'precipitation_probability_max': [10, 50],
+          },
+        });
+
+        expect(condition.dailyForecast, hasLength(2));
+        expect(condition.dailyForecast[0].date, DateTime.parse('2024-01-01'));
+        expect(condition.dailyForecast[0].highTemperature, 26.0);
+        expect(condition.dailyForecast[0].lowTemperature, 18.0);
+        expect(condition.dailyForecast[0].windSpeedMaxKmh, 22.0);
+        expect(condition.dailyForecast[0].rainChanceMaxPercent, 10.0);
+        expect(condition.dailyForecast[1].date, DateTime.parse('2024-01-02'));
+        expect(condition.dailyForecast[1].windSpeedMaxKmh, 30.0);
+        expect(condition.dailyForecast[1].rainChanceMaxPercent, 50.0);
+      });
+
+      test('a day missing wind/rain still parses with those fields null', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'time': ['2024-01-01'],
+            'temperature_2m_max': [26.0],
+            'temperature_2m_min': [18.0],
+          },
+        });
+
+        expect(condition.dailyForecast, hasLength(1));
+        expect(condition.dailyForecast.single.windSpeedMaxKmh, isNull);
+        expect(condition.dailyForecast.single.rainChanceMaxPercent, isNull);
+      });
+
+      test('drops a day whose time is unparseable instead of throwing', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'time': ['not a date', '2024-01-02'],
+            'temperature_2m_max': [26.0, 27.0],
+          },
+        });
+
+        expect(condition.dailyForecast, hasLength(1));
+        expect(
+          condition.dailyForecast.single.date,
+          DateTime.parse('2024-01-02'),
+        );
+      });
+
+      test('defaults to an empty list when daily has no time array', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'temperature_2m_max': [26.0],
+          },
+        });
+
+        expect(condition.dailyForecast, isEmpty);
+      });
+
+      test('defaults to an empty list when daily is absent entirely', () {
+        final condition = WeatherCondition.fromJson({});
+
+        expect(condition.dailyForecast, isEmpty);
+      });
+    });
   });
 }

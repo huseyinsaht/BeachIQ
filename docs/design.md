@@ -94,6 +94,44 @@ then upgrades to a real reverse-geocoded city name (`ReverseGeocodingService`, e
 moment later if/when that lookup succeeds — coordinates remain the permanent fallback whenever it fails
 or isn't available.
 
+> **Layout decision (Vaen, 2026-10-08): map-first with a bottom sheet ("option A").** This supersedes the
+> stacked, scrolling layout described in the numbered list below; the list still describes each
+> element's content and behavior, but the *placement* changes as follows. Mockup:
+> `docs/assets/home-map-first-mockup.png` (schematic — not a real screen; sizes and spacing are
+> adjustable, only the structure is decided).
+>
+> - The **map fills the whole screen** behind everything (no fixed 200 dp card). The search field floats
+>   at the top (the former search icon/expanding `SearchField` of #158 becomes this always-visible
+>   field); map controls (my location #254, zoom) float on the right edge. The overflow menu entries
+>   (Beaches, Use my location, Units, Alerts, Compare beaches) stay reachable from the search field's
+>   trailing menu.
+> - A **draggable bottom sheet** (rounded top corners, grab handle) holds the selected location. Collapsed
+>   it shows: place name + coordinates/distance subtitle, current temperature, the verdict pill, the single
+>   next-hour note (see "Forecast screen" below), and the three **Sea** metrics (wave height, water temp, water depth) with
+>   status words, plus a "swipe up for all details" hint. Expanded it shows the full Current, Air groups
+>   and the hourly forecast as in the current Home screen.
+> - Tapping the map still selects a point exactly as before; the sheet updates in place and stays in its
+>   current state. Amenity markers, the legend chips and beach overlays are unchanged and must stay
+>   usable above the collapsed sheet.
+> - Unchanged: header content rules (#253), verdict palette, 3x3 stat grouping (#251), Water depth
+>   cross-section and verdict (#256).
+>
+> **Forecast screen (Vaen decision, 2026-10-08): one note on Home, everything else in a detail screen.**
+> Supersedes the Home placement of items 5 (alert list) and 9 (7-14 day outlook) below; their content and
+> thresholds are unchanged.
+>
+> - Home (collapsed and expanded sheet) shows **at most one note**: the **next-hour note**
+>   (`buildNextHourNote`, with its "Next hour" label). It is **not** replaced by an alert when absent: no
+>   next-hour note means no note and no gap. It is a short sentence that **wraps instead of being
+>   ellipsized**. The per-type daylight alert rows (`ForecastAlertList` rows) and the 7-14 day outlook list no
+>   longer appear on Home.
+> - A new **Forecast screen** is opened from a single row on Home ("Forecast and 7-14 day outlook  >") and by tapping the
+>   next-hour note. It has two sections: **Alerts** (all day-prefixed alerts from `buildForecastAlerts`, severity
+>   sorted, full text, wrapped, no ellipsis; "No alerts" when empty) and **7-14 day outlook**
+>   (`DailyOutlookList`, full verdict message wrapped, high/low). Same dark background and section-label style as
+>   the Metric detail screen, with a back button; it reads the selected location's data and updates with it.
+> - The "conditions turned favorable" notification (#267) and the alert thresholds are unchanged.
+
 Top to bottom:
 
 1. **Header row** — location label stack on the left: the selected location's real place name, bold,
@@ -121,7 +159,10 @@ Top to bottom:
    as a map tap would. The overflow menu itself now opens a small sheet with "Beaches" (→
    `SearchScreen`, the beach list/favorites/filter), when available, "Use my location" (issue
    #254: device location via `geolocator`, hidden entirely when no `DeviceLocationService` is
-   supplied), and, when available, "Units". "Use my location" is the *only* thing on this screen
+   supplied), when available, "Units", and, when available, "Alerts" (issue #267: a switch for the
+   "conditions turned favorable" notification, backed by `ConditionAlertDispatcher.alertsEnabled`/
+   `setAlertsEnabled`, hidden entirely when no `ConditionAlertDispatcher` is supplied). "Use my
+   location" is the *only* thing on this screen
    that can ever show a location-permission prompt — it never happens on app start or any other
    pick. On success the device position is selected exactly like a map pick (header, weather,
    marine data, nearby beaches, persistence); on a denied permission or an unavailable/disabled
@@ -147,6 +188,12 @@ Top to bottom:
    Every variant keeps >= 4.5:1 text/icon contrast against its gradient. A verdict change animates the
    pill's colors rather than snapping. The Home screen's own `bg.base`/`bg.gradientBottom` background is
    unrelated and never changes with the verdict. Muted, not a primary CTA.
+
+   **Safety disclaimer** (issue #271) — a small trailing info icon (`Icons.info_outline`, same
+   foreground color as the pill's text/icon) opens a bottom sheet: title "A guide, not a guarantee" and
+   `swimSafetyDisclaimer` (`lib/logic/swim_safety_disclaimer.dart`), stating the verdict is a model
+   estimate, not a safety guarantee, and that local flags/lifeguards take precedence. Never uses the
+   word "safe", mirroring `depthApproximationCaveat`'s wording rule.
 5. **Home: alert list** (issue #169, extended by #229) — not in the mockup; this extends it. Sits
    directly under the smart suggestion pill and above the Sea section/stat grid. Two kinds of row,
    `ForecastAlertList`:
@@ -248,6 +295,15 @@ Top to bottom:
    rain/snow blue, thunderstorm violet with a small yellow bolt accent. Clear/partly-cloudy hours show a
    moon instead of the sun icon at night, decided per entry from its own hour (a fixed 06:00-20:00
    bucket, not a sunrise/sunset calculation).
+9. **7-14 day outlook** (issue #273) — below the hourly row, the same section-label style (small
+   calendar icon + `text.secondary` label) introduces a plain vertical list, one row per forecast
+   day: a weekday label ("Today" for the first row), the swim-verdict icon/color (`paletteForVerdict`
+   — the same good/caution/poor/unknown mapping as the smart suggestion pill), the verdict's one-line
+   message, and the day's high/low temperature. A thin low-opacity divider separates rows, no card
+   background, matching the hourly row and stat grid. The whole section is hidden (no gap) when there
+   is no daily data yet, same "hide rather than show empty" rule as `ForecastAlertList`. A candidate
+   Pro feature per the market-analysis notes, built ungated for now (no entitlement system exists yet,
+   same stance as Compare beaches).
 
 ## Screen: Metric detail
 
@@ -361,6 +417,29 @@ Left column in the mockup: price, wave height, slope, reviews. Right column: car
 café, shoes. Water temperature is not in the mockup but was requested for the beach info; add it to
 the marine group.
 
+## Screen: Compare beaches (issue #274)
+
+Not in the mockup — a candidate Pro feature, built plain/ungated for now (no entitlement system
+exists yet). Reached from the Home map card's overflow ("...") menu, a "Compare beaches" entry
+(`Icons.compare_arrows`) always present: tapping it with fewer than two nearby beaches fetched shows
+a `SnackBar` explaining why, rather than opening an empty screen.
+
+1. **Selection sheet** — a bottom sheet listing the currently fetched nearby beaches (favorites
+   marked with a filled amber star via a throwaway `FavoritesProvider`, sorted first), each a
+   `CheckboxListTile`. Checking a 4th beach while 3 are already checked is a no-op — never more than
+   3 at once. A full-width "Compare" button at the bottom, disabled until at least 2 are checked.
+2. **Comparison screen** (`CompareBeachesScreen`) — an `AppBar` titled "Compare beaches" and a
+   `Table`: one column per beach (name as the bold header), one row per metric — Wave height, Wind,
+   Water temp, Depth, Swim score. Wave height/water temp come from the already-batched
+   `NearbyBeachesProvider.seaConditionFor` (no extra request); wind is fetched per beach via a
+   dedicated `WeatherRepository` (`HomeScreen.compareWeatherRepository`, separate from the single
+   selected location's own); Depth reuses #256's `classifyShallowEntry`/`shallowEntryStatusLabel`
+   (Gentle/Moderate/Steep) via a dedicated `BathymetryService`
+   (`HomeScreen.compareBathymetryService`); Swim score reuses the Home pill's own
+   `scoreSwimSuitability`, shown as a short word (Good/Caution/Poor), not the full sentence. Any
+   metric with nothing to show (no repository/service supplied, or a fetch failed) renders "No
+   data", matching this doc's existing "never invent a value" rule everywhere else.
+
 ## Components implied by this design
 
 Reusable widgets worth extracting rather than rebuilding per-screen:
@@ -373,6 +452,8 @@ Reusable widgets worth extracting rather than rebuilding per-screen:
 - `ForecastAlertList` — the alert list's vertical stack of severity-icon + message + time-window
   rows, sorted most severe first and rendering nothing when empty.
 - `HourlyForecastItem` — time + icon + temperature, used in the scrollable hourly row.
+- `DailyOutlookList` — the 7-14 day outlook's vertical rows (day label + swim-verdict icon/message +
+  high/low temperature), built from `buildDailyOutlook`.
 - `LocationMapCard` — the white map card with the docked location bar; renders a real map with the
   beach overlay (gold polygons/lines).
 - `SearchField` — the rounded paper search input, reusable on any screen that needs city search.

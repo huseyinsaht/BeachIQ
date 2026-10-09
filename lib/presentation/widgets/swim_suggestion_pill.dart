@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../logic/swim_safety_disclaimer.dart';
 import '../../logic/swim_suitability.dart';
 import '../theme/verdict_palette.dart';
 
@@ -17,6 +18,10 @@ import '../theme/verdict_palette.dart';
 /// Pure presentational widget — no network or provider dependency; the
 /// caller supplies the already-computed [SwimVerdict] (see
 /// [scoreSwimSuitability]).
+///
+/// Issue #271: a trailing info icon opens a bottom sheet with
+/// [swimSafetyDisclaimer] -- the verdict message alone can read like a
+/// safety guarantee, so the disclaimer is always one tap away from it.
 class SwimSuggestionPill extends StatelessWidget {
   const SwimSuggestionPill({super.key, required this.verdict});
 
@@ -49,8 +54,60 @@ class SwimSuggestionPill extends StatelessWidget {
               style: TextStyle(color: palette.foreground, fontSize: 14),
             ),
           ),
+          // A plain tappable icon, not `IconButton` (whose minimum tap
+          // target enforces extra height regardless of `constraints:`),
+          // so this info affordance never grows the pill taller than its
+          // own leading icon -- a taller pill shifts every tile below it
+          // down the Home screen (see the 3x3 stat grid's
+          // tap-position-sensitive tests).
+          Tooltip(
+            message: swimSafetyDisclaimerTitle,
+            child: GestureDetector(
+              key: const Key('swim-suggestion-pill-info'),
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _showDisclaimerSheet(context),
+              child: Icon(
+                Icons.info_outline,
+                size: 20,
+                color: palette.foreground,
+              ),
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Future<void> _showDisclaimerSheet(BuildContext context) {
+    return showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  swimSafetyDisclaimerTitle,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                const Text(swimSafetyDisclaimer),
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => Navigator.of(sheetContext).pop(),
+                    child: const Text('Got it'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

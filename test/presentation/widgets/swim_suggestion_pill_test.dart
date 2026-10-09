@@ -1,3 +1,4 @@
+import 'package:beachiq/logic/swim_safety_disclaimer.dart';
 import 'package:beachiq/logic/swim_suitability.dart';
 import 'package:beachiq/presentation/theme/verdict_palette.dart';
 import 'package:beachiq/presentation/widgets/swim_suggestion_pill.dart';
@@ -93,4 +94,50 @@ void main() {
       expect(goodGradient.colors, isNot(equals(poorGradient.colors)));
     },
   );
+
+  group('safety disclaimer (#271)', () {
+    testWidgets('given the pill, renders an info icon that does not show the '
+        'disclaimer before being tapped', (tester) async {
+      const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
+
+      await tester.pumpWidget(wrap(const SwimSuggestionPill(verdict: verdict)));
+
+      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+      expect(find.text(swimSafetyDisclaimer), findsNothing);
+    });
+
+    testWidgets(
+      'given a tap on the info icon, shows the safety disclaimer sheet',
+      (tester) async {
+        const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
+
+        await tester.pumpWidget(
+          wrap(const SwimSuggestionPill(verdict: verdict)),
+        );
+        await tester.tap(find.byKey(const Key('swim-suggestion-pill-info')));
+        await tester.pumpAndSettle();
+
+        expect(find.text(swimSafetyDisclaimerTitle), findsOneWidget);
+        expect(find.text(swimSafetyDisclaimer), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given the disclaimer sheet open, tapping "Got it" dismisses it',
+      (tester) async {
+        const verdict = SwimVerdict(SwimSuitabilityLevel.good, 'good');
+
+        await tester.pumpWidget(
+          wrap(const SwimSuggestionPill(verdict: verdict)),
+        );
+        await tester.tap(find.byKey(const Key('swim-suggestion-pill-info')));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Got it'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(swimSafetyDisclaimer), findsNothing);
+      },
+    );
+  });
 }

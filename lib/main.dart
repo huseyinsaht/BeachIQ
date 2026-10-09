@@ -77,12 +77,12 @@ void main() async {
   // likely appears sooner rather than on the first alert.
   final notificationService = NotificationService();
   unawaited(notificationService.init());
-  ConditionAlertDispatcher(
+  final conditionAlertDispatcher = ConditionAlertDispatcher(
     weatherProvider: weatherProvider,
     marineProvider: marineProvider,
     notificationService: notificationService,
     prefs: prefs,
-  ).start();
+  )..start();
 
   runApp(
     MarineApp(
@@ -94,6 +94,14 @@ void main() async {
       depthProvider: depthProvider,
       deviceLocationService: deviceLocationService,
       reverseGeocodingService: reverseGeocodingService,
+      conditionAlertDispatcher: conditionAlertDispatcher,
+      // Issue #274: "Compare beaches" fetches weather/depth for 2-3 other
+      // beaches, independent of the single selected location's own
+      // weatherProvider/depthProvider above -- a sibling WeatherRepository
+      // (stateless, like the one `MarineApp`'s own fallback builds) and
+      // the same shared httpClient BathymetryService above already uses.
+      compareWeatherRepository: WeatherRepository(WeatherApiService()),
+      compareBathymetryService: BathymetryService(httpClient),
     ),
   );
 }
@@ -110,6 +118,9 @@ class MarineApp extends StatelessWidget {
     this.depthProvider,
     this.deviceLocationService,
     this.reverseGeocodingService,
+    this.conditionAlertDispatcher,
+    this.compareWeatherRepository,
+    this.compareBathymetryService,
   });
 
   /// Overridable so integration tests can avoid the real tile network.
@@ -163,6 +174,24 @@ class MarineApp extends StatelessWidget {
   /// unchanged from before #254.
   final ReverseGeocodingService? reverseGeocodingService;
 
+  /// Drives the map card overflow menu's "Alerts" switch (issue #267). Null
+  /// (the default for any existing call site that doesn't pass one, e.g.
+  /// most widget/integration tests) hides that entry entirely, unchanged
+  /// from before this toggle existed.
+  final ConditionAlertDispatcher? conditionAlertDispatcher;
+
+  /// Forwarded to `HomeScreen`'s "Compare beaches" flow (issue #274). Null
+  /// (the default for any existing call site that doesn't pass one, e.g.
+  /// most widget/integration tests) shows "No data" for Compare's wind/
+  /// swim-score columns instead of fetching, unchanged from before this
+  /// feature existed.
+  final WeatherRepository? compareWeatherRepository;
+
+  /// Forwarded to `HomeScreen`'s "Compare beaches" flow (issue #274), same
+  /// null behavior as [compareWeatherRepository] above, for Compare's
+  /// depth column.
+  final BathymetryService? compareBathymetryService;
+
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
@@ -197,6 +226,9 @@ class MarineApp extends StatelessWidget {
             depthProvider: depthProvider,
             deviceLocationService: deviceLocationService,
             reverseGeocodingService: reverseGeocodingService,
+            conditionAlertDispatcher: conditionAlertDispatcher,
+            compareWeatherRepository: compareWeatherRepository,
+            compareBathymetryService: compareBathymetryService,
           ),
         ),
       ),

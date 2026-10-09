@@ -50,7 +50,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../test/helpers/builders.dart' show aSeaCondition, aSeaHourly;
+import '../test/helpers/builders.dart'
+    show aDailyWeatherForecast, aSeaCondition, aSeaDailyForecast, aSeaHourly;
 import '../test/helpers/fake_http_client.dart' show FakeHttpClient;
 import '../test/helpers/fake_location.dart'
     show FakeDeviceLocationSource, FakePlacemarkLookup;
@@ -248,6 +249,68 @@ class _FixtureNetworkClientNearPlaceCenter extends http.BaseClient {
           'lat': 38.32205,
           'lon': 26.3261,
           'tags': {'amenity': 'parking'},
+        },
+      ],
+    });
+    return http.StreamedResponse(
+      Stream.value(utf8.encode(body)),
+      200,
+      headers: const {'content-type': 'application/json'},
+    );
+  }
+}
+
+/// Two distinct beaches (unlike [_FixtureNetworkClient]'s one), for the
+/// "Compare beaches" flow (issue #274), which needs at least two nearby
+/// beaches to offer a comparison.
+class _TwoBeachNetworkClient extends http.BaseClient {
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (!request.url.host.contains('overpass')) {
+      final body = json.encode([
+        {
+          'current': {'wave_height': 0.5, 'sea_surface_temperature': 22.0},
+        },
+        {
+          'current': {'wave_height': 1.1, 'sea_surface_temperature': 25.0},
+        },
+      ]);
+      return http.StreamedResponse(
+        Stream.value(utf8.encode(body)),
+        200,
+        headers: const {'content-type': 'application/json'},
+      );
+    }
+
+    final body = json.encode({
+      'elements': [
+        {
+          'type': 'way',
+          'id': 1,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Alpha Beach',
+            'addr:city': 'Alpha City',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.30, 'lon': 26.30},
+            {'lat': 38.31, 'lon': 26.30},
+          ],
+        },
+        {
+          'type': 'way',
+          'id': 2,
+          'tags': {
+            'natural': 'beach',
+            'name': 'Beta Beach',
+            'addr:city': 'Beta City',
+            'fee': 'no',
+          },
+          'geometry': [
+            {'lat': 38.50, 'lon': 26.50},
+            {'lat': 38.51, 'lon': 26.50},
+          ],
         },
       ],
     });
@@ -1572,6 +1635,131 @@ void main() {
 
       expect(find.byType(SnackBar), findsOneWidget);
       expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+    },
+  );
+
+  testWidgets(
+    'Compare beaches flow (#274): picking two nearby beaches from the map '
+    'overflow\'s "Compare beaches" opens a side-by-side comparison with '
+    'real tap gestures, no real network (fake repositories/clients '
+    'throughout)',
+    (WidgetTester tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final client = _TwoBeachNetworkClient();
+      final provider = NearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(await SharedPreferences.getInstance()),
+        MarineBatchService(client),
+        debounceDuration: const Duration(milliseconds: 20),
+      );
+      addTearDown(provider.dispose);
+
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(temperature: 27, windSpeed: 12, weatherCode: 1),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        SeaCondition(waveHeight: 0.3),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            nearbyBeachesProvider: provider,
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            compareWeatherRepository: _RecordingWeatherRepository([
+              WeatherCondition(temperature: 20, windSpeed: 18, weatherCode: 1),
+            ]),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(provider.status, NearbyBeachesStatus.loaded);
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compare beaches'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alpha Beach'), findsOneWidget);
+      expect(find.text('Beta Beach'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('compare-select-confirm')));
+      await tester.pumpAndSettle();
+
+      // On the comparison screen: both beaches' names as column headers,
+      // their already-known (batched) sea conditions, and the fetched
+      // wind speed from `compareWeatherRepository` for both columns.
+      expect(find.text('Compare beaches'), findsOneWidget);
+      expect(find.text('Alpha Beach'), findsOneWidget);
+      expect(find.text('Beta Beach'), findsOneWidget);
+      expect(find.text('0.5 m'), findsOneWidget);
+      expect(find.text('1.1 m'), findsOneWidget);
+      expect(find.text('18 km/h'), findsNWidgets(2));
+    },
+  );
+
+  testWidgets(
+    '7-14 day outlook flow (#273): Home renders one row per forecast day '
+    'with a swim verdict and high/low temperature, built from the weather '
+    'and marine providers\' daily arrays with no extra network request',
+    (WidgetTester tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        WeatherCondition(
+          temperature: 27,
+          windSpeed: 12,
+          weatherCode: 1,
+          dailyForecast: [
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 1),
+              highTemperature: 28.0,
+              lowTemperature: 20.0,
+            ),
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 2),
+              highTemperature: 31.0,
+              lowTemperature: 22.0,
+              windSpeedMaxKmh: 45.0, // crosses the "poor" threshold
+            ),
+          ],
+        ),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          dailyForecast: [
+            aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
+            aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
+          ],
+        ),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => DateTime(2026, 7, 1),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('7-14 day outlook'));
+      expect(find.text('7-14 day outlook'), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+      // Day 1: calm wave + wind -> "good"; day 2's 45 km/h wind crosses the
+      // high threshold -> "poor", proving each day scores independently.
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(
+        find.text('Rough conditions — best to skip swimming today.'),
+        findsOneWidget,
+      );
     },
   );
 }

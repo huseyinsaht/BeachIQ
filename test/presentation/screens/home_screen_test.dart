@@ -6,9 +6,11 @@ import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
+import 'package:beachiq/data/services/notification_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
+import 'package:beachiq/logic/providers/condition_alert_dispatcher.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/nearby_beaches_provider.dart';
 import 'package:beachiq/logic/providers/unit_preferences_provider.dart';
@@ -32,6 +34,7 @@ import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/stat_tile.dart';
 import 'package:beachiq/presentation/widgets/stat_tile_group.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
@@ -275,6 +278,187 @@ void main() {
           findsOneWidget,
         );
         expect(find.textContaining('Waves cross'), findsOneWidget);
+      },
+    );
+
+    testWidgets('given a wind crossing more than 24 hours out (issue #273: '
+        'forecast_days=14 widened the raw hourly series to up to 14 days), '
+        'build -> does not treat it as an upcoming alert', (tester) async {
+      final farNow = DateTime(2026, 7, 1, 0, 0);
+      // A dense, one-entry-per-hour series (as the real API returns),
+      // calm throughout except the last hour -- two days out, well beyond
+      // the ~24h cap near-term-only features must apply to the now-wider
+      // daily series. A sparse series would defeat the entry-count cap
+      // (it only has as many entries as actually provided), so this must
+      // mirror real hourly density for the cap to have anything to do.
+      final hourly = [
+        for (var hour = 1; hour <= 49; hour++)
+          aWeatherHourly(
+            time: farNow.add(Duration(hours: hour)),
+            windSpeed: hour == 49 ? 45 : 10, // crosses 40 km/h, two days out
+          ),
+      ];
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(hourly: hourly),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+      );
+
+      expect(find.byType(ForecastAlertList), findsNothing);
+    });
+
+    testWidgets(
+      'given a wind crossing on the 24th upcoming hour (inside the cap), '
+      'build -> still shows the alert',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final hourly = [
+          for (var hour = 1; hour <= 24; hour++)
+            aWeatherHourly(
+              time: farNow.add(Duration(hours: hour)),
+              windSpeed: hour == 24 ? 45 : 10, // crosses 40 km/h at +24h
+            ),
+        ];
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: hourly),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+        );
+
+        expect(find.byType(ForecastAlertList), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a wind crossing on the 25th upcoming hour (just outside the '
+      '24-entry cap), build -> does not show the alert',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final hourly = [
+          for (var hour = 1; hour <= 25; hour++)
+            aWeatherHourly(
+              time: farNow.add(Duration(hours: hour)),
+              windSpeed: hour == 25 ? 45 : 10, // crosses 40 km/h, at +25h
+            ),
+        ];
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: hourly),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(weatherProvider: weatherProvider, now: () => farNow),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a wave crossing more than 24 hours out on the marine series, '
+      'build -> does not treat it as an upcoming alert either',
+      (tester) async {
+        final farNow = DateTime(2026, 7, 1, 0, 0);
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              for (var hour = 1; hour <= 49; hour++)
+                aWeatherHourly(time: farNow.add(Duration(hours: hour))),
+            ],
+          ),
+        );
+        // Same reasoning as the wind test above: a dense, one-entry-per-
+        // hour series, calm throughout except the last (two days out).
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            hourly: [
+              for (var hour = 1; hour <= 49; hour++)
+                aSeaHourly(
+                  time: farNow.add(Duration(hours: hour)),
+                  waveHeight: hour == 49 ? 1.3 : 0.4, // crosses 1.2m
+                ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => farNow,
+          ),
+        );
+
+        expect(find.byType(ForecastAlertList), findsNothing);
+      },
+    );
+  });
+
+  group('HomeScreen 7-14 day outlook (issue #273)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets('given weather and marine providers with daily data, shows the '
+        'outlook section with one row per day', (tester) async {
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(
+          dailyForecast: [
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 1),
+              highTemperature: 28.0,
+              lowTemperature: 20.0,
+            ),
+            aDailyWeatherForecast(
+              date: DateTime(2026, 7, 2),
+              highTemperature: 29.0,
+              lowTemperature: 21.0,
+            ),
+          ],
+        ),
+      );
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(
+          dailyForecast: [
+            aSeaDailyForecast(date: DateTime(2026, 7, 1), waveHeightMax: 0.3),
+            aSeaDailyForecast(date: DateTime(2026, 7, 2), waveHeightMax: 0.4),
+          ],
+        ),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
+          now: () => DateTime(2026, 7, 1),
+        ),
+      );
+
+      expect(find.text('7-14 day outlook'), findsOneWidget);
+      expect(find.byKey(const Key('daily-outlook-list')), findsOneWidget);
+      expect(find.text('Today'), findsOneWidget);
+    });
+
+    testWidgets(
+      'given no daily data on either provider, hides the outlook section '
+      'entirely',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: weatherProvider));
+
+        expect(find.text('7-14 day outlook'), findsNothing);
+        expect(find.byKey(const Key('daily-outlook-list')), findsNothing);
       },
     );
   });
@@ -1508,6 +1692,373 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen alerts toggle (issue #267)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// A real [ConditionAlertDispatcher] wired to throwaway providers/
+    /// notification service — this group only exercises the overflow
+    /// menu's switch, never a verdict transition, so nothing here ever
+    /// polls or shows a notification.
+    Future<ConditionAlertDispatcher> aDispatcher({bool enabled = true}) async {
+      SharedPreferences.setMockInitialValues({
+        if (!enabled) alertsEnabledPrefsKey: false,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      return ConditionAlertDispatcher(
+        weatherProvider: WeatherProvider(
+          WeatherRepository(WeatherApiService()),
+        ),
+        marineProvider: MarineProvider(MarineRepository(MarineApiService())),
+        notificationService: NotificationService(plugin: _NoopPlugin()),
+        prefs: prefs,
+      );
+    }
+
+    testWidgets(
+      'given no conditionAlertDispatcher, the map overflow menu has no '
+      '"Alerts" entry',
+      (tester) async {
+        await pumpApp(tester, const HomeScreen());
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Alerts'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a conditionAlertDispatcher with alerts enabled, the overflow '
+      'menu shows an "Alerts" switch reflecting that, and tapping it calls '
+      'setAlertsEnabled(false)',
+      (tester) async {
+        final dispatcher = await aDispatcher();
+
+        await pumpApp(tester, HomeScreen(conditionAlertDispatcher: dispatcher));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byKey(
+          const Key('map-overflow-alerts-switch'),
+        );
+        expect(switchFinder, findsOneWidget);
+        expect(tester.widget<Switch>(switchFinder).value, isTrue);
+
+        await tester.tap(switchFinder);
+        await tester.pumpAndSettle();
+
+        expect(dispatcher.alertsEnabled, isFalse);
+        expect(tester.widget<Switch>(switchFinder).value, isFalse);
+      },
+    );
+
+    testWidgets(
+      'given a conditionAlertDispatcher with alerts already disabled, the '
+      'overflow menu\'s "Alerts" switch starts off and tapping it calls '
+      'setAlertsEnabled(true)',
+      (tester) async {
+        final dispatcher = await aDispatcher(enabled: false);
+
+        await pumpApp(tester, HomeScreen(conditionAlertDispatcher: dispatcher));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+
+        final switchFinder = find.byKey(
+          const Key('map-overflow-alerts-switch'),
+        );
+        expect(tester.widget<Switch>(switchFinder).value, isFalse);
+
+        await tester.tap(switchFinder);
+        await tester.pumpAndSettle();
+
+        expect(dispatcher.alertsEnabled, isTrue);
+      },
+    );
+  });
+
+  group('HomeScreen compare beaches (issue #274)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    /// Two distinct beaches (unlike the single-beach `fixtureClient()`
+    /// used elsewhere in this file) so `NearbyBeachesProvider.beaches` has
+    /// enough candidates for "Compare beaches" to work with.
+    FakeHttpClient twoBeachClient() {
+      return FakeHttpClient()
+        ..queueJson(
+          host: 'overpass-api.de',
+          json: {
+            'elements': [
+              {
+                'type': 'way',
+                'id': 1,
+                'tags': {
+                  'natural': 'beach',
+                  'name': 'Alpha Beach',
+                  'addr:city': 'Alpha City',
+                  'fee': 'no',
+                },
+                'geometry': [
+                  {'lat': 38.40, 'lon': 26.40},
+                  {'lat': 38.41, 'lon': 26.40},
+                ],
+              },
+              {
+                'type': 'way',
+                'id': 2,
+                'tags': {
+                  'natural': 'beach',
+                  'name': 'Beta Beach',
+                  'addr:city': 'Beta City',
+                  'fee': 'no',
+                },
+                'geometry': [
+                  {'lat': 38.50, 'lon': 26.50},
+                  {'lat': 38.51, 'lon': 26.50},
+                ],
+              },
+            ],
+          },
+        )
+        ..queueJson(
+          host: 'marine-api.open-meteo.com',
+          json: [
+            {
+              'current': {'wave_height': 0.5, 'sea_surface_temperature': 22.0},
+            },
+            {
+              'current': {'wave_height': 1.1, 'sea_surface_temperature': 25.0},
+            },
+          ],
+        );
+    }
+
+    Future<void> pumpLoadedHome(
+      WidgetTester tester,
+      NearbyBeachesProvider provider,
+    ) async {
+      await pumpApp(tester, HomeScreen(nearbyBeachesProvider: provider));
+      await tester.pump(const Duration(milliseconds: 10));
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+
+    testWidgets('the map overflow menu always has a "Compare beaches" entry', (
+      tester,
+    ) async {
+      await pumpApp(tester, const HomeScreen());
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Compare beaches'), findsOneWidget);
+    });
+
+    testWidgets('given fewer than two nearby beaches fetched, tapping "Compare '
+        'beaches" shows a SnackBar instead of opening an empty screen', (
+      tester,
+    ) async {
+      await pumpApp(tester, const HomeScreen());
+
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Compare beaches'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.byKey(const Key('compare-select-confirm')), findsNothing);
+    });
+
+    testWidgets(
+      'given two nearby beaches fetched, tapping "Compare beaches" opens '
+      'a selection sheet listing both, and checking both then tapping '
+      '"Compare" opens the comparison screen for them',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Alpha Beach'), findsOneWidget);
+        expect(find.text('Beta Beach'), findsOneWidget);
+        final confirmFinder = find.byKey(const Key('compare-select-confirm'));
+        expect(tester.widget<ElevatedButton>(confirmFinder).onPressed, isNull);
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        expect(
+          tester.widget<ElevatedButton>(confirmFinder).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(confirmFinder);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Compare beaches'), findsWidgets);
+        expect(find.text('Alpha Beach'), findsOneWidget);
+        expect(find.text('Beta Beach'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given Beta Beach is already a favorite, the selection sheet marks '
+      'it with a star and lists it before the non-favorite Alpha Beach',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        // `FavoritesProvider.keyFor`'s own format ("name|city"), seeded
+        // after `fakeNearbyBeachesProvider` (which resets the mock prefs
+        // to `{}` internally) and before `_openCompareSelection` builds
+        // its own throwaway `FavoritesProvider` from `SharedPreferences`.
+        SharedPreferences.setMockInitialValues({
+          'favorite_beaches': ['Beta Beach|Beta City'],
+        });
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        final tiles = tester
+            .widgetList<CheckboxListTile>(find.byType(CheckboxListTile))
+            .toList();
+        expect(tiles, hasLength(2));
+        expect((tiles.first.title as Text).data, 'Beta Beach');
+        expect(tiles.first.secondary, isA<Icon>());
+        expect((tiles.first.secondary as Icon).icon, Icons.star);
+
+        expect((tiles.last.title as Text).data, 'Alpha Beach');
+        expect(tiles.last.secondary, isNull);
+      },
+    );
+
+    testWidgets(
+      'given a compareWeatherRepository, forwards it to the comparison '
+      'screen so its wind/swim-score columns show real values rather than '
+      '"No data"',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpApp(
+          tester,
+          HomeScreen(
+            nearbyBeachesProvider: provider,
+            compareWeatherRepository: FakeWeatherRepository(
+              data: aWeatherCondition(windSpeed: 15),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 10));
+        await tester.pump(const Duration(milliseconds: 10));
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('15 km/h'), findsNWidgets(2));
+      },
+    );
+
+    testWidgets(
+      'given more than three nearby beaches, a fourth checkbox tap is '
+      'ignored -- never more than 3 selected at once',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'overpass-api.de',
+            json: {
+              'elements': [
+                for (var i = 0; i < 4; i++)
+                  {
+                    'type': 'way',
+                    'id': i,
+                    'tags': {
+                      'natural': 'beach',
+                      'name': 'Beach $i',
+                      'addr:city': 'City $i',
+                      'fee': 'no',
+                    },
+                    'geometry': [
+                      {'lat': 38.40 + i * 0.1, 'lon': 26.40},
+                      {'lat': 38.41 + i * 0.1, 'lon': 26.40},
+                    ],
+                  },
+              ],
+            },
+          )
+          ..queueJson(
+            host: 'marine-api.open-meteo.com',
+            json: [
+              for (var i = 0; i < 4; i++) {'current': {}},
+            ],
+          );
+        final provider = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        for (var i = 0; i < 4; i++) {
+          await tester.tap(find.byKey(Key('compare-select-Beach $i')));
+          await tester.pump();
+        }
+
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.descendant(
+                  of: find.byKey(const Key('compare-select-Beach 3')),
+                  matching: find.byType(Checkbox),
+                ),
+              )
+              .value,
+          isFalse,
+        );
+      },
+    );
+  });
+}
+
+/// A no-op [LocalNotificationsPlugin] for the alerts-toggle widget tests
+/// above, which never trigger a notification — only [NotificationService]'s
+/// constructor needs a plugin instance.
+class _NoopPlugin implements LocalNotificationsPlugin {
+  @override
+  Future<bool?> initialize(InitializationSettings settings) async => true;
+
+  @override
+  Future<bool> requestPermission() async => true;
+
+  @override
+  Future<void> show(int id, String? title, String? body) async {}
 }
 
 /// A [MarineRepository] whose first call succeeds (seeding "the previous

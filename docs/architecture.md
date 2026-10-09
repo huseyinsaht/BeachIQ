@@ -291,6 +291,22 @@ Pure, platform-agnostic logic with no I/O:
   conversion/formatting helpers (`formatWaveHeight`, `formatTemperature`,
   `formatWindSpeed`, plus the raw `metersToFeet`/`celsiusToFahrenheit`/`kmhToMph`
   converters).
+- `niceTicks` (`lib/logic/chart_axis.dart`) — a pure "nice round number" axis-tick
+  generator (D3's `ticks()` algorithm: a step of 1/2/5/10 times a power of ten),
+  shared by `HourlyMetricChart` and `DepthProfileChart` so both charts' y-axis
+  gridlines/labels land on the same kind of round values.
+- `buildDailyOutlook`/`DailyOutlookEntry` (`lib/logic/daily_outlook.dart`) — issue
+  #273: combines `WeatherCondition.dailyForecast` and `SeaCondition.dailyForecast`
+  (Open-Meteo's `daily` arrays, matched by calendar date) into one ordered list of
+  per-day outlooks, each scored with `scoreSwimSuitability` so a day's verdict can
+  never disagree with the suggestion pill's own thresholds. A day with no matching
+  sea entry just has a null wave height; dates are not re-sorted. Rendered by
+  `DailyOutlookList` (see `lib/presentation/widgets`).
+- `swimSafetyDisclaimerTitle`/`swimSafetyDisclaimer`
+  (`lib/logic/swim_safety_disclaimer.dart`) — issue #271's fixed disclaimer copy
+  ("A guide, not a guarantee" + a paragraph never claiming the suggestion pill's
+  verdict is a safety guarantee, deferring to local flags/lifeguards), shown by
+  `SwimSuggestionPill`'s info icon.
 
 ### `lib/logic/providers`
 
@@ -328,8 +344,9 @@ Pure, platform-agnostic logic with no I/O:
   `NotificationService.show` whenever `ConditionAlertService.shouldAlert` fires.
   Tracks the last-seen coordinates itself so a location switch (map tap or search
   pick) resets the verdict baseline instead of looking like a transition; the
-  baseline and the alerts-enabled toggle (`setAlertsEnabled`, no settings-screen UI
-  yet) are persisted via `SharedPreferences`.
+  baseline and the alerts-enabled toggle (`setAlertsEnabled`) are persisted via
+  `SharedPreferences`. Issue #267 wires that toggle to a visible "Alerts" switch in
+  the Home map card's overflow menu (see `HomeScreen` below) — on by default.
 - `DepthProvider` (`lib/logic/providers/depth_provider.dart`) — a `ChangeNotifier`
   driving the Home water-depth tile/detail screen (#217): `fetchForBeach(beach)`
   fetches (or reuses `DepthCache`'s cached result for) a `DepthProfile` for whichever
@@ -396,7 +413,10 @@ Reusable widgets built against `docs/design.md`:
 - `SwimSuggestionPill` (`swim_suggestion_pill.dart`) — renders a `SwimVerdict` (from
   `scoreSwimSuitability`) as the Home screen's "smart suggestion pill", colored per
   `verdict_palette.dart`'s `paletteForVerdict` (green/orange/red-orange/neutral grey,
-  each contrast-checked against WCAG AA).
+  each contrast-checked against WCAG AA). Issue #271: a trailing info icon (a plain
+  `GestureDetector`, not `IconButton`, so it never grows the pill taller than its own
+  leading icon) opens a bottom sheet with `swim_safety_disclaimer.dart`'s fixed
+  disclaimer copy.
 - `CloudBackdrop` (`cloud_backdrop.dart`) — a faint, deterministic (no `Random()`, no
   animation) blurred-cloud texture painted behind the Home header with
   `CustomPainter`, replacing the mockup's missing photographic asset. Wrapped in
@@ -452,6 +472,14 @@ Reusable widgets built against `docs/design.md`:
   visually distinct "Next hour" row (a tinted icon circle, no time-window line) — it
   can be shown even when `alerts` is empty (e.g. after sunset, since it is never
   daylight-filtered). Renders nothing when both are empty/null, leaving no gap.
+- `DailyOutlookList` (`daily_outlook_list.dart`) — issue #273: the Home screen's
+  "7-14 day outlook" section, one row per `DailyOutlookEntry` (see
+  `lib/logic/daily_outlook.dart`): a weekday label (`dayLabelFor`, "Today" for the
+  entry matching the current calendar day, else a three-letter weekday name), a
+  swim-verdict icon/color via `paletteForVerdict`, the verdict's one-line message,
+  and the day's high/low temperature (pre-formatted by the caller, so the widget
+  itself stays unit-agnostic). A plain `Column`, not its own scroll view, since the
+  Home screen's body is already one `SingleChildScrollView`.
 
 ### `lib/presentation/theme`
 
@@ -477,10 +505,13 @@ Reusable widgets built against `docs/design.md`:
 - `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — the real dashboard for
   a **selected location**: a header, a condition row (description, high/low),
   `LocationMapCard` (with its own search icon and overflow menu — "Beaches" opens
-  `SearchScreen`, "Units" the metric/imperial sheet, when a `UnitPreferencesProvider`
-  is supplied), `SwimSuggestionPill`, `ForecastAlertList` (built fresh on every build
-  from `buildForecastAlerts` on the same hourly data; hidden entirely when there are
-  no upcoming alerts), then a **3×3 grid of `StatTile`s in three labelled
+  `SearchScreen`, "Units" the metric/imperial sheet when a `UnitPreferencesProvider`
+  is supplied, "Alerts" a switch (#267) toggling `ConditionAlertDispatcher`'s
+  notification on/off when one is supplied, and "Compare beaches" (#274, when 2+
+  nearby beaches are fetched) opening a selection sheet then `CompareBeachesScreen`
+  for the chosen 2-3), `SwimSuggestionPill`, `ForecastAlertList` (built fresh on every
+  build from `buildForecastAlerts` on the same hourly data; hidden entirely when there
+  are no upcoming alerts), then a **3×3 grid of `StatTile`s in three labelled
   `StatTileGroup`s** (issue #251, separated by thin dividers): "Sea" (wave height,
   water temperature, water depth — #217, replacing the original pressure tile),
   "Current" (current speed, current direction with its shore-relation label, wave
@@ -496,7 +527,16 @@ Reusable widgets built against `docs/design.md`:
   selected location's own real place name, with a `text.secondary` coordinates
   subtitle shown underneath only when it says something the title doesn't already (a
   bare map tap's place name already IS its formatted coordinates, so a second,
-  identical line is skipped). The selected location starts at a fixed Çeşme default,
+  identical line is skipped). Below the hourly row sits a "7-14 day outlook"
+  (`DailyOutlookList`, issue #273): one row per forecast day from `buildDailyOutlook`,
+  hidden entirely when there's no daily data yet. Issue #273 also widened both
+  `WeatherApiService`/`MarineApiService` requests to `forecast_days=14`, so every
+  near-term-only consumer of the raw `hourly` series (the hourly row,
+  `buildForecastAlerts`, `buildNextHourNote`) is first capped to the next ~24 hours
+  (issue #280 fixed a regression where this cap was missing, letting a threshold
+  crossing many days out read as an imminent heads-up) — the outlook itself reads the
+  separate, uncapped `dailyForecast` array. The selected location starts at a fixed
+  Çeşme default,
   is replaced by whatever the user taps on the map or picks via its search icon, and
   is persisted via `SharedPreferences` and restored on the next app start; every
   fetch (weather, marine, nearby beaches) and the header/place name follow it, never
@@ -527,6 +567,17 @@ Reusable widgets built against `docs/design.md`:
   one — upgraded asynchronously to a real resolved city name if/when that lookup
   succeeds, without blocking the weather/marine fetch already in flight for the same
   pick.
+- `CompareBeachesScreen` (`lib/presentation/screens/compare_beaches_screen.dart`) —
+  issue #274: a table comparing 2-3 beaches side by side, one column per beach —
+  wave height and water temperature from the already-fetched `SeaCondition`s the
+  caller passes in (`NearbyBeachesProvider.seaConditionFor`'s single batched marine
+  request), plus wind (an injected `WeatherRepository`), a depth/non-swimmer status
+  word (an injected `BathymetryService`, via `classifyShallowEntry`/
+  `shallowEntryStatusLabel`) and the Home screen's own swim score
+  (`scoreSwimSuitability`) — fetched per beach only for the two inputs the batch call
+  doesn't cover. Either repository/service may be omitted (e.g. in a test), leaving
+  those rows as "No data" instead of loading forever. Pushed from `HomeScreen`'s map
+  card overflow menu's "Compare beaches" entry.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Tapping a beach card pops the screen with that
@@ -682,10 +733,14 @@ picking the same area again is free.
 - **Open-Meteo Marine API** (`marine-api.open-meteo.com/v1/marine`) — single-location
   sea condition data including ocean current speed/direction (`MarineApiService`,
   Home screen) and a batched multi-location variant (`MarineBatchService`,
-  nearby-beaches results).
+  nearby-beaches results). Issue #273 widened `MarineApiService`'s request to
+  `forecast_days=14`, so `SeaCondition.hourly` and the new `SeaCondition.dailyForecast`
+  (daily max wave height, feeding the 7-14 day outlook) both span up to 14 days.
 - **Open-Meteo Forecast API** (`api.open-meteo.com/v1/forecast`) — current/hourly/daily
   temperature, wind (plus gusts), cloud cover, pressure, UV index and rain chance, used
-  by `WeatherApiService`.
+  by `WeatherApiService`. Also widened to `forecast_days=14` (#273), so
+  `WeatherCondition.hourly`/`dailyForecast` likewise span up to 14 days; near-term-only
+  features cap back to the next ~24 hours themselves (see `HomeScreen` above).
 - **Open-Meteo Geocoding API** (`geocoding-api.open-meteo.com/v1/search`) — free,
   keyless place-name search, used by `GeocodingService`.
 - **Overpass API** (OpenStreetMap data, with a fallback mirror) — queried by
@@ -724,15 +779,18 @@ picking the same area again is free.
   `beach_gear_advisor_test.dart`, `unit_preferences_test.dart`, `uv_band_test.dart`,
   `rain_windows_test.dart`, `transect_test.dart`, `shallow_entry_test.dart`,
   `shallow_entry_status_test.dart`, `shallow_entry_verdict_test.dart` (#256),
-  `wind_status_test.dart`, `rain_status_test.dart`), provider tests
-  (`test/logic/providers/`, including
+  `wind_status_test.dart`, `rain_status_test.dart`, `chart_axis_test.dart`,
+  `daily_outlook_test.dart` (#273), `swim_safety_disclaimer_test.dart` (#271)),
+  provider tests (`test/logic/providers/`, including
   `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
   `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`/
-  `ConditionAlertDispatcher`/`DepthProvider`), widget tests for every
-  presentational widget (including `depth_profile_chart_test.dart`,
-  `depth_cross_section_test.dart` (#256) and `stat_tile_group_test.dart` (#251)) and
-  for `SearchScreen` and all eight metric detail screens (`test/presentation/`,
-  including `test/presentation/screens/detail/`, e.g.
+  `ConditionAlertDispatcher`/`DepthProvider` —
+  `condition_alert_dispatcher_test.dart` includes coverage of `stop()`, #281),
+  widget tests for every presentational widget (including
+  `depth_profile_chart_test.dart`, `depth_cross_section_test.dart` (#256),
+  `stat_tile_group_test.dart` (#251) and `daily_outlook_list_test.dart` (#273)) and
+  for `SearchScreen`, `CompareBeachesScreen` (#274) and all eight metric detail
+  screens (`test/presentation/`, including `test/presentation/screens/detail/`, e.g.
   `depth_detail_screen_test.dart`), plus `test/widget_test.dart` rendering
   `HomeScreen` with a fake tile provider, and
   `test/tools/test_summary_test.dart` (the CI test-summary tool itself, below). API/

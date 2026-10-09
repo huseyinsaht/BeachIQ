@@ -6,12 +6,17 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/beach.dart';
+import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
+import '../../data/repositories/weather_repository.dart';
+import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/daily_outlook.dart';
 import '../../logic/forecast_alerts.dart';
+import '../../logic/providers/condition_alert_dispatcher.dart';
 import '../../logic/providers/depth_provider.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/marine_provider.dart';
@@ -30,12 +35,14 @@ import '../../logic/wind_status.dart';
 import '../navigation/detail_routes.dart';
 import '../widgets/beach_result_card.dart';
 import '../widgets/cloud_backdrop.dart';
+import '../widgets/daily_outlook_list.dart';
 import '../widgets/forecast_alert_list.dart';
 import '../widgets/hourly_forecast_item.dart';
 import '../widgets/location_map_card.dart';
 import '../widgets/stat_tile.dart';
 import '../widgets/stat_tile_group.dart';
 import '../widgets/swim_suggestion_pill.dart';
+import 'compare_beaches_screen.dart';
 import 'search_screen.dart';
 
 const String _noData = 'No data';
@@ -162,12 +169,15 @@ String? _windSpeedUnit(double? kmh, UnitSystem unitSystem) {
 /// Opens the Home screen's map-card overflow ("...") menu (#158): a
 /// "Beaches" entry that always opens [SearchScreen] (the old standalone,
 /// non-editable "Enter cities" entry point this replaces), plus a "Units"
-/// entry when [unitPreferencesProvider] is supplied.
+/// entry when [unitPreferencesProvider] is supplied and an "Alerts" entry
+/// when [conditionAlertDispatcher] is supplied (issue #267).
 Future<void> _showMapOverflowMenu(
   BuildContext context, {
   required VoidCallback onBeaches,
   VoidCallback? onUseMyLocation,
   UnitPreferencesProvider? unitPreferencesProvider,
+  ConditionAlertDispatcher? conditionAlertDispatcher,
+  VoidCallback? onCompare,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -185,6 +195,19 @@ Future<void> _showMapOverflowMenu(
                 onBeaches();
               },
             ),
+            // Issue #274: compares 2-3 favorite/nearby beaches side by
+            // side. Null (no `onCompare` supplied) hides the entry, the
+            // same optional pattern as "Use my location"/"Units" below.
+            if (onCompare != null)
+              ListTile(
+                key: const Key('map-overflow-compare'),
+                leading: const Icon(Icons.compare_arrows),
+                title: const Text('Compare beaches'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  onCompare();
+                },
+              ),
             // Issue #254: an explicit, opt-in action — tapping this is the
             // *only* thing that ever triggers a location-permission
             // prompt; it never happens on app start. Null (no
@@ -211,6 +234,34 @@ Future<void> _showMapOverflowMenu(
                   _showUnitSystemSheet(context, unitPreferencesProvider);
                 },
               ),
+            // Issue #267: lets a user silence the "conditions turned
+            // favorable" notification (#221) without denying the OS
+            // notification permission outright. `StatefulBuilder` keeps the
+            // switch's visual state in sync with itself immediately on tap
+            // — `ConditionAlertDispatcher` is a plain class, not a
+            // `ChangeNotifier`, so nothing else would trigger a rebuild of
+            // this sheet.
+            if (conditionAlertDispatcher != null)
+              StatefulBuilder(
+                builder: (sbContext, setSheetState) {
+                  return ListTile(
+                    key: const Key('map-overflow-alerts'),
+                    leading: const Icon(Icons.notifications_outlined),
+                    title: const Text('Alerts'),
+                    trailing: Switch(
+                      key: const Key('map-overflow-alerts-switch'),
+                      value: conditionAlertDispatcher.alertsEnabled,
+                      onChanged: (value) {
+                        setSheetState(() {
+                          unawaited(
+                            conditionAlertDispatcher.setAlertsEnabled(value),
+                          );
+                        });
+                      },
+                    ),
+                  );
+                },
+              ),
           ],
         ),
       );
@@ -232,25 +283,112 @@ Future<void> _showUnitSystemSheet(
     context: context,
     builder: (sheetContext) {
       return SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final option in UnitSystem.values)
-              RadioListTile<UnitSystem>(
-                title: Text(
-                  option == UnitSystem.metric
-                      ? 'Metric (m, °C, km/h)'
-                      : 'Imperial (ft, °F, mph)',
+        child: RadioGroup<UnitSystem>(
+          groupValue: provider.unitSystem,
+          onChanged: (value) {
+            if (value != null) provider.setUnitSystem(value);
+            Navigator.of(sheetContext).pop();
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final option in UnitSystem.values)
+                RadioListTile<UnitSystem>(
+                  title: Text(
+                    option == UnitSystem.metric
+                        ? 'Metric (m, °C, km/h)'
+                        : 'Imperial (ft, °F, mph)',
+                  ),
+                  value: option,
                 ),
-                value: option,
-                groupValue: provider.unitSystem,
-                onChanged: (value) {
-                  if (value != null) provider.setUnitSystem(value);
-                  Navigator.of(sheetContext).pop();
-                },
-              ),
-          ],
+            ],
+          ),
         ),
+      );
+    },
+  );
+}
+
+/// Issue #274: lets the user check 2-3 of [candidates] (already sorted
+/// favorites-first by the caller) to compare, with a star marking which
+/// ones [favoritesProvider] has favorited. Resolves to the checked
+/// beaches on "Compare", or `null` if dismissed without confirming.
+/// `StatefulBuilder` keeps the checkboxes' and the "Compare" button's
+/// enabled state in sync with each tap, the same pattern
+/// `_showMapOverflowMenu`'s "Alerts" switch above uses.
+Future<List<Beach>?> _showCompareSelectionSheet(
+  BuildContext context,
+  List<Beach> candidates,
+  FavoritesProvider favoritesProvider,
+) {
+  final selected = <Beach>{};
+  return showModalBottomSheet<List<Beach>>(
+    context: context,
+    isScrollControlled: true,
+    builder: (sheetContext) {
+      return StatefulBuilder(
+        builder: (sbContext, setSheetState) {
+          return SafeArea(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(sbContext).size.height * 0.7,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Text(
+                      'Pick 2-3 beaches to compare',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        for (final beach in candidates)
+                          CheckboxListTile(
+                            key: Key('compare-select-${beach.name}'),
+                            value: selected.contains(beach),
+                            secondary: favoritesProvider.isFavorite(beach)
+                                ? const Icon(Icons.star, color: Colors.amber)
+                                : null,
+                            title: Text(beach.name),
+                            subtitle: Text(beach.city),
+                            onChanged: (checked) {
+                              setSheetState(() {
+                                if (checked == true && selected.length < 3) {
+                                  selected.add(beach);
+                                } else if (checked == false) {
+                                  selected.remove(beach);
+                                }
+                              });
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        key: const Key('compare-select-confirm'),
+                        onPressed: selected.length < 2
+                            ? null
+                            : () => Navigator.of(
+                                sheetContext,
+                              ).pop(selected.toList()),
+                        child: const Text('Compare'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       );
     },
   );
@@ -299,26 +437,47 @@ String _hourLabel(DateTime time, {required bool isFirst}) {
 }
 
 /// Open-Meteo's `hourly` section returns a full day of entries starting at
-/// local midnight, not from the current time — so `hourly.first` is
-/// usually hours in the past by the time this renders. Slices down to the
-/// entry matching (or immediately preceding) [now] onward, capped to the
-/// next 24 entries so the row doesn't scroll through an entire remaining
-/// day. Assumes [hourly] is sorted ascending by time, as the API returns it.
-List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) {
-  if (hourly.isEmpty) return hourly;
+/// local midnight, not from the current time — so `list.first` is usually
+/// hours in the past by the time this renders. Slices down to the entry
+/// matching (or immediately preceding) [now] onward, capped to the next
+/// [max] entries. Assumes [list] is sorted ascending by time, as the API
+/// returns it.
+///
+/// Issue #273: `forecast_days=14` makes both `WeatherCondition.hourly` and
+/// `SeaCondition.hourly` span up to 14 days instead of the previous ~7, so
+/// every near-term-only consumer of the raw hourly series (the hourly row,
+/// `buildForecastAlerts`, `buildNextHourNote`) must go through this cap —
+/// otherwise a threshold crossing many days out would read as an "upcoming"
+/// heads-up. The actual multi-day outlook reads `dailyForecast` instead, a
+/// separate array, so it is unaffected by this cap.
+List<T> _upcomingEntries<T>(
+  List<T> list,
+  DateTime now,
+  DateTime Function(T) timeOf, {
+  int max = 24,
+}) {
+  if (list.isEmpty) return list;
   var startIndex = 0;
-  for (var i = 0; i < hourly.length; i++) {
-    if (hourly[i].time.isAfter(now)) break;
+  for (var i = 0; i < list.length; i++) {
+    if (timeOf(list[i]).isAfter(now)) break;
     startIndex = i;
   }
-  final upcoming = hourly.sublist(startIndex);
-  return upcoming.length > 24 ? upcoming.sublist(0, 24) : upcoming;
+  final upcoming = list.sublist(startIndex);
+  return upcoming.length > max ? upcoming.sublist(0, max) : upcoming;
 }
+
+List<WeatherHourly> _upcomingHourly(List<WeatherHourly> hourly, DateTime now) =>
+    _upcomingEntries(hourly, now, (h) => h.time);
 
 /// The Home / location-detail screen, per docs/design.md § "Screen: Home /
 /// location detail": a header, condition row, [LocationMapCard], a smart
 /// suggestion pill, a 2x2 [StatTile] grid, and a scrollable hourly row of
 /// [HourlyForecastItem]s.
+///
+/// Below the hourly row sits a "7-14 day outlook" ([DailyOutlookList],
+/// issue #273): one row per forecast day with a swim verdict and high/low
+/// temperature, built from the same weather/marine fetches via
+/// `buildDailyOutlook` -- hidden entirely when there's no daily data yet.
 ///
 /// The header, stat grid and hourly row are bound to [WeatherProvider]'s
 /// data, fetched for the currently *selected* location (#157): a point the
@@ -342,6 +501,9 @@ class HomeScreen extends StatefulWidget {
     this.depthProvider,
     this.deviceLocationService,
     this.reverseGeocodingService,
+    this.conditionAlertDispatcher,
+    this.compareWeatherRepository,
+    this.compareBathymetryService,
     this.now,
   });
 
@@ -393,6 +555,27 @@ class HomeScreen extends StatefulWidget {
   /// existing call site that doesn't pass one) leaves both picks showing
   /// [formatCoordinates], unchanged from before #254.
   final ReverseGeocodingService? reverseGeocodingService;
+
+  /// Drives the map card overflow menu's "Alerts" switch (issue #267),
+  /// which turns the "conditions turned favorable" notification (#221) on
+  /// or off. Null (the default for any existing call site that doesn't
+  /// pass one, e.g. most widget/integration tests) hides that entry
+  /// entirely, unchanged from before this toggle existed.
+  final ConditionAlertDispatcher? conditionAlertDispatcher;
+
+  /// Drives the wind/swim-score columns on [CompareBeachesScreen] (issue
+  /// #274) -- a separate instance from [weatherProvider] since Compare
+  /// fetches weather for 2-3 *other* beaches, not the single selected
+  /// location. Null (the default, e.g. most widget/integration tests)
+  /// shows "No data" for those columns instead of fetching, same pattern
+  /// as every other optional provider/service here.
+  final WeatherRepository? compareWeatherRepository;
+
+  /// Drives the depth column on [CompareBeachesScreen] (issue #274),
+  /// separate from [depthProvider] for the same reason
+  /// [compareWeatherRepository] is separate from [weatherProvider]. Null
+  /// (the default) shows "No data" for that column instead of fetching.
+  final BathymetryService? compareBathymetryService;
 
   /// Overridable "current time" source for the hourly row's start-of-list
   /// trimming (see [_upcomingHourly]), so widget tests can pin it instead
@@ -453,6 +636,10 @@ class _HomeScreenState extends State<HomeScreen> {
   /// `SearchScreen`s while the first tap's `SharedPreferences.getInstance()`
   /// await is still pending.
   bool _openingSearch = false;
+
+  /// Same guard as [_openingSearch], for [_openCompareSelection] (issue
+  /// #274).
+  bool _openingCompare = false;
 
   /// True once [build] has ever seen [MarineProvider.currentData] non-null
   /// for this screen instance. The full-screen loading/error shell (see
@@ -802,6 +989,66 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Issue #274: lets the user pick 2-3 of the currently fetched nearby
+  /// beaches (favorites surfaced first, via a throwaway [FavoritesProvider]
+  /// exactly like [_openSearch] builds one) and opens [CompareBeachesScreen]
+  /// for them. With fewer than 2 nearby beaches fetched yet, there is
+  /// nothing to compare -- a [SnackBar] says so rather than opening an
+  /// empty/single-column screen.
+  Future<void> _openCompareSelection(BuildContext context) async {
+    if (_openingCompare) return;
+    _openingCompare = true;
+    try {
+      final candidates = widget.nearbyBeachesProvider?.beaches ?? const [];
+      if (candidates.length < 2) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Not enough nearby beaches fetched yet to compare. Pick a '
+              'map location with at least two nearby beaches first.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      if (!context.mounted) return;
+      final favoritesProvider = FavoritesProvider(prefs);
+      final sorted = [
+        ...favoritesProvider.favoritesAmong(candidates),
+        ...candidates.where((beach) => !favoritesProvider.isFavorite(beach)),
+      ];
+
+      if (!context.mounted) return;
+      final selected = await _showCompareSelectionSheet(
+        context,
+        sorted,
+        favoritesProvider,
+      );
+      if (selected == null || selected.length < 2) return;
+      if (!context.mounted) return;
+
+      final nearbyBeachesProvider = widget.nearbyBeachesProvider;
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => CompareBeachesScreen(
+            beaches: selected,
+            seaConditions: {
+              for (final beach in selected)
+                beach: nearbyBeachesProvider?.seaConditionFor(beach),
+            },
+            weatherRepository: widget.compareWeatherRepository,
+            bathymetryService: widget.compareBathymetryService,
+            unitPreferencesProvider: widget.unitPreferencesProvider,
+          ),
+        ),
+      );
+    } finally {
+      _openingCompare = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final marineProvider = widget.marineProvider;
@@ -941,6 +1188,14 @@ class _HomeScreenState extends State<HomeScreen> {
     // every tile below falls back to its own "No data" via its null-safe
     // formatter, exactly like every other field in this grid.
     final seaCondition = marineProvider?.currentData;
+    // Issue #273: the 7-14 day outlook, built from the weather/marine
+    // repositories' already-fetched `daily` arrays (no extra request) —
+    // `buildDailyOutlook` reuses `scoreSwimSuitability`'s exact thresholds
+    // so a day's verdict never disagrees with today's suggestion pill.
+    final dailyOutlook = buildDailyOutlook(
+      weatherDaily: weatherData?.dailyForecast ?? const [],
+      seaDaily: seaCondition?.dailyForecast ?? const [],
+    );
     // The current-direction tile's own "status word" (issue #251's Current
     // group): the shore relation derived from the nearest beach's seaward
     // bearing, when both that bearing and a current-direction reading are
@@ -954,24 +1209,36 @@ class _HomeScreenState extends State<HomeScreen> {
             convention: DirectionConvention.flowingToward,
             seawardBearingDegrees: seawardBearingDegrees,
           );
+    // Issue #273: the sea hourly series capped to the next ~24 upcoming
+    // entries, same reasoning as [_upcomingHourly] above — `forecast_days
+    // =14` now makes the raw `hourly` list span up to 14 days, and
+    // ForecastAlertList/the next-hour note are near-term-only features.
+    final upcomingSeaHourly = _upcomingEntries<SeaHourly>(
+      marineProvider?.currentData?.hourly ?? const [],
+      effectiveNow,
+      (h) => h.time,
+    );
     // #169/#229: upcoming heads-ups for the selected location, computed
     // fresh on every build from the same WeatherProvider/MarineProvider
     // hourly data the stat grid and Sea section already use — never a
     // hard-coded list. Restricted to the selected location's own daylight
     // (sunrise-sunset) windows when the API returned them; an empty
     // `daylightWindows` (missing from the response) leaves the list
-    // unfiltered instead of dropping every alert.
+    // unfiltered instead of dropping every alert. Both series are already
+    // capped to the next ~24 hours ([hourly]/[upcomingSeaHourly]) so a
+    // threshold crossing many days out (issue #273's wider `forecast_days`)
+    // never reads as an "upcoming" heads-up.
     final forecastAlerts = buildForecastAlerts(
-      weather: weatherData?.hourly ?? const [],
-      sea: marineProvider?.currentData?.hourly ?? const [],
+      weather: hourly,
+      sea: upcomingSeaHourly,
       daylight: weatherData?.daylightWindows ?? const [],
       now: effectiveNow,
     );
     // #229: a single "what changes in the next hour" note, based on the
     // current time rather than daylight — still shown after sunset.
     final nextHourNote = buildNextHourNote(
-      weather: weatherData?.hourly ?? const [],
-      sea: marineProvider?.currentData?.hourly ?? const [],
+      weather: hourly,
+      sea: upcomingSeaHourly,
       now: effectiveNow,
     );
     return Scaffold(
@@ -1099,6 +1366,10 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? null
                             : () => unawaited(_handleUseMyLocation(context)),
                         unitPreferencesProvider: widget.unitPreferencesProvider,
+                        conditionAlertDispatcher:
+                            widget.conditionAlertDispatcher,
+                        onCompare: () =>
+                            unawaited(_openCompareSelection(context)),
                       ),
                     ),
                     // #214: the beach picked in `SearchScreen`'s results is
@@ -1419,6 +1690,38 @@ class _HomeScreenState extends State<HomeScreen> {
                               },
                             ),
                     ),
+                    // Issue #273: a 7-14 day outlook, hidden entirely (no
+                    // gap) when there's no daily data yet (first load, or
+                    // a fetch that failed with nothing to fall back to) —
+                    // same "hide rather than show an empty section" rule
+                    // as ForecastAlertList above.
+                    if (dailyOutlook.isNotEmpty) ...[
+                      const SizedBox(height: 20),
+                      const Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_month,
+                            size: 14,
+                            color: _textSecondary,
+                          ),
+                          SizedBox(width: 6),
+                          Text(
+                            '7-14 day outlook',
+                            style: TextStyle(
+                              color: _textSecondary,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      DailyOutlookList(
+                        entries: dailyOutlook,
+                        formatTemperature: (value) =>
+                            _formatTemperature(value, unitSystem),
+                        now: effectiveNow,
+                      ),
+                    ],
                   ],
                 ),
               ),
