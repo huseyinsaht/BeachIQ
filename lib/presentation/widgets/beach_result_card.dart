@@ -378,9 +378,19 @@ class _InfoColumn extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
-                  '${line.label}: ',
-                  style: const TextStyle(color: _textSecondary, fontSize: 13),
+                // Both the label and the value are `Flexible` (rather than
+                // only the value) so a large text scale shrinks/ellipsizes
+                // the label too instead of overflowing the column's fixed
+                // width -- a real 360dp/1.3x-scale overflow this fixes
+                // (see beach_result_card_test.dart's "fully-populated..."
+                // overflow regression test).
+                Flexible(
+                  child: Text(
+                    '${line.label}: ',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: _textSecondary, fontSize: 13),
+                  ),
                 ),
                 Flexible(
                   child: Text(

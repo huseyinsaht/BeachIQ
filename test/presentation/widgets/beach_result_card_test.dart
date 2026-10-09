@@ -316,6 +316,49 @@ void main() {
     });
   });
 
+  group('info-line overflow at a large text scale', () {
+    testWidgets(
+      'a fully-populated card does not overflow at a narrow (360dp) width '
+      'with a large text scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Builder(
+              builder: (context) {
+                return MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
+                  child: const Scaffold(
+                    body: BeachResultCard(
+                      placeName: 'Altinkum Beach',
+                      areaSubtitle: 'Cesme, Izmir',
+                      temperature: '27°',
+                      fee: BeachFee.free,
+                      waveHeightMeters: 0.4,
+                      waterTemperatureCelsius: 24,
+                      shoeAdvice: ShoeAdvice.notNeeded,
+                      hasParking: true,
+                      hasBeachResort: true,
+                      hasCafe: true,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+      },
+    );
+  });
+
   group('borderRadius (#214)', () {
     testWidgets('defaults to the bottom-sheet-style top-only radius', (
       tester,
