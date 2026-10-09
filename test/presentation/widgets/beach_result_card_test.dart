@@ -537,46 +537,92 @@ void main() {
   });
 
   group('info-line overflow at a large text scale', () {
-    testWidgets(
-      'a fully-populated card does not overflow at a narrow (360dp) width '
-      'with a large text scale',
-      (tester) async {
-        tester.view.physicalSize = const Size(360, 800);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.reset);
+    // Hand-rolls MaterialApp/MediaQuery (rather than pump_app.dart's
+    // pumpApp) because this needs a custom textScaler, the same reason
+    // home_screen_test.dart's own 360dp/large-text-scale tests (e.g. "the
+    // water-depth tile does not overflow...") already do the same.
+    Future<void> pumpAtNarrowWidthAndScale(
+      WidgetTester tester,
+      Widget child, {
+      double textScale = 1.3,
+    }) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: Builder(
-              builder: (context) {
-                return MediaQuery(
-                  data: MediaQuery.of(
-                    context,
-                  ).copyWith(textScaler: const TextScaler.linear(1.3)),
-                  child: const Scaffold(
-                    body: BeachResultCard(
-                      placeName: 'Altinkum Beach',
-                      areaSubtitle: 'Cesme, Izmir',
-                      temperature: '27°',
-                      fee: BeachFee.free,
-                      waveHeightMeters: 0.4,
-                      waterTemperatureCelsius: 24,
-                      shoeAdvice: ShoeAdvice.notNeeded,
-                      hasParking: true,
-                      hasBeachResort: true,
-                      hasCafe: true,
-                    ),
-                  ),
-                );
-              },
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) {
+              return MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: Scaffold(body: child),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets(
+      'given a fully-populated card, build at a narrow (360dp) width with a '
+      'large text scale -> no overflow, and every label/value is still '
+      'fully present (not silently dropped)',
+      (tester) async {
+        await pumpAtNarrowWidthAndScale(
+          tester,
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            fee: BeachFee.free,
+            waveHeightMeters: 0.4,
+            waterTemperatureCelsius: 24,
+            shoeAdvice: ShoeAdvice.notNeeded,
+            hasParking: true,
+            hasBeachResort: true,
+            hasCafe: true,
           ),
         );
-        await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
+        // Every value is still findable by its exact, un-ellipsized text --
+        // `Wrap` lets a line wrap onto two lines rather than truncating.
+        expect(find.text('Free'), findsOneWidget);
+        expect(find.text('0.4 m'), findsOneWidget);
+        expect(find.text('24°'), findsOneWidget);
+        expect(find.text('Not needed'), findsOneWidget);
+        expect(find.text('Yes'), findsNWidgets(3));
       },
     );
+
+    testWidgets('given the longest label ("Beach club") next to a short value '
+        '("Yes"), build -> neither Text has maxLines/ellipsis clipping, so '
+        'the label is never truncated just because its column also holds a '
+        'short value (a 50/50-split Flexible row would ellipsize it there, '
+        'even with room to spare)', (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          const BeachResultCard(
+            placeName: 'Altinkum Beach',
+            areaSubtitle: 'Cesme, Izmir',
+            temperature: '27°',
+            hasBeachResort: true,
+          ),
+        ),
+      );
+
+      final label = tester.widget<Text>(find.text('Beach club: '));
+      expect(label.maxLines, isNull);
+      expect(label.overflow, isNot(TextOverflow.ellipsis));
+
+      final value = tester.widget<Text>(find.text('Yes'));
+      expect(value.maxLines, isNull);
+      expect(value.overflow, isNot(TextOverflow.ellipsis));
+    });
   });
 
   group('borderRadius (#214)', () {
