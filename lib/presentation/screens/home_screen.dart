@@ -140,6 +140,32 @@ Beach? _nearestBeachTo(List<Beach> beaches, LatLng point) {
   return nearest;
 }
 
+/// The floating +/- zoom buttons (issue #284): moves [controller] by
+/// [delta] zoom levels around its current center, clamped to
+/// [kLocationMapMinZoom]/[kLocationMapMaxZoom] — the same floor
+/// `LocationMapCard` itself already enforces via `MapOptions.minZoom` (now
+/// also `maxZoom`), so these buttons can never drive the camera somewhere a
+/// pinch gesture couldn't. A no-op before the underlying `FlutterMap` has
+/// rendered at least once (e.g. still on the full-screen loading/error
+/// shell, where these buttons aren't shown anyway): [MapController.camera]
+/// throws a plain `Exception` in that case (flutter_map's own
+/// implementation, not a `LateInitializationError`), which `on Exception`
+/// below catches. Top-level (not a `_HomeScreenState` method) so it's
+/// directly unit-testable against a real, unattached `MapController`
+/// without needing a rendered `FlutterMap`.
+void zoomMapBy(MapController controller, double delta) {
+  try {
+    final camera = controller.camera;
+    final nextZoom = (camera.zoom + delta).clamp(
+      kLocationMapMinZoom,
+      kLocationMapMaxZoom,
+    );
+    controller.move(camera.center, nextZoom);
+  } on Exception {
+    // Not attached yet — nothing to zoom.
+  }
+}
+
 /// Formats a temperature per [unitSystem]. Metric keeps today's exact
 /// bare-degree style (no unit letter); imperial converts via
 /// [celsiusToFahrenheit] and appends "F" so the active system stays
@@ -979,26 +1005,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (expanded != _sheetExpanded) setState(() => _sheetExpanded = expanded);
   }
 
-  /// The floating +/- zoom buttons (issue #284): moves [_mapController] by
-  /// [delta] zoom levels around its current center, clamped to
-  /// [kLocationMapMinZoom]/[kLocationMapMaxZoom] — the same floor
-  /// `LocationMapCard` itself already enforces via `MapOptions.minZoom`
-  /// (now also `maxZoom`), so these buttons can never drive the camera
-  /// somewhere a pinch gesture couldn't. A no-op before the underlying
-  /// `FlutterMap` has rendered at least once (e.g. still on the full-screen
-  /// loading/error shell, where these buttons aren't shown anyway).
-  void _zoomBy(double delta) {
-    try {
-      final camera = _mapController.camera;
-      final nextZoom = (camera.zoom + delta).clamp(
-        kLocationMapMinZoom,
-        kLocationMapMaxZoom,
-      );
-      _mapController.move(camera.center, nextZoom);
-    } on Exception {
-      // Not attached yet — nothing to zoom.
-    }
-  }
+  /// The floating +/- zoom buttons (issue #284) call this with
+  /// [_mapController]; see [zoomMapBy] for the behavior.
+  void _zoomBy(double delta) => zoomMapBy(_mapController, delta);
 
   /// The floating search field's own live geocoding (issue #284, replacing
   /// the former in-map-card search icon's expansion): drives

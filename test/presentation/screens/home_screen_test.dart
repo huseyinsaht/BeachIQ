@@ -2471,6 +2471,58 @@ void main() {
       expect(find.byType(SearchField), findsOneWidget);
       expect(find.byKey(const Key('home-search-results')), findsNothing);
     });
+
+    test('zoomMapBy given an unattached MapController (FlutterMap never '
+        'rendered), is a no-op and never throws — MapController.camera '
+        "throws a plain Exception in that case (flutter_map's own "
+        'implementation), which this always catches; it would NOT catch a '
+        'LateInitializationError if the underlying package ever threw one '
+        'instead', () {
+      final controller = MapController();
+      addTearDown(controller.dispose);
+      expect(() => zoomMapBy(controller, 1), returnsNormally);
+      expect(() => zoomMapBy(controller, -1), returnsNormally);
+    });
+
+    testWidgets(
+      'the floating zoom-in/zoom-out buttons move the map camera by +-1 '
+      'zoom level each tap, clamped to kLocationMapMinZoom/'
+      'kLocationMapMaxZoom',
+      (tester) async {
+        await pumpApp(tester, HomeScreen(tileProvider: FakeTileProvider()));
+
+        MapController currentController() =>
+            tester.widget<FlutterMap>(find.byType(FlutterMap)).mapController!;
+        double currentZoom() => currentController().camera.zoom;
+
+        final initialZoom = currentZoom();
+
+        await tester.tap(find.byKey(const Key('home-zoom-in-button')));
+        await tester.pump();
+        expect(currentZoom(), closeTo(initialZoom + 1, 0.001));
+
+        await tester.tap(find.byKey(const Key('home-zoom-out-button')));
+        await tester.pump();
+        expect(currentZoom(), closeTo(initialZoom, 0.001));
+
+        // Clamped at the floor: many more zoom-out taps than needed to
+        // reach kLocationMapMinZoom from the initial zoom must never go
+        // lower than it.
+        for (var i = 0; i < 20; i++) {
+          await tester.tap(find.byKey(const Key('home-zoom-out-button')));
+          await tester.pump();
+        }
+        expect(currentZoom(), kLocationMapMinZoom);
+
+        // Clamped at the ceiling: many more zoom-in taps than needed to
+        // reach kLocationMapMaxZoom must never go higher than it.
+        for (var i = 0; i < 30; i++) {
+          await tester.tap(find.byKey(const Key('home-zoom-in-button')));
+          await tester.pump();
+        }
+        expect(currentZoom(), kLocationMapMaxZoom);
+      },
+    );
   });
 }
 
