@@ -206,7 +206,7 @@ class _ForecastAlertRow extends StatelessWidget {
                 Text(
                   alert.message,
                   maxLines: wrap ? null : 1,
-                  overflow: wrap ? TextOverflow.clip : TextOverflow.ellipsis,
+                  overflow: wrap ? null : TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
                 const SizedBox(height: 2),
@@ -273,7 +273,7 @@ class _NextHourRow extends StatelessWidget {
                 Text(
                   alert.message,
                   maxLines: wrap ? null : 1,
-                  overflow: wrap ? TextOverflow.clip : TextOverflow.ellipsis,
+                  overflow: wrap ? null : TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
               ],

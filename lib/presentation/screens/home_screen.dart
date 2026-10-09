@@ -1520,13 +1520,16 @@ class _HomeScreenState extends State<HomeScreen> {
         // Forecast screen, same as the dedicated entry row below.
         if (nextHourNote != null) ...[
           const SizedBox(height: 16),
-          GestureDetector(
-            onTap: openForecastScreen,
-            child: ForecastAlertList(
-              alerts: const [],
-              nextHourNote: nextHourNote,
-              now: effectiveNow,
-              wrap: true,
+          Semantics(
+            button: true,
+            child: InkWell(
+              onTap: openForecastScreen,
+              child: ForecastAlertList(
+                alerts: const [],
+                nextHourNote: nextHourNote,
+                now: effectiveNow,
+                wrap: true,
+              ),
             ),
           ),
         ],
@@ -1776,21 +1779,27 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
       ),
       const SizedBox(height: 20),
-      InkWell(
-        key: const Key('home-forecast-entry-row'),
-        onTap: openForecastScreen,
-        child: const Row(
-          children: [
-            Icon(Icons.calendar_month, size: 14, color: _textSecondary),
-            SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                'Forecast and 7-14 day outlook',
-                style: TextStyle(color: _textSecondary, fontSize: 13),
-              ),
+      Semantics(
+        button: true,
+        child: InkWell(
+          key: const Key('home-forecast-entry-row'),
+          onTap: openForecastScreen,
+          child: const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              children: [
+                Icon(Icons.calendar_month, size: 14, color: _textSecondary),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'Forecast and 7-14 day outlook',
+                    style: TextStyle(color: _textSecondary, fontSize: 13),
+                  ),
+                ),
+                Icon(Icons.chevron_right, size: 18, color: _textSecondary),
+              ],
             ),
-            Icon(Icons.chevron_right, size: 18, color: _textSecondary),
-          ],
+          ),
         ),
       ),
     ];
