@@ -236,6 +236,102 @@ void main() {
       expect(result.samples, isEmpty);
     });
 
+    test(
+      'given a response that looks like JSON (starts with "{") but fails to '
+      'parse, fetchProfile -> that sample is null rather than throwing',
+      () async {
+        final client = FakeHttpClient()
+          ..queueResponse(
+            host: _host,
+            body: '{not actually valid json',
+            consumeOnce: true,
+          )
+          ..queueJson(host: _host, json: _validDepthFixture(-1.0));
+        final service = BathymetryService(client);
+
+        final result = await service.fetchProfile(_transectableBeach);
+
+        expect(result.available, isTrue);
+        expect(result.samples.first.depthMeters, isNull);
+        expect(
+          result.samples.skip(1).every((s) => s.depthMeters == 1.0),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'given a feature whose properties use none of the known depth key '
+      'names, fetchProfile -> falls back to the first property value',
+      () async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: _host,
+            json: {
+              'type': 'FeatureCollection',
+              'features': [
+                {
+                  'type': 'Feature',
+                  'id': '',
+                  'geometry': null,
+                  'properties': {'unexpected_key': -2.5},
+                },
+              ],
+            },
+          );
+        final service = BathymetryService(client);
+
+        final result = await service.fetchProfile(_transectableBeach);
+
+        expect(result.available, isTrue);
+        expect(result.samples.every((s) => s.depthMeters == 2.5), isTrue);
+      },
+    );
+
+    test('given a feature with no properties at all, fetchProfile -> that '
+        'sample is null rather than throwing', () async {
+      final client = FakeHttpClient()
+        ..queueJson(
+          host: _host,
+          json: {
+            'type': 'FeatureCollection',
+            'features': [
+              {'type': 'Feature', 'id': '', 'geometry': null, 'properties': {}},
+            ],
+          },
+        );
+      final service = BathymetryService(client);
+
+      final result = await service.fetchProfile(_transectableBeach);
+
+      expect(result.available, isFalse);
+    });
+
+    test('given the depth value is encoded as a numeric string rather than a '
+        'number, fetchProfile -> still parses it', () async {
+      final client = FakeHttpClient()
+        ..queueJson(
+          host: _host,
+          json: {
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'id': '',
+                'geometry': null,
+                'properties': {'Depth': '-3.4'},
+              },
+            ],
+          },
+        );
+      final service = BathymetryService(client);
+
+      final result = await service.fetchProfile(_transectableBeach);
+
+      expect(result.available, isTrue);
+      expect(result.samples.every((s) => s.depthMeters == 3.4), isTrue);
+    });
+
     test('given every request returns a non-200 status, fetchProfile -> '
         'returns unavailable, never throws', () async {
       final client = FakeHttpClient()
