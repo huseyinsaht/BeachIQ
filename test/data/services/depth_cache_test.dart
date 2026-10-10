@@ -142,6 +142,42 @@ void main() {
     );
   });
 
+  group('DepthCache.create', () {
+    test('given the default parameters, create -> returns a working cache '
+        'backed by the real SharedPreferences singleton', () async {
+      final cache = await DepthCache.create();
+
+      expect(cache.ttl, const Duration(days: 90));
+      expect(cache.gridSize, 0.001);
+
+      var fetchCount = 0;
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async {
+          fetchCount++;
+          return _profile;
+        },
+      );
+
+      expect(fetchCount, 1);
+      expect(result.available, isTrue);
+    });
+
+    test('given custom ttl/gridSize/now, create -> passes them through to '
+        'the cache', () async {
+      final now = DateTime(2026, 1, 1);
+      final cache = await DepthCache.create(
+        now: () => now,
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+
+      expect(cache.ttl, const Duration(days: 30));
+      expect(cache.gridSize, 0.01);
+    });
+  });
+
   group('DepthCache.gridKeyFor (rounding)', () {
     test('given two positions within the same grid cell, gridKeyFor -> '
         'resolves to the same cache key', () async {
