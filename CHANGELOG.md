@@ -5,6 +5,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Additional test coverage for `SearchScreen`'s `didUpdateWidget` provider-listener
+  swap: detaching from a replaced provider instance and attaching to its replacement,
+  and never re-subscribing on a rebuild that keeps the same instance (#300)
+- Additional test coverage for `DepthCache.create`'s default parameters and custom
+  ttl/gridSize/now handling (#301)
+- Additional test coverage for `ReverseGeocodeCache.create`'s default parameters and
+  custom ttl/gridSize/now handling (#302)
+- Additional edge-case test coverage for `BathymetryService`'s depth parsing: a
+  brace-shaped but invalid JSON response, a feature using none of the known depth key
+  names, a feature with empty properties, and a depth value encoded as a numeric
+  string (#303)
+
 ## [2026.10.11] - 2026-10-09
 
 ### Added
