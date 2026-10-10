@@ -25,6 +25,11 @@ const double kNearbyBeachesRadiusMeters = 20000;
 /// could sensibly describe).
 const double kLocationMapMinZoom = 8.0;
 
+/// Maximum zoom level enforced on the map — the standard OSM raster tile
+/// zoom cap (issue #284's floating +/- zoom controls clamp to this on the
+/// top end, matching [kLocationMapMinZoom] on the bottom end).
+const double kLocationMapMaxZoom = 19.0;
+
 /// Maximum number of individual beach geometry overlays (polygons/lines)
 /// drawn at once. A pick can return many beaches; rendering an unbounded
 /// number of overlapping shapes would turn into visual noise, so this caps
@@ -115,6 +120,7 @@ class LocationMapCard extends StatefulWidget {
     this.placeSearchProvider,
     this.selectedBeach,
     this.mapController,
+    this.edgeToEdge = false,
   });
 
   final LatLng center;
@@ -163,8 +169,22 @@ class LocationMapCard extends StatefulWidget {
   /// `center`/`zoom` after a `center`/`selectedBeach` change (#214),
   /// instead of reaching into this widget's private state. Null (the
   /// default) makes this widget own and dispose its own controller,
-  /// unchanged from before.
+  /// unchanged from before. Also how `HomeScreen` drives its own floating
+  /// +/- zoom controls (issue #284) — it shares one `MapController` between
+  /// itself and this widget rather than reaching into private state.
   final MapController? mapController;
+
+  /// Issue #284's "map-first" Home layout: when true, this widget renders
+  /// just the map and its overlays (tile layer, nearby-beaches circle,
+  /// beach polygons/lines, amenity markers/legend, OSM attribution) filling
+  /// whatever space its parent gives it — no rounded white card background,
+  /// no fixed 200dp height, and no docked location bar (place name/search
+  /// icon/overflow menu), since a map-first [HomeScreen] renders those as
+  /// its own floating widgets instead. [onOverflowPressed]/
+  /// [placeSearchProvider] are ignored in this mode (there is no bar for
+  /// them to live in). Defaults to false, the pre-#284 behavior every
+  /// existing call site/test relies on.
+  final bool edgeToEdge;
 
   @override
   State<LocationMapCard> createState() => _LocationMapCardState();
@@ -306,6 +326,18 @@ class _LocationMapCardState extends State<LocationMapCard> {
   @override
   Widget build(BuildContext context) {
     final provider = widget.nearbyBeachesProvider;
+
+    // Issue #284: the full-screen Home layout wants just the map and its
+    // overlays, filling whatever space the parent (a `Positioned.fill` in
+    // `HomeScreen`) gives it — no card chrome, no docked bar.
+    if (widget.edgeToEdge) {
+      return provider == null
+          ? _buildMap(const [])
+          : AnimatedBuilder(
+              animation: provider,
+              builder: (context, _) => _buildMap(_beachesToShow(provider)),
+            );
+    }
 
     // Identical to this widget's pre-#158 tree (ClipRRect -> Container ->
     // Stack directly, no intervening Column) whenever the search isn't
@@ -561,6 +593,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
             initialCenter: widget.center,
             initialZoom: _initialZoom,
             minZoom: kLocationMapMinZoom,
+            maxZoom: kLocationMapMaxZoom,
             onTap: _handleTap,
             onPositionChanged: (camera, hasGesture) =>
                 setState(() => _currentZoom = camera.zoom),

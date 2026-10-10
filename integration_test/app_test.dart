@@ -30,11 +30,13 @@ import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart'
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wind_detail_screen.dart';
+import 'package:beachiq/presentation/screens/forecast_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
 import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/amenity_marker.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
+import 'package:beachiq/presentation/widgets/daily_outlook_list.dart';
 import 'package:beachiq/presentation/widgets/forecast_alert_list.dart';
 import 'package:beachiq/presentation/widgets/location_map_card.dart';
 import 'package:beachiq/presentation/widgets/search_field.dart';
@@ -131,6 +133,21 @@ final _transparentPixelPng = base64Decode(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY'
   '42YAAAAASUVORK5CYII=',
 );
+
+/// Issue #284: `HomeScreen`'s draggable bottom sheet starts collapsed (just
+/// the place name/temperature/pill/next-hour note/Sea tiles/hint) — a flow
+/// that needs the sheet's *expanded* content (the Current/Air groups, the
+/// hourly row, the forecast entry row (#289), none of which are even laid
+/// out while collapsed) calls this instead of simulating a real drag
+/// gesture. Reads the already-pumped `DraggableScrollableSheet`'s own
+/// controller (`HomeScreen` always supplies one, owned or caller-supplied).
+Future<void> expandHomeSheet(WidgetTester tester) async {
+  final sheet = tester.widget<DraggableScrollableSheet>(
+    find.byType(DraggableScrollableSheet),
+  );
+  sheet.controller!.jumpTo(1.0);
+  await tester.pumpAndSettle();
+}
 
 class _FakeTileProvider extends TileProvider {
   @override
@@ -383,10 +400,10 @@ void main() {
 
       expect(find.byType(HomeScreen), findsOneWidget);
       expect(find.byType(SearchScreen), findsNothing);
-      // #158: the old standalone, non-editable "Enter cities" entry point
-      // is gone — the map card's own search icon is the only place-search
-      // entry left on Home.
-      expect(find.byType(SearchField), findsNothing);
+      // Issue #284: the floating search field is always visible (no more
+      // toggle icon) — "Beaches" (SearchScreen's own beach list/favorites/
+      // filter) stays reachable via its trailing overflow menu instead.
+      expect(find.byType(SearchField), findsOneWidget);
 
       await tester.tap(find.byTooltip('More'));
       await tester.pumpAndSettle();
@@ -495,6 +512,9 @@ void main() {
 
       expect(find.byType(WindDetailScreen), findsNothing);
 
+      // Issue #284: the wind speed tile (Air group) only exists once the
+      // sheet is expanded.
+      await expandHomeSheet(tester);
       await tester.ensureVisible(find.text('18 km/h'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('18 km/h'));
@@ -554,6 +574,9 @@ void main() {
 
       expect(find.byType(RainChanceDetailScreen), findsNothing);
 
+      // Issue #284: the rain chance tile (Air group) only exists once the
+      // sheet is expanded.
+      await expandHomeSheet(tester);
       await tester.ensureVisible(find.text('55%'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('55%'));
@@ -610,8 +633,10 @@ void main() {
 
       expect(find.byType(UvIndexDetailScreen), findsNothing);
 
-      // The UV index tile sits below the fold on the test surface's fixed
-      // size, so it needs scrolling into view before it can be hit.
+      // Issue #284: the UV index tile (Air group) only exists once the
+      // sheet is expanded, and then sits below the fold on the test
+      // surface's fixed size, so it also needs scrolling into view.
+      await expandHomeSheet(tester);
       await tester.ensureVisible(find.text('4.5'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('4.5'));
@@ -701,10 +726,10 @@ void main() {
   );
 
   testWidgets(
-    'Map card search flow (#158): typing in the map card\'s own search '
-    'icon finds a real place and selecting it recenters the map and '
-    "re-fetches nearbyBeachesProvider — Home's old standalone search "
-    'entry is gone',
+    'Floating search field flow (#158, #284): typing in the always-visible '
+    'floating search field finds a real place and selecting it recenters '
+    "the map and re-fetches nearbyBeachesProvider — Home's old standalone "
+    'search entry is gone',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final nearbyClient = _FixtureNetworkClient();
@@ -764,12 +789,9 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The map card's own icon is the only place-search entry on Home.
-      expect(find.byType(SearchField), findsNothing);
-      expect(find.byKey(const Key('map-search-toggle')), findsOneWidget);
-
-      await tester.tap(find.byKey(const Key('map-search-toggle')));
-      await tester.pumpAndSettle();
+      // Issue #284: the floating search field is always visible — no more
+      // toggle icon to tap first.
+      expect(find.byType(SearchField), findsOneWidget);
 
       await tester.enterText(find.byType(TextField), 'bodrum');
       await tester.pump(const Duration(milliseconds: 30));
@@ -778,7 +800,7 @@ void main() {
       expect(find.text('Bodrum'), findsOneWidget);
 
       await tester.tap(
-        find.byKey(const ValueKey('map-search-result-0-Bodrum')),
+        find.byKey(const ValueKey('home-search-result-0-Bodrum')),
       );
       await tester.pump(const Duration(milliseconds: 30));
       await tester.pumpAndSettle();
@@ -815,8 +837,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Wave height/water temp are in the Sea group, visible collapsed; wave
+    // direction/current speed/current direction are in the Current group,
+    // only laid out once the sheet is expanded (issue #284).
     expect(find.text('0.9 m'), findsOneWidget);
     expect(find.text('24°C'), findsOneWidget);
+
+    await expandHomeSheet(tester);
+
     expect(find.text('from NW'), findsOneWidget);
     expect(find.text('4 km/h'), findsOneWidget);
     expect(find.text('toward SE'), findsOneWidget);
@@ -947,6 +975,9 @@ void main() {
 
       expect(find.byType(CurrentDetailScreen), findsNothing);
 
+      // Issue #284: the current speed tile (Current group) only exists
+      // once the sheet is expanded.
+      await expandHomeSheet(tester);
       await tester.tap(find.byKey(const Key('current-speed-tile')));
       await tester.pumpAndSettle();
 
@@ -1023,10 +1054,12 @@ void main() {
     },
   );
 
-  testWidgets('Forecast alert list flow (#169): a real wind crossing from '
-      "WeatherProvider's hourly series renders as a visible alert row "
-      'between the smart suggestion pill and the stat grid, with no real '
-      'network involved (WeatherProvider/MarineProvider are faked via '
+  testWidgets('Forecast alert list flow (#169, moved to the Forecast screen '
+      'by #289): a real wind crossing from WeatherProvider\'s hourly series '
+      "is not shown on Home directly (there's no next-hour note for this "
+      'data), but opening the Forecast screen from Home\'s entry row shows '
+      'it as a visible alert row, with no real network involved '
+      '(WeatherProvider/MarineProvider are faked via '
       'test/helpers/pump_app.dart, the same fakes the other Home flows '
       'above use)', (WidgetTester tester) async {
     final weatherProvider = await aLoadedWeatherProvider(
@@ -1064,6 +1097,18 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    // Issue #289: no next-hour note for this data (both hourly entries are
+    // after `now`), so Home shows neither a note nor the alert list.
+    expect(find.byType(ForecastAlertList), findsNothing);
+
+    await expandHomeSheet(tester);
+    final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+    await tester.ensureVisible(entryRow);
+    await tester.pumpAndSettle();
+    await tester.tap(entryRow);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ForecastScreen), findsOneWidget);
     expect(find.byType(ForecastAlertList), findsOneWidget);
     expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
     expect(find.text('09:00 - 10:00'), findsOneWidget);
@@ -1170,7 +1215,9 @@ void main() {
       expect(weatherRepository.calls, hasLength(1));
       expect(marineRepository.calls, isEmpty);
       expect(find.text('27°'), findsOneWidget);
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      // Issue #284: the sheet's own header is the only place this renders
+      // (no more docked map-card location bar).
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
 
       // Tap the map's own center: flutter_map's lat/lng <-> pixel
       // projection round-trip introduces enough floating-point noise that
@@ -1408,7 +1455,10 @@ void main() {
       expect(mapCard.selectedBeach?.name, 'Fixture Beach');
 
       // Shown in a compact info row below the map, without another tap,
-      // reusing BeachResultCard's own fields/formatting.
+      // reusing BeachResultCard's own fields/formatting — issue #284: only
+      // once the sheet is expanded (there's room for it in the mockup's
+      // expanded state, not the collapsed one).
+      await expandHomeSheet(tester);
       expect(find.byType(BeachResultCard), findsOneWidget);
       final infoCard = tester.widget<BeachResultCard>(
         find.byType(BeachResultCard),
@@ -1427,10 +1477,12 @@ void main() {
   );
 
   testWidgets(
-    'Water-depth flow (#217): picking up a beach fetches its nearshore '
-    'depth profile from a faked BathymetryService, the Home water-depth '
-    'tile shows the classified value/status, tapping it opens '
-    'DepthDetailScreen, and the back button returns to Home',
+    'Water-depth flow (#217, extended by #257): picking up a beach fetches '
+    'its nearshore depth profile from a faked BathymetryService, the Home '
+    'water-depth tile shows the classified value/status, tapping it opens '
+    'DepthDetailScreen, the back button returns to Home, and picking that '
+    'same beach from Search shows the same verdict in its selected-beach '
+    'depth summary, also opening DepthDetailScreen when tapped',
     (WidgetTester tester) async {
       SharedPreferences.setMockInitialValues({});
       final nearbyClient = _FixtureNetworkClient();
@@ -1510,6 +1562,43 @@ void main() {
       // The detail screen's own hero value/chip agree with Home's tile.
       expect(find.text('<= 1.2 m beyond 400 m'), findsOneWidget);
       expect(find.text('Gentle'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Back'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(find.byType(DepthDetailScreen), findsNothing);
+
+      // #257: picking that same beach from Search shows the identical
+      // gentle verdict in its selected-beach info row's depth summary —
+      // Home and the selected-beach card never disagree, since both read
+      // the same DepthProvider.
+      await tester.tap(find.byTooltip('More'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Beaches'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fixture Beach'));
+      await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
+
+      await expandHomeSheet(tester);
+      expect(find.byType(BeachResultCard), findsOneWidget);
+      final infoCard = tester.widget<BeachResultCard>(
+        find.byType(BeachResultCard),
+      );
+      expect(infoCard.showDepthSummary, isTrue);
+
+      expect(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.text('Shallow for a long way out. Easier for non-swimmers.'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(DepthDetailScreen), findsOneWidget);
 
       await tester.tap(find.byTooltip('Back'));
       await tester.pumpAndSettle();
@@ -1705,9 +1794,11 @@ void main() {
   );
 
   testWidgets(
-    '7-14 day outlook flow (#273): Home renders one row per forecast day '
-    'with a swim verdict and high/low temperature, built from the weather '
-    'and marine providers\' daily arrays with no extra network request',
+    '7-14 day outlook flow (#273, moved to the Forecast screen by #289): '
+    'opening the Forecast screen from Home\'s entry row renders one row '
+    'per forecast day with a swim verdict and high/low temperature, built '
+    'from the weather and marine providers\' daily arrays with no extra '
+    'network request',
     (WidgetTester tester) async {
       final weatherProvider = await aLoadedWeatherProvider(
         WeatherCondition(
@@ -1750,8 +1841,17 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.ensureVisible(find.text('7-14 day outlook'));
-      expect(find.text('7-14 day outlook'), findsOneWidget);
+      // Issue #289: the 7-14 day outlook no longer renders on Home at all
+      // — only the entry row, reachable once the sheet is expanded.
+      await expandHomeSheet(tester);
+      expect(find.byType(DailyOutlookList), findsNothing);
+      final entryRow = find.byKey(const Key('home-forecast-entry-row'));
+      await tester.ensureVisible(entryRow);
+      await tester.pumpAndSettle();
+      await tester.tap(entryRow);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ForecastScreen), findsOneWidget);
       expect(find.text('Today'), findsOneWidget);
       // Day 1: calm wave + wind -> "good"; day 2's 45 km/h wind crosses the
       // high threshold -> "poor", proving each day scores independently.

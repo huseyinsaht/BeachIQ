@@ -1,13 +1,14 @@
 # Architecture
 
 BeachIQ is a Flutter app (SDK `^3.8.1`). Both screens from `docs/design.md` are now
-implemented and wired to real data: the Home screen is a live weather/sea-conditions/
-swim-suitability dashboard for a user-selected location (tapped on the map, searched
-by place name, or restored from a previous session) with an interactive map (beach
-outlines, amenity markers and an in-card place search) and a detail screen for every
-stat tile, and the Search screen shows real nearby beaches (from OpenStreetMap) and
-real place-name search results, enriched with marine data, favorites and unit
-preferences.
+implemented and wired to real data: the Home screen is a map-first live weather/
+sea-conditions/swim-suitability dashboard for a user-selected location (tapped on the
+map, searched by place name, or restored from a previous session) — a full-screen
+interactive map (beach outlines, amenity markers, a floating search field) behind a
+draggable bottom sheet holding the location's details, a dedicated Forecast screen for
+the full alert list and 7-14 day outlook, and a detail screen for every stat tile — and
+the Search screen shows real nearby beaches (from OpenStreetMap) and real place-name
+search results, enriched with marine data, favorites and unit preferences.
 
 ## Layers
 
@@ -108,8 +109,8 @@ is cached yet.
   (`RealLocalNotificationsPlugin` in production) so tests never touch a real platform
   channel. A no-op if the permission was denied. Used by `ConditionAlertDispatcher`.
 - `DeviceLocationService`/`DeviceLocationSource` (`lib/data/services/device_location_service.dart`)
-  — issue #254's opt-in device-location lookup, backing the map card overflow menu's
-  "Use my location" action. `DeviceLocationSource` is the injectable interface
+  — issue #254's opt-in device-location lookup, backing the Home screen's overflow
+  menu's "Use my location" action. `DeviceLocationSource` is the injectable interface
   (`GeolocatorDeviceLocationSource` in production, wrapping the `geolocator` plugin's
   static methods) so tests never touch real GPS hardware or a real permission dialog.
   `getCurrentLocation` checks location services are on, checks (and, only then, once,
@@ -315,8 +316,9 @@ Pure, platform-agnostic logic with no I/O:
   calls `MarineRepository.getMarineData`. On the Home screen this is only triggered by
   pull-to-refresh (see below), not on initial load.
 - `WeatherProvider` (`lib/logic/providers/weather_provider.dart`) — same shape as
-  `MarineProvider`, wrapping `WeatherRepository.getWeatherData`. Fetched for the fixed
-  Çeşme coordinates as soon as the Home screen mounts.
+  `MarineProvider`, wrapping `WeatherRepository.getWeatherData`. Fetched for the
+  selected location (a restored pick, or the fixed Çeşme default on a first run or
+  restore failure) as soon as the Home screen mounts.
 - `FavoritesProvider` (`lib/logic/providers/favorites_provider.dart`) — persists the
   set of favorited beaches via `SharedPreferences`, keyed by `"name|city"` (beaches
   have no stable id). `toggleFavorite`/`isFavorite`/`favoritesAmong`.
@@ -346,7 +348,7 @@ Pure, platform-agnostic logic with no I/O:
   pick) resets the verdict baseline instead of looking like a transition; the
   baseline and the alerts-enabled toggle (`setAlertsEnabled`) are persisted via
   `SharedPreferences`. Issue #267 wires that toggle to a visible "Alerts" switch in
-  the Home map card's overflow menu (see `HomeScreen` below) — on by default.
+  the Home screen's overflow menu (see `HomeScreen` below) — on by default.
 - `DepthProvider` (`lib/logic/providers/depth_provider.dart`) — a `ChangeNotifier`
   driving the Home water-depth tile/detail screen (#217): `fetchForBeach(beach)`
   fetches (or reuses `DepthCache`'s cached result for) a `DepthProfile` for whichever
@@ -399,7 +401,15 @@ Reusable widgets built against `docs/design.md`:
   a search icon in the location bar expands into a live place-name search (loading/
   empty/error/loaded); selecting a result recenters the map and reports the pick via
   `onLocationPicked` with the place's real name, exactly as a map tap would (issue
-  #158). Includes an `OsmAttribution` credit in the bottom-left corner.
+  #158). Includes an `OsmAttribution` credit in the bottom-left corner. An `edgeToEdge`
+  flag (default `false`, issue #291) swaps the rounded card and docked bar for just the
+  bare map and its overlays (tile layer, beach polygons/lines, amenity markers/legend,
+  attribution — unchanged), filling whatever space the parent gives it and enforcing
+  zoom between `kLocationMapMinZoom` and the new `kLocationMapMaxZoom` (19, the
+  standard OSM raster tile cap). `HomeScreen` is the only caller and always passes
+  `true`, building its own floating search field and overflow menu (see `HomeScreen`
+  below) instead of this widget's docked bar/search icon, which remain as-is for the
+  default, non-`edgeToEdge` mode.
 - `AmenityMarker`/`amenityColor`/`amenityIcon`/`amenityLabel`
   (`amenity_marker.dart`) — a single colored circular pin per `AmenityKind` (orange
   cafe, blue toilets/shower/changing room, blue-grey "P" parking, teal beach club, red
@@ -429,7 +439,16 @@ Reusable widgets built against `docs/design.md`:
   supplied — a two-column block of
   plain-text info lines (entry fee, wave height, water temperature, shoe advice, car
   park, beach club, café). Unit-aware via `UnitSystem`. Every field renders "No data"/
-  "Unknown" rather than inventing a value when the source has none.
+  "Unknown" rather than inventing a value when the source has none. An optional
+  `showDepthSummary` flag (issue #257, default `false`) adds a one/two-line water-depth
+  / non-swimmer summary row under the header: a colored verdict line
+  (`shallowEntryVerdictLine`) plus a secondary line pairing `standUpDistanceLabel` (when
+  known) with the shortened `depthApproximationCaveatShort`, or "Depth: checking…"/
+  "Depth: no data" while `isDepthLoading`/with no profile — never a guessed verdict.
+  `onDepthTap` opens the full water-depth detail screen, where the complete
+  `depthApproximationCaveat` is shown. Only `HomeScreen`'s selected-beach info row
+  (issue #294) passes `showDepthSummary: true`; `SearchScreen`'s result list never
+  fetches a per-result depth profile and renders exactly as before.
 - `MetricDetailScaffold` (`metric_detail_scaffold.dart`) — the shared layout for every
   per-metric detail screen (pressure, UV index, rain chance, wind, wave height, water
   temperature, current, water depth — all implemented, see the screens below): a back
@@ -461,25 +480,31 @@ Reusable widgets built against `docs/design.md`:
   that reference height. A `null` depth (land/NoData) is a gap, exactly like
   `DepthProfileChart`. `CustomPaint`-based; the painter is public so widget tests can
   inspect its fields directly instead of asserting on pixels.
-- `ForecastAlertList` (`forecast_alert_list.dart`) — the Home screen's list of
-  upcoming `ForecastAlert`s (from `buildForecastAlerts`), sitting between the
-  suggestion pill and the 3×3 stat grid: one row per alert (a type icon colored by
-  severity, the alert's one-line message — itself day-prefixed per #252, see
-  `buildForecastAlerts` above — and a compact time-window label underneath,
-  separately prefixed with a day label, e.g. "Tomorrow", when the alert isn't on
-  today's calendar date, #229), sorted most-severe-first via `sortAlertsBySeverity`.
-  An optional `nextHourNote` (#229, from `buildNextHourNote`) renders first as a
-  visually distinct "Next hour" row (a tinted icon circle, no time-window line) — it
-  can be shown even when `alerts` is empty (e.g. after sunset, since it is never
-  daylight-filtered). Renders nothing when both are empty/null, leaving no gap.
-- `DailyOutlookList` (`daily_outlook_list.dart`) — issue #273: the Home screen's
-  "7-14 day outlook" section, one row per `DailyOutlookEntry` (see
-  `lib/logic/daily_outlook.dart`): a weekday label (`dayLabelFor`, "Today" for the
-  entry matching the current calendar day, else a three-letter weekday name), a
-  swim-verdict icon/color via `paletteForVerdict`, the verdict's one-line message,
-  and the day's high/low temperature (pre-formatted by the caller, so the widget
-  itself stays unit-agnostic). A plain `Column`, not its own scroll view, since the
-  Home screen's body is already one `SingleChildScrollView`.
+- `ForecastAlertList` (`forecast_alert_list.dart`) — a list of upcoming
+  `ForecastAlert`s (from `buildForecastAlerts`): one row per alert (a type icon colored
+  by severity, the alert's message — itself day-prefixed per #252, see
+  `buildForecastAlerts` above — and, unless `wrap` is set, a compact time-window
+  label underneath, separately prefixed with a day label, e.g. "Tomorrow", when the
+  alert isn't on today's calendar date, #229), sorted most-severe-first via
+  `sortAlertsBySeverity`. An optional `nextHourNote` (#229, from `buildNextHourNote`)
+  renders first as a visually distinct "Next hour" row (a tinted icon circle, no
+  time-window line) — it can be shown even when `alerts` is empty (e.g. after sunset,
+  since it is never daylight-filtered). Renders nothing when both are empty/null,
+  leaving no gap. A `wrap` flag (issue #289, default `false`) switches every row's
+  message from one-line/ellipsized to fully wrapped text with no line cap. Issue #289
+  moved the full per-type alert list off Home onto a dedicated `ForecastScreen` (see
+  below): `HomeScreen` now only ever feeds this widget an empty `alerts` list plus its
+  single `nextHourNote`, with `wrap: true`; `ForecastScreen` feeds it the complete,
+  severity-sorted `alerts` list (also `wrap: true`) and no note.
+- `DailyOutlookList` (`daily_outlook_list.dart`) — issue #273's "7-14 day outlook"
+  section, one row per `DailyOutlookEntry` (see `lib/logic/daily_outlook.dart`): a
+  weekday label (`dayLabelFor`, "Today" for the entry matching the current calendar
+  day, else a three-letter weekday name), a swim-verdict icon/color via
+  `paletteForVerdict`, the verdict's full message (no line cap — it wraps onto as many
+  lines as it needs), and the day's high/low temperature (pre-formatted by the caller,
+  so the widget itself stays unit-agnostic). A plain `Column`, not its own scroll view.
+  Issue #289 moved this section off Home onto the dedicated `ForecastScreen` (see
+  below), whose body is already one `SingleChildScrollView`.
 
 ### `lib/presentation/theme`
 
@@ -502,60 +527,82 @@ Reusable widgets built against `docs/design.md`:
 
 ### `lib/presentation/screens`
 
-- `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — the real dashboard for
-  a **selected location**: a header, a condition row (description, high/low),
-  `LocationMapCard` (with its own search icon and overflow menu — "Beaches" opens
-  `SearchScreen`, "Units" the metric/imperial sheet when a `UnitPreferencesProvider`
-  is supplied, "Alerts" a switch (#267) toggling `ConditionAlertDispatcher`'s
-  notification on/off when one is supplied, and "Compare beaches" (#274, when 2+
-  nearby beaches are fetched) opening a selection sheet then `CompareBeachesScreen`
-  for the chosen 2-3), `SwimSuggestionPill`, `ForecastAlertList` (built fresh on every
-  build from `buildForecastAlerts` on the same hourly data; hidden entirely when there
-  are no upcoming alerts), then a **3×3 grid of `StatTile`s in three labelled
-  `StatTileGroup`s** (issue #251, separated by thin dividers): "Sea" (wave height,
-  water temperature, water depth — #217, replacing the original pressure tile),
-  "Current" (current speed, current direction with its shore-relation label, wave
-  direction — no tap target), and "Air" (wind speed, rain chance, UV index) — all
-  nine tiles one visual size, none showing a trend indicator (only the detail screens
-  do), each tappable to its own detail screen except wave direction. This single grid
-  replaces the pre-#251 2×2 stat grid plus the separate `SeaConditionsRow` widget
-  (removed) that used to sit above it. Below the grid sits the hourly forecast row
-  (trimmed to the next 24 entries from "now"). A `CloudBackdrop` sits behind the
-  header in both the loaded and loading/error layouts.
+- `HomeScreen` (`lib/presentation/screens/home_screen.dart`) — issue #291's map-first
+  layout for a **selected location**. A full-screen `LocationMapCard` (its
+  `edgeToEdge` mode, see above — the same map, overlays and attribution as before,
+  just without the card chrome/docked bar) fills the whole screen behind everything
+  else. A floating `SearchField` (wired to `PlaceSearchProvider`, replacing the former
+  in-map-card search-icon toggle) sits always-visible at the top; its trailing button
+  opens the overflow menu — "Beaches" opens `SearchScreen`, "Compare beaches" (#274,
+  when 2+ nearby beaches are fetched) opens a selection sheet then
+  `CompareBeachesScreen` for the chosen 2-3, "Use my location" and "Units"/"Alerts"
+  (#267, toggling `ConditionAlertDispatcher`'s notification) show when their
+  providers/services are supplied — the same menu the old docked location bar's "..."
+  button used to open. Floating circular "my location" (hidden without a
+  `DeviceLocationService`) and +/- zoom buttons sit on the map's right edge, sharing
+  one `MapController` with the map itself; the zoom buttons call the top-level
+  `zoomMapBy(controller, delta)`, clamped to `kLocationMapMinZoom`/
+  `kLocationMapMaxZoom` (the same ceiling/floor a pinch gesture on the map itself
+  enforces).
+
+  A `DraggableScrollableSheet` (`_sheetMinSize` 0.34, `_sheetMaxSize` 0.90, snapping
+  between the two, `_sheetExpanded` flipping at their midpoint) holds the selected
+  location's details. Collapsed, it shows a grab handle, the header (place name +
+  temperature, issue #253), `SwimSuggestionPill`, at most one note — the single
+  next-hour note from `buildNextHourNote`, via `ForecastAlertList` with an empty
+  `alerts` list (issue #289) — the "Sea" `StatTileGroup` (wave height, water
+  temperature, water depth — #217), and a "swipe up for all details" hint. Dragged up,
+  it adds the condition row (description, high/low), the beach picked from Search's
+  compact info row (#214, see below) when there is one, the "Current" (current speed,
+  current direction with its shore-relation label, wave direction — no tap target) and
+  "Air" (wind speed, rain chance, UV index) `StatTileGroup`s, the hourly forecast row
+  (trimmed to the next 24 entries from "now"), and a "Forecast and 7-14 day outlook"
+  entry row. All nine stat tiles are one visual size, none showing a trend indicator
+  (only the detail screens do), each tappable to its own detail screen except wave
+  direction.
+
+  Tapping the next-hour note or the "Forecast and 7-14 day outlook" row pushes
+  `ForecastScreen` (see below) with a snapshot of the already-computed
+  `forecastAlerts`/`dailyOutlook` — issue #289's decision to show at most one note on
+  Home itself (never replaced by a daylight alert when there is none) and move the
+  full per-type alert list and the "7-14 day outlook" to that dedicated screen. Issue
+  #273 widened both `WeatherApiService`/`MarineApiService` requests to
+  `forecast_days=14`, so every near-term-only consumer of the raw `hourly` series (the
+  hourly row, `buildForecastAlerts`, `buildNextHourNote`) is first capped to the next
+  ~24 hours (issue #280 fixed a regression where this cap was missing) — the outlook
+  itself reads the separate, uncapped `dailyForecast` array. A `CloudBackdrop` sits
+  behind everything in both the loaded and loading/error layouts.
+
   The header's title (issue #253 — superseding the mockup's hard-coded "My Location",
   which was misleading since the app has no device GPS of its own, see #254) is the
   selected location's own real place name, with a `text.secondary` coordinates
   subtitle shown underneath only when it says something the title doesn't already (a
   bare map tap's place name already IS its formatted coordinates, so a second,
-  identical line is skipped). Below the hourly row sits a "7-14 day outlook"
-  (`DailyOutlookList`, issue #273): one row per forecast day from `buildDailyOutlook`,
-  hidden entirely when there's no daily data yet. Issue #273 also widened both
-  `WeatherApiService`/`MarineApiService` requests to `forecast_days=14`, so every
-  near-term-only consumer of the raw `hourly` series (the hourly row,
-  `buildForecastAlerts`, `buildNextHourNote`) is first capped to the next ~24 hours
-  (issue #280 fixed a regression where this cap was missing, letting a threshold
-  crossing many days out read as an imminent heads-up) — the outlook itself reads the
-  separate, uncapped `dailyForecast` array. The selected location starts at a fixed
-  Çeşme default,
-  is replaced by whatever the user taps on the map or picks via its search icon, and
-  is persisted via `SharedPreferences` and restored on the next app start; every
-  fetch (weather, marine, nearby beaches) and the header/place name follow it, never
-  a fixed city once a pick has happened. Shows a full-screen loading spinner or error
-  message (driven by `MarineProvider`) before the first successful load;
-  pull-to-refresh re-fetches both `MarineProvider` and `WeatherProvider` for the
-  selected location without tearing down the screen. Also derives the nearest beach
-  to the selected location (by real distance — `NearbyBeachesProvider.beaches` is in
-  Overpass element-id order, not distance order), or uses a beach explicitly picked
-  from Search (#238, via `SearchScreen`'s `Navigator.pop<Beach>`) in preference to
-  it — that beach's seaward bearing feeds the "Current" group's shore-relation
-  labels, and the same beach (`isSameBeach`-compared) is what
-  `DepthProvider.fetchForBeach` is called with for the water-depth tile. A beach
-  picked from Search is rendered as a compact
-  `BeachResultCard`-based info row below the map. Issue #254: given a
-  `DeviceLocationService`, the map card overflow menu also shows a "Use my location"
-  entry (hidden entirely without one) — the *only* thing that can ever trigger a
-  location permission prompt, and only because the user just tapped it. On success the
-  device position is treated exactly like a map pick (header, weather, marine data,
+  identical line is skipped). The selected location starts at a fixed Çeşme default,
+  is replaced by whatever the user taps on the map or picks via the floating search
+  field, and is persisted via `SharedPreferences` and restored on the next app start;
+  every fetch (weather, marine, nearby beaches) and the header/place name follow it,
+  never a fixed city once a pick has happened. Shows a full-screen loading spinner or
+  error message (driven by `MarineProvider`) before the first successful load;
+  pull-to-refresh (the sheet's own `RefreshIndicator`) re-fetches both
+  `MarineProvider` and `WeatherProvider` for the selected location without tearing
+  down the screen. Also derives the nearest beach to the selected location (by real
+  distance — `NearbyBeachesProvider.beaches` is in Overpass element-id order, not
+  distance order), or uses a beach explicitly picked from Search (#238, via
+  `SearchScreen`'s `Navigator.pop<Beach>`) in preference to it — that beach's seaward
+  bearing feeds the "Current" group's shore-relation labels, and the same beach
+  (`isSameBeach`-compared) is what `DepthProvider.fetchForBeach` is called with for the
+  water-depth tile. A beach picked from Search is rendered, once the sheet is
+  expanded, as a compact `BeachResultCard`-based info row below the condition row
+  (`_buildSelectedBeachInfo`) — which now (issue #294) also opts into
+  `BeachResultCard`'s `showDepthSummary`, rendering a one/two-line depth/non-swimmer
+  verdict wired to the same `DepthProvider`/beach the water-depth stat tile already
+  reads, so Home and the selected-beach card never disagree; tapping it opens the same
+  `DepthDetailScreen` route as that tile. Issue #254: given a `DeviceLocationService`,
+  both the overflow menu and the dedicated floating button show "Use my location"
+  (hidden entirely without one) — the *only* thing that can ever trigger a location
+  permission prompt, and only because the user just tapped it. On success the device
+  position is treated exactly like a map pick (header, weather, marine data,
   persistence), plus an explicit `nearbyBeachesProvider.pickLocation` call (mirroring
   `_handleBeachPicked`, since this pick doesn't go through `LocationMapCard`'s own tap
   handler either). On failure (permission denied, location services off, or any other
@@ -567,6 +614,20 @@ Reusable widgets built against `docs/design.md`:
   one — upgraded asynchronously to a real resolved city name if/when that lookup
   succeeds, without blocking the weather/marine fetch already in flight for the same
   pick.
+- `ForecastScreen` (`lib/presentation/screens/forecast_screen.dart`) — issue #289: a
+  dedicated screen replacing Home's old inline per-type alert list and "7-14 day
+  outlook" section, with two sections: **Alerts** (every upcoming `ForecastAlert` from
+  `buildForecastAlerts`, via `ForecastAlertList` with `wrap: true` — severity sorted,
+  full message text wrapped rather than ellipsized, "No alerts" when there are none)
+  and **7-14 day outlook** (`DailyOutlookList`, full verdict message wrapped, each
+  day's high/low). Same dark `bg.base`/`bg.gradientBottom` gradient and small-uppercase
+  section-label style as the metric detail screens, with a back button, but not built
+  on `MetricDetailScaffold` itself — it has no single hero value or chart. Pushed from
+  `HomeScreen` with a snapshot of the selected location's already-computed
+  `forecastAlerts`/`dailyOutlook` (no separate fetch), reachable by tapping the
+  next-hour note or the expanded sheet's "Forecast and 7-14 day outlook" row — it
+  always reflects whichever location was selected on Home at that moment, rather than
+  holding a live provider reference of its own.
 - `CompareBeachesScreen` (`lib/presentation/screens/compare_beaches_screen.dart`) —
   issue #274: a table comparing 2-3 beaches side by side, one column per beach —
   wave height and water temperature from the already-fetched `SeaCondition`s the
@@ -576,8 +637,8 @@ Reusable widgets built against `docs/design.md`:
   `shallowEntryStatusLabel`) and the Home screen's own swim score
   (`scoreSwimSuitability`) — fetched per beach only for the two inputs the batch call
   doesn't cover. Either repository/service may be omitted (e.g. in a test), leaving
-  those rows as "No data" instead of loading forever. Pushed from `HomeScreen`'s map
-  card overflow menu's "Compare beaches" entry.
+  those rows as "No data" instead of loading forever. Pushed from `HomeScreen`'s
+  overflow menu's "Compare beaches" entry.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Tapping a beach card pops the screen with that
@@ -685,7 +746,7 @@ or a fresh location pick — so `SwimSuggestionPill`'s wave-height input and the
 Current groups' marine-driven tiles are typically "No data" until one of those
 happens; `MarineProvider` is otherwise used for the initial loading/error shell.
 
-Tapping the map (or picking a place via the map card's own search icon) calls
+Tapping the map (or picking a place via the floating search field, issue #291) calls
 `HomeScreen._handleLocationPicked`: it updates the selected location/place name
 immediately, re-fetches `WeatherProvider`/`MarineProvider` for the new point, and
 persists the pick via `SharedPreferences` so it survives an app restart.
@@ -694,9 +755,9 @@ persists the pick via `SharedPreferences` so it survives an app restart.
 `OverpassService` → the Overpass API, maps them with `mapOverpassToBeaches`, then
 enriches them with a single `MarineBatchService` call; it notifies `LocationMapCard`
 (which redraws the beach/amenity overlay) and, once the user opens `SearchScreen`
-(via the map card's overflow menu → "Beaches"), that screen too.
+(via the floating search field's overflow menu → "Beaches"), that screen too.
 `PlaceSearchProvider.search` (debounced) resolves place matches via `GeocodingService`,
-used by both the map card's own search icon and `SearchScreen`'s "Places" section;
+used by both the floating search field and `SearchScreen`'s "Places" section;
 selecting a result calls `NearbyBeachesProvider.pickLocation`/`onLocationPicked` with
 its coordinates instead of a raw map tap. `FavoritesProvider` and
 `UnitPreferencesProvider` are each created once SharedPreferences is available and
@@ -704,7 +765,10 @@ persist across restarts.
 
 Tapping any Home stat tile or Sea-section tile pushes a route from `buildDetailRoute`,
 passing that metric's hourly series and current value from the already-loaded
-`WeatherCondition`/`SeaCondition` — no separate fetch.
+`WeatherCondition`/`SeaCondition` — no separate fetch. Tapping the next-hour note or
+the expanded sheet's "Forecast and 7-14 day outlook" row (issue #289) instead pushes
+`ForecastScreen` with a snapshot of the already-computed `forecastAlerts`/
+`dailyOutlook` — likewise no separate fetch.
 
 `ConditionAlertDispatcher` (started in `main()` before `runApp`) listens to the same
 `WeatherProvider`/`MarineProvider` instances independently of the widget tree: on
@@ -712,21 +776,21 @@ every update it scores a `SwimVerdict` and, through `NotificationService`, fires
 local notification whenever `ConditionAlertService` says the verdict just turned
 favorable for the currently selected location.
 
-Issue #254: tapping the map card overflow menu's "Use my location" entry calls
-`HomeScreen._handleUseMyLocation`, the only path that ever calls
-`DeviceLocationService.getCurrentLocation` — so the only path that can ever trigger a
-location-permission prompt. On success it's handed to `_handleLocationPicked` exactly
-like a map tap (plus an explicit `nearbyBeachesProvider.pickLocation` call, since this
-pick bypasses `LocationMapCard`'s own tap handler); on failure, a `SnackBar` reports
-why and the previous pick stays. Whenever `_handleLocationPicked` receives the bare
-coordinate label (a plain map tap or a device-location pick — a place-search result
-always carries a real name already), it also kicks off
-`ReverseGeocodingService.resolveName` in the background: on success (and only if no
-newer pick has superseded it, via a request-token guard) the header/map-card name is
-upgraded from coordinates to the resolved city name and re-persisted; on failure, the
-coordinate label stands as the permanent name for that pick. `resolveName` itself
-checks `ReverseGeocodeCache` before ever calling the real `geocoding` plugin, so
-picking the same area again is free.
+Issue #254: tapping the overflow menu's "Use my location" entry (or the dedicated
+floating button next to the zoom controls) calls `HomeScreen._handleUseMyLocation`,
+the only path that ever calls `DeviceLocationService.getCurrentLocation` — so the only
+path that can ever trigger a location-permission prompt. On success it's handed to
+`_handleLocationPicked` exactly like a map tap (plus an explicit
+`nearbyBeachesProvider.pickLocation` call, since this pick bypasses
+`LocationMapCard`'s own tap handler); on failure, a `SnackBar` reports why and the
+previous pick stays. Whenever `_handleLocationPicked` receives the bare coordinate
+label (a plain map tap or a device-location pick — a place-search result always
+carries a real name already), it also kicks off `ReverseGeocodingService.resolveName`
+in the background: on success (and only if no newer pick has superseded it, via a
+request-token guard) the header/map-card name is upgraded from coordinates to the
+resolved city name and re-persisted; on failure, the coordinate label stands as the
+permanent name for that pick. `resolveName` itself checks `ReverseGeocodeCache` before
+ever calling the real `geocoding` plugin, so picking the same area again is free.
 
 ## External APIs
 
@@ -785,7 +849,9 @@ picking the same area again is free.
   `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
   `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`/
   `ConditionAlertDispatcher`/`DepthProvider` —
-  `condition_alert_dispatcher_test.dart` includes coverage of `stop()`, #281),
+  `condition_alert_dispatcher_test.dart` includes coverage of `stop()` (#281), and
+  `depth_provider_test.dart` includes coverage of disposing while a fetch is in
+  flight (#296, mirroring `MarineProvider`'s own)),
   widget tests for every presentational widget (including
   `depth_profile_chart_test.dart`, `depth_cross_section_test.dart` (#256),
   `stat_tile_group_test.dart` (#251) and `daily_outlook_list_test.dart` (#273)) and
