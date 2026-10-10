@@ -316,8 +316,9 @@ Pure, platform-agnostic logic with no I/O:
   calls `MarineRepository.getMarineData`. On the Home screen this is only triggered by
   pull-to-refresh (see below), not on initial load.
 - `WeatherProvider` (`lib/logic/providers/weather_provider.dart`) — same shape as
-  `MarineProvider`, wrapping `WeatherRepository.getWeatherData`. Fetched for the fixed
-  Çeşme coordinates as soon as the Home screen mounts.
+  `MarineProvider`, wrapping `WeatherRepository.getWeatherData`. Fetched for the
+  selected location (a restored pick, or the fixed Çeşme default on a first run or
+  restore failure) as soon as the Home screen mounts.
 - `FavoritesProvider` (`lib/logic/providers/favorites_provider.dart`) — persists the
   set of favorited beaches via `SharedPreferences`, keyed by `"name|city"` (beaches
   have no stable id). `toggleFavorite`/`isFavorite`/`favoritesAmong`.
