@@ -115,6 +115,35 @@ void main() {
       );
 
       test(
+        'given a timeout then a success, query -> retries and succeeds on the second attempt',
+        () async {
+          final client = FakeHttpClient()
+            ..queueResponse(
+              host: 'overpass-api.de',
+              body: 'ignored',
+              delay: const Duration(milliseconds: 50),
+              consumeOnce: true,
+            )
+            ..queueResponse(host: 'overpass-api.de', body: fixtureBody);
+          final service = OverpassService(
+            client,
+            timeout: const Duration(milliseconds: 5),
+            maxAttemptsPerEndpoint: 2,
+            initialBackoff: const Duration(milliseconds: 1),
+          );
+
+          final result = await service.query('[out:json];node(1);out;');
+
+          expect(result, fixtureJson);
+          expect(client.requests, hasLength(2));
+          expect(
+            client.requests.every((r) => r.url.toString() == _primary),
+            isTrue,
+          );
+        },
+      );
+
+      test(
         'given every endpoint times out, query -> throws a descriptive exception',
         () async {
           final client = FakeHttpClient()
@@ -165,6 +194,32 @@ void main() {
                 allOf(
                   contains('Overpass request failed'),
                   contains('Malformed Overpass JSON'),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+
+      test(
+        'given a response that decodes to a JSON array, query -> throws a descriptive exception',
+        () async {
+          final client = FakeHttpClient()
+            ..queueResponse(host: 'overpass-api.de', body: '[1,2,3]');
+          final service = OverpassService(
+            client,
+            initialBackoff: const Duration(milliseconds: 1),
+          );
+
+          await expectLater(
+            () => service.query('[out:json];node(1);out;'),
+            throwsA(
+              isA<Exception>().having(
+                (e) => e.toString(),
+                'message',
+                allOf(
+                  contains('Overpass request failed'),
+                  contains('Unexpected Overpass response shape'),
                 ),
               ),
             ),
