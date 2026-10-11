@@ -5,6 +5,42 @@ import 'package:latlong2/latlong.dart';
 
 import '../../helpers/fake_location.dart';
 
+/// Stands in for the real platform plugin `Geolocator`'s static methods
+/// delegate to, so [GeolocatorDeviceLocationSource] can be exercised
+/// without a real method channel (which throws outside a running app).
+class _FakeGeolocatorPlatform extends GeolocatorPlatform {
+  _FakeGeolocatorPlatform({
+    this.serviceEnabled = true,
+    this.permission = LocationPermission.whileInUse,
+    this.position,
+  });
+
+  bool serviceEnabled;
+  LocationPermission permission;
+  Position? position;
+
+  int getCurrentPositionCallCount = 0;
+  LocationSettings? lastLocationSettings;
+
+  @override
+  Future<bool> isLocationServiceEnabled() async => serviceEnabled;
+
+  @override
+  Future<LocationPermission> checkPermission() async => permission;
+
+  @override
+  Future<LocationPermission> requestPermission() async => permission;
+
+  @override
+  Future<Position> getCurrentPosition({
+    LocationSettings? locationSettings,
+  }) async {
+    getCurrentPositionCallCount++;
+    lastLocationSettings = locationSettings;
+    return position!;
+  }
+}
+
 void main() {
   group('DeviceLocationService.getCurrentLocation', () {
     test('given location services are enabled and permission already granted, '
@@ -119,6 +155,65 @@ void main() {
 
       expect(result.isSuccess, isFalse);
       expect(result.failure, DeviceLocationFailure.unavailable);
+    });
+  });
+
+  group('GeolocatorDeviceLocationSource', () {
+    test('given the real plugin reports enabled, isLocationServiceEnabled -> '
+        'forwards the value', () async {
+      GeolocatorPlatform.instance = _FakeGeolocatorPlatform(
+        serviceEnabled: true,
+      );
+      final source = GeolocatorDeviceLocationSource();
+
+      expect(await source.isLocationServiceEnabled(), isTrue);
+    });
+
+    test('given the real plugin reports a permission, checkPermission -> '
+        'forwards it', () async {
+      GeolocatorPlatform.instance = _FakeGeolocatorPlatform(
+        permission: LocationPermission.denied,
+      );
+      final source = GeolocatorDeviceLocationSource();
+
+      expect(await source.checkPermission(), LocationPermission.denied);
+    });
+
+    test('given the user grants permission when prompted, requestPermission -> '
+        'forwards the granted value', () async {
+      GeolocatorPlatform.instance = _FakeGeolocatorPlatform(
+        permission: LocationPermission.whileInUse,
+      );
+      final source = GeolocatorDeviceLocationSource();
+
+      expect(await source.requestPermission(), LocationPermission.whileInUse);
+    });
+
+    test('given the plugin resolves a position, getCurrentPosition -> maps it '
+        'to a LatLng and requests low accuracy (issue #254: city-level is '
+        'enough)', () async {
+      final platform = _FakeGeolocatorPlatform(
+        position: Position(
+          latitude: 36.8969,
+          longitude: 30.7133,
+          timestamp: DateTime(2026),
+          accuracy: 1,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+        ),
+      );
+      GeolocatorPlatform.instance = platform;
+      final source = GeolocatorDeviceLocationSource();
+
+      final point = await source.getCurrentPosition();
+
+      expect(point, const LatLng(36.8969, 30.7133));
+      expect(platform.getCurrentPositionCallCount, 1);
+      expect(platform.lastLocationSettings?.accuracy, LocationAccuracy.low);
     });
   });
 }
