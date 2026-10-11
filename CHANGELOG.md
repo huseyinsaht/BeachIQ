@@ -18,6 +18,23 @@ All notable changes to this project are documented here. Format loosely follows
   brace-shaped but invalid JSON response, a feature using none of the known depth key
   names, a feature with empty properties, and a depth value encoded as a numeric
   string (#303)
+- Additional test coverage for every WMO weather code branch in
+  `weatherCodeDescription`, including mainly-clear, overcast, fog, drizzle and
+  freezing-drizzle (#306)
+- Additional test coverage for `OverpassService`'s timeout-then-retry-succeeds path
+  and its handling of a non-object (JSON array) response (#307)
+- Additional test coverage for `ConditionAlertDispatcher`'s `previousLevel` getter
+  (#308)
+- Additional test coverage for `PlaceSearchProvider`'s `isLoading` getter (#309)
+- Additional test coverage for `NotificationService`'s `RealLocalNotificationsPlugin`
+  (#310)
+- Additional test coverage for `DeviceLocationService`'s
+  `GeolocatorDeviceLocationSource` (#311)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up newer transitive dependency versions already
+  allowed by `pubspec.yaml`; no application code changed (#305)
 
 ## [2026.10.11] - 2026-10-09
 
