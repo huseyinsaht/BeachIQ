@@ -30,6 +30,19 @@ All notable changes to this project are documented here. Format loosely follows
   (#310)
 - Additional test coverage for `DeviceLocationService`'s
   `GeolocatorDeviceLocationSource` (#311)
+- Additional test coverage for `ReverseGeocodingService`'s
+  `GeocodingPlacemarkLookup`, exercising the real `geocoding` plugin against a fake
+  platform implementation instead of just the injectable interface (#313)
+- Additional test coverage for `WeatherCondition.daylightWindows` when the daily
+  `sunrise`/`sunset` lists have mismatched lengths, confirming it stops at the
+  shorter list instead of indexing past it (#314)
+- Additional test coverage for `BeachCache.create`'s default parameters and custom
+  ttl/gridSize/now handling, and for a cached entry whose `fee` value matches no
+  known `BeachFee` falling back to `BeachFee.unknown` instead of throwing (#315)
+- Additional test coverage for `scoreSwimSuitability`'s wave height, wind speed and
+  rain chance thresholds at their exact moderate/high boundaries (#316)
+- Additional test coverage for `mapOverpassToBeaches` attaching a `changing_room`
+  amenity and setting `hasChangingRoom` (#317)
 
 ### Changed
 
