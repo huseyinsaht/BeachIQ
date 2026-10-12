@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.12] - 2026-10-12
+
 ### Added
 
 - Additional test coverage for `SearchScreen`'s `didUpdateWidget` provider-listener
