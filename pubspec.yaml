@@ -63,6 +63,12 @@ dev_dependencies:
   # via a scripted http.Client.
   mocktail: ^1.0.4
 
+  # geocoding's own platform interface, to fake GeocodingPlatformFactory in
+  # tests the same way device_location_service_test.dart fakes
+  # GeolocatorPlatform (geocoding depends on this transitively; declared
+  # directly here because the test imports it).
+  geocoding_platform_interface: ^5.0.0
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
