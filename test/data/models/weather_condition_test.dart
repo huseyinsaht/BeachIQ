@@ -247,6 +247,27 @@ void main() {
           DateTime.parse('2024-01-02T06:31'),
         );
       });
+
+      test('given fewer sunrise entries than sunset entries, '
+          'daylightWindows -> stops at the shorter list rather than '
+          'indexing past it', () {
+        final condition = WeatherCondition.fromJson({
+          'daily': {
+            'sunrise': ['2024-01-01T06:30'],
+            'sunset': ['2024-01-01T19:45', '2024-01-02T19:44'],
+          },
+        });
+
+        expect(condition.daylightWindows, hasLength(1));
+        expect(
+          condition.daylightWindows.single.sunrise,
+          DateTime.parse('2024-01-01T06:30'),
+        );
+        expect(
+          condition.daylightWindows.single.sunset,
+          DateTime.parse('2024-01-01T19:45'),
+        );
+      });
     });
 
     group('dailyForecast (issue #273)', () {
