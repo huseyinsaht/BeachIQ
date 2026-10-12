@@ -8,6 +8,7 @@ import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/condition_alert_dispatcher.dart';
 import 'package:beachiq/logic/providers/marine_provider.dart';
 import 'package:beachiq/logic/providers/weather_provider.dart';
+import 'package:beachiq/logic/swim_suitability.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -185,6 +186,48 @@ void main() {
         await poll(_goodSea, _goodWeather);
 
         expect(notificationPlugin.calls, isEmpty);
+      });
+    });
+
+    group('previousLevel', () {
+      test('given no poll has happened yet, previousLevel -> null', () async {
+        final dispatcher = await buildDispatcher();
+
+        expect(dispatcher.previousLevel, isNull);
+      });
+
+      test(
+        'given a poll scored the verdict as good, previousLevel -> good',
+        () async {
+          final dispatcher = await buildDispatcher();
+
+          await poll(_goodSea, _goodWeather);
+
+          expect(dispatcher.previousLevel, SwimSuitabilityLevel.good);
+        },
+      );
+
+      test(
+        'given a poll scored the verdict as poor, previousLevel -> poor',
+        () async {
+          final dispatcher = await buildDispatcher();
+
+          await poll(_poorSea, _poorWeather);
+
+          expect(dispatcher.previousLevel, SwimSuitabilityLevel.poor);
+        },
+      );
+
+      test('given a baseline was established, onLocationChanged -> resets '
+          'previousLevel back to null', () async {
+        final dispatcher = await buildDispatcher();
+
+        await poll(_poorSea, _poorWeather);
+        expect(dispatcher.previousLevel, SwimSuitabilityLevel.poor);
+
+        dispatcher.onLocationChanged('Location B');
+
+        expect(dispatcher.previousLevel, isNull);
       });
     });
 

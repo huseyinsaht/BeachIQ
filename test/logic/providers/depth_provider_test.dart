@@ -154,5 +154,24 @@ void main() {
 
       expect(provider.profile?.samples.first.depthMeters, 2.0);
     });
+
+    test('disposing while a fetch is in flight does not throw once that '
+        'fetch later completes', () async {
+      final client = FakeHttpClient()
+        ..queueJson(
+          host: _host,
+          json: _validDepthFixture(-1.0),
+          delay: const Duration(milliseconds: 20),
+        );
+      final provider = _buildProvider(
+        client,
+        await SharedPreferences.getInstance(),
+      );
+
+      final future = provider.fetchForBeach(_transectableBeach);
+      provider.dispose();
+
+      await expectLater(future, completes);
+    });
   });
 }

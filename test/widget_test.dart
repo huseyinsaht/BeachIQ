@@ -36,6 +36,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'helpers/pump_app.dart';
 
+/// Issue #284: `HomeScreen`'s draggable bottom sheet starts collapsed (just
+/// the place name/temperature/pill/next alert/Sea tiles/hint) — a test that
+/// needs the sheet's *expanded* content (the Current/Air groups, hourly row,
+/// condition row etc., none of which are even laid out while collapsed)
+/// calls this instead of simulating a real drag gesture. Reads the already-
+/// pumped `DraggableScrollableSheet`'s own controller (`HomeScreen` always
+/// supplies one, owned or caller-supplied) rather than requiring every call
+/// site to thread a `sheetController` through its own `HomeScreen(...)`.
+Future<void> expandSheet(WidgetTester tester) async {
+  final sheet = tester.widget<DraggableScrollableSheet>(
+    find.byType(DraggableScrollableSheet),
+  );
+  sheet.controller!.jumpTo(1.0);
+  await tester.pumpAndSettle();
+}
+
 /// A fake [http.Client] that never touches the real network: it answers an
 /// Overpass query with a single fixture beach and a marine-batch request
 /// with fixture wave/temperature data, keyed off the request host.
@@ -478,22 +494,29 @@ void main() {
     WidgetTester tester,
   ) async {
     final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+    final sheetController = DraggableScrollableController();
 
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           tileProvider: _FakeTileProvider(),
           weatherProvider: weatherProvider,
+          sheetController: sheetController,
         ),
       ),
     );
     await tester.pumpAndSettle();
 
     expect(find.byType(Scaffold), findsOneWidget);
-    // The header title (#253) and the map card's own docked location bar
-    // both render the same selected place name.
-    expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+    // Issue #284: the map is now full-screen behind everything, with no
+    // docked location bar of its own — the sheet's own header is the only
+    // place the selected place name renders.
+    expect(find.text('Çeşme, İzmir'), findsOneWidget);
     expect(find.byType(LocationMapCard), findsOneWidget);
+    // Issue #284: the Current/Air groups (6 of the 9 tiles) only exist once
+    // the sheet is expanded; the Sea group's 3 are already visible collapsed.
+    expect(find.byType(StatTile), findsNWidgets(3));
+    await expandSheet(tester);
     expect(find.byType(StatTile), findsNWidgets(9));
     expect(find.byType(HourlyForecastItem), findsWidgets);
     expect(find.text('Now'), findsOneWidget);
@@ -504,6 +527,7 @@ void main() {
     'grid and hourly row to real WeatherProvider values',
     (WidgetTester tester) async {
       final weatherProvider = WeatherProvider(_SucceedingWeatherRepository());
+      final sheetController = DraggableScrollableController();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -514,6 +538,7 @@ void main() {
             // so both entries are on/after "now" and survive the
             // current-hour-onward trim.
             now: () => DateTime(2026, 1, 1, 12, 30),
+            sheetController: sheetController,
           ),
         ),
       );
@@ -522,9 +547,13 @@ void main() {
 
       expect(weatherProvider.currentData, isNotNull);
 
-      // Header: real temperature/condition, replacing the old hardcoded
-      // '27°'/'Partly Cloudy'/'H:29° L:15°'.
+      // Header: real temperature, replacing the old hardcoded '27°'.
       expect(find.text('27°'), findsOneWidget);
+
+      // Issue #284: the condition row (condition text + H/L) and the
+      // Current/Air groups/hourly row only exist once the sheet is
+      // expanded.
+      await expandSheet(tester);
       expect(find.text('Mainly Clear'), findsOneWidget);
       expect(find.text('H:29° L:15°'), findsOneWidget);
 
@@ -554,6 +583,7 @@ void main() {
         await SharedPreferences.getInstance(),
       );
       await unitPreferencesProvider.setUnitSystem(UnitSystem.imperial);
+      final sheetController = DraggableScrollableController();
 
       await tester.pumpWidget(
         MaterialApp(
@@ -562,13 +592,18 @@ void main() {
             weatherProvider: weatherProvider,
             unitPreferencesProvider: unitPreferencesProvider,
             now: () => DateTime(2026, 1, 1, 12, 30),
+            sheetController: sheetController,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      // Header: 27°C -> 81°F; H:29°C/L:15°C -> H:84°F/L:59°F.
+      // Header: 27°C -> 81°F.
       expect(find.text('81°F'), findsOneWidget);
+
+      // Issue #284: the condition row (H/L) and the Current/Air groups/
+      // hourly row only exist once the sheet is expanded.
+      await expandSheet(tester);
       expect(find.text('H:84°F L:59°F'), findsOneWidget);
 
       // Stat grid: 12 km/h -> 7 mph.
@@ -652,6 +687,7 @@ void main() {
         ),
       );
 
+      final sheetController = DraggableScrollableController();
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
@@ -659,10 +695,13 @@ void main() {
             weatherProvider: weatherProvider,
             // 02:30 falls in the 02:00 entry (temperature 2°).
             now: () => DateTime(2026, 1, 1, 2, 30),
+            sheetController: sheetController,
           ),
         ),
       );
       await tester.pumpAndSettle();
+      // Issue #284: the hourly row only exists once the sheet is expanded.
+      await expandSheet(tester);
 
       // Starts at the 02:00 entry ("Now"/2°), not midnight (0°) or 01:00.
       expect(find.text('Now'), findsOneWidget);
@@ -714,6 +753,7 @@ void main() {
         ),
       );
 
+      final sheetController = DraggableScrollableController();
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
@@ -722,10 +762,13 @@ void main() {
             // Deliberately before both entries; the runner's own real
             // clock time must not affect which icon shows for which hour.
             now: () => DateTime(2026, 1, 1, 8),
+            sheetController: sheetController,
           ),
         ),
       );
       await tester.pumpAndSettle();
+      // Issue #284: the hourly row only exists once the sheet is expanded.
+      await expandSheet(tester);
 
       expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
       expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
@@ -737,16 +780,20 @@ void main() {
     final weatherProvider = WeatherProvider(
       _SucceedingWeatherRepository(uvIndex: null),
     );
+    final sheetController = DraggableScrollableController();
 
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           tileProvider: _FakeTileProvider(),
           weatherProvider: weatherProvider,
+          sheetController: sheetController,
         ),
       ),
     );
     await tester.pumpAndSettle();
+    // Issue #284: the UV index tile (Air group) only exists once expanded.
+    await expandSheet(tester);
 
     // Scoped to the UV index tile specifically: with no DepthProvider
     // supplied, the water-depth tile (issue #217) also shows "No data"
@@ -767,13 +814,22 @@ void main() {
     'HomeScreen shows "No data"/"--°" placeholders rather than crashing '
     'when no WeatherProvider is supplied',
     (WidgetTester tester) async {
+      final sheetController = DraggableScrollableController();
       await tester.pumpWidget(
-        MaterialApp(home: HomeScreen(tileProvider: _FakeTileProvider())),
+        MaterialApp(
+          home: HomeScreen(
+            tileProvider: _FakeTileProvider(),
+            sheetController: sheetController,
+          ),
+        ),
       );
       await tester.pump();
 
       expect(find.byType(Scaffold), findsOneWidget);
       expect(find.text('--°'), findsWidgets);
+      // Issue #284: the Current/Air groups only exist once expanded.
+      expect(find.byType(StatTile), findsNWidgets(3));
+      await expandSheet(tester);
       expect(find.byType(StatTile), findsNWidgets(9));
       expect(find.byType(HourlyForecastItem), findsNothing);
     },
@@ -782,12 +838,14 @@ void main() {
   testWidgets('HomeScreen shows "No data" rather than crashing when the '
       'WeatherProvider fetch fails', (WidgetTester tester) async {
     final weatherProvider = WeatherProvider(_FailingWeatherRepository());
+    final sheetController = DraggableScrollableController();
 
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
           tileProvider: _FakeTileProvider(),
           weatherProvider: weatherProvider,
+          sheetController: sheetController,
         ),
       ),
     );
@@ -797,6 +855,8 @@ void main() {
     expect(weatherProvider.error, isNotNull);
     expect(find.byType(Scaffold), findsOneWidget);
     expect(find.text('--°'), findsWidgets);
+    // Issue #284: the Current/Air groups only exist once expanded.
+    await expandSheet(tester);
     expect(find.byType(StatTile), findsNWidgets(9));
   });
 
@@ -907,9 +967,11 @@ void main() {
       await tester.pump();
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
-      // The header title (#253) and the map card's own location bar both
-      // show it.
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      // Issue #284: the map is full-screen with no docked location bar of
+      // its own — the sheet's own header is the only place this renders.
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
+      // Issue #284: the Current/Air groups only exist once expanded.
+      await expandSheet(tester);
       expect(find.byType(StatTile), findsNWidgets(9));
     },
   );
@@ -1046,18 +1108,17 @@ void main() {
       expect(repository.calls, hasLength(1));
       repository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      // The header title (#253) and the map card's own location bar both
-      // show it.
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      // Issue #284: the sheet's own header is the only place this renders.
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
 
-      // A real drag-down gesture over the scroll view, not calling
-      // RefreshIndicator.onRefresh directly, so this also catches the
-      // gesture itself being broken (e.g. by the content being replaced
-      // mid-drag). Anchored on the FIRST 'Çeşme, İzmir' match (the header
-      // title, which comes before the map card's own copy in paint order)
-      // rather than the scroll view itself: the scroll view's render box
-      // spans the whole screen including the map card, and FlutterMap's
-      // own gesture recognizer would otherwise swallow the drag.
+      // A real drag-down gesture over the sheet's own scroll view, not
+      // calling RefreshIndicator.onRefresh directly, so this also catches
+      // the gesture itself being broken (e.g. by the content being replaced
+      // mid-drag). Anchored on the header text (`.first` in case it ever
+      // matched more than once) rather than the scroll view itself: the
+      // scroll view's render box spans the whole sheet including its own
+      // tiles, and a tile's own gesture recognizer could otherwise swallow
+      // the drag.
       await tester.fling(
         find.text('Çeşme, İzmir').first,
         const Offset(0, 300),
@@ -1076,11 +1137,11 @@ void main() {
       // the very gesture that triggered it and reset the scroll position.
       expect(find.byType(RefreshIndicator), findsOneWidget);
       expect(find.byType(SingleChildScrollView), findsOneWidget);
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
 
       repository.calls[1].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
     },
   );
 
@@ -1099,7 +1160,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
     },
   );
 
@@ -1123,9 +1184,8 @@ void main() {
       await tester.pump();
       repository.calls[0].complete(_fakeSeaCondition());
       await tester.pumpAndSettle();
-      // The header title (#253) and the map card's own location bar both
-      // show it.
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      // Issue #284: the sheet's own header is the only place this renders.
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
 
       // A refresh that fails must not replace already-loaded content with
       // the full-screen error shell (which has no RefreshIndicator to
@@ -1138,7 +1198,7 @@ void main() {
       await refreshFuture;
       await tester.pump();
 
-      expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+      expect(find.text('Çeşme, İzmir'), findsOneWidget);
       expect(find.byType(RefreshIndicator), findsOneWidget);
     },
   );
@@ -1253,6 +1313,9 @@ void main() {
 
       expect(find.byType(WindDetailScreen), findsNothing);
 
+      // Issue #284: the wind speed tile (Air group) only exists once
+      // expanded.
+      await expandSheet(tester);
       await tester.ensureVisible(find.text('12 km/h'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('12 km/h'));
@@ -1290,6 +1353,9 @@ void main() {
 
       expect(find.byType(RainChanceDetailScreen), findsNothing);
 
+      // Issue #284: the rain chance tile (Air group) only exists once
+      // expanded.
+      await expandSheet(tester);
       await tester.ensureVisible(find.text('10%'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('10%'));
@@ -1468,6 +1534,8 @@ void main() {
         );
         await tester.pumpAndSettle();
 
+        // Issue #284: the Current group's tiles only exist once expanded.
+        await expandSheet(tester);
         final currentDirectionTile = tester.widget<StatTile>(
           find.widgetWithText(StatTile, 'Current direction'),
         );
@@ -1510,6 +1578,8 @@ void main() {
           seawardBearingDegrees: expectedBearing!,
         );
 
+        // Issue #284: the Current group's tiles only exist once expanded.
+        await expandSheet(tester);
         final currentDirectionTile = tester.widget<StatTile>(
           find.widgetWithText(StatTile, 'Current direction'),
         );
@@ -1565,6 +1635,8 @@ void main() {
           seawardBearingDegrees: expectedBearing!,
         );
 
+        // Issue #284: the Current group's tiles only exist once expanded.
+        await expandSheet(tester);
         final currentDirectionTile = tester.widget<StatTile>(
           find.widgetWithText(StatTile, 'Current direction'),
         );
@@ -1608,13 +1680,11 @@ void main() {
         // default. Marine data is never auto-fetched on the initial load
         // (only an explicit refresh/pick triggers it — see
         // HomeScreen._fetchWeatherAndMarine's call sites), so it starts
-        // empty. The place name shows twice (the header title, #253, and
-        // the map card's own location bar both render the same selected
-        // name).
+        // empty.
         expect(weatherRepository.calls, hasLength(1));
         expect(marineRepository.calls, isEmpty);
         expect(find.text('27°'), findsOneWidget);
-        expect(find.text('Çeşme, İzmir'), findsNWidgets(2));
+        expect(find.text('Çeşme, İzmir'), findsOneWidget);
 
         // Tapping the widget's own center taps the map's visual center
         // (see location_map_card_picker_test.dart): flutter_map's own
@@ -1756,11 +1826,13 @@ void main() {
         await tester.pumpAndSettle();
 
         // Sanity: the old place's values are genuinely on screen first —
-        // the old wave height (a marine-driven stat-grid tile, issue #251)
-        // alongside the hourly row.
+        // the old wave height (a marine-driven stat-grid tile, issue #251).
+        // Issue #284: the sheet stays collapsed here (not expanded) so the
+        // full-screen map underneath is still tappable below — the hourly
+        // row (which needs expanding) is covered separately by
+        // home_screen_test.dart/presentation widget tests, not this flow.
         expect(find.text('27°'), findsOneWidget);
         expect(find.text('0.5 m'), findsOneWidget);
-        expect(find.byType(HourlyForecastItem), findsWidgets);
 
         // Tap the map's own center — flutter_map's lat/lng <-> pixel
         // projection round-trip makes this a genuinely different point
@@ -1778,22 +1850,20 @@ void main() {
         // frame the old place's values must already be gone — the
         // marine-driven tiles fall back to "No data" rather than keeping
         // the old wave height under the new place name (issue #251: the
-        // 3x3 grid itself is never hidden, unlike the hourly row below,
-        // since Water depth/Air tiles are independent of this fetch).
+        // Sea group itself is never hidden, since Water depth is
+        // independent of this fetch).
         expect(find.text('27°'), findsNothing);
         expect(find.text('0.5 m'), findsNothing);
-        expect(find.byType(HourlyForecastItem), findsNothing);
         expect(find.byType(CircularProgressIndicator), findsWidgets);
         // The header/map card itself is NOT torn down into the full-screen
-        // shell: the header title (now the newly tapped point's formatted
-        // coordinates, #253 — no reverse geocoding for a bare map tap, see
-        // #254) and the rest of the chrome stay visible, only the data
-        // sections show loading. The old "Çeşme, İzmir" title is long gone
-        // by this point (the pick updates it synchronously, before either
-        // fetch resolves). Both the header title and the map card's own
-        // location bar now show the same formatted coordinates.
+        // shell: the sheet's own header title (now the newly tapped point's
+        // formatted coordinates, #253 — no reverse geocoding for a bare map
+        // tap, see #254) and the rest of the chrome stay visible, only the
+        // data sections show loading. The old "Çeşme, İzmir" title is long
+        // gone by this point (the pick updates it synchronously, before
+        // either fetch resolves).
         expect(find.text('Çeşme, İzmir'), findsNothing);
-        expect(find.textContaining('°N'), findsNWidgets(2));
+        expect(find.textContaining('°N'), findsOneWidget);
         expect(find.byType(LocationMapCard), findsOneWidget);
 
         // Resolve the new location's fetches.

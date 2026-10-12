@@ -152,6 +152,25 @@ void main() {
       },
     );
 
+    test('isLoading is true only while a search is in flight', () async {
+      final completer = Completer<http.Response>();
+      final client = _FakeClient((request) async => completer.future);
+      final provider = PlaceSearchProvider(
+        GeocodingService(client),
+        debounceDuration: _debounce,
+      );
+
+      expect(provider.isLoading, isFalse);
+
+      provider.search('Cesme');
+      await Future.delayed(_debounce + const Duration(milliseconds: 20));
+      expect(provider.isLoading, isTrue);
+
+      completer.complete(http.Response(_resultsFixture([]), 200));
+      await Future.delayed(_settle);
+      expect(provider.isLoading, isFalse);
+    });
+
     test('an earlier search that resolves after a later one does not '
         'overwrite its result', () async {
       final completerA = Completer<http.Response>();

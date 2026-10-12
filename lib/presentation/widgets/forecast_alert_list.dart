@@ -92,31 +92,37 @@ List<ForecastAlert> sortAlertsBySeverity(List<ForecastAlert> alerts) {
   return sorted;
 }
 
-/// The Home screen's upcoming-forecast-alerts list (issue #169, extended by
-/// #229), per docs/design.md "Home: alert list": sits between the smart
-/// suggestion pill and the stat grid. [nextHourNote] (issue #229), when
-/// non-null, renders first as a visually distinct "Next hour" row — it is
-/// based on the current time rather than daylight, so it can still show
-/// after sunset while [alerts] (already daylight-filtered by the caller)
-/// is empty. Below it, one row per [ForecastAlert] in [alerts] — a type
-/// icon (colored by [ForecastAlert.severity] via [_colorForSeverity]), the
-/// alert's one-line [ForecastAlert.message], and a compact time-window
-/// label underneath, prefixed with a day label when the alert is not on
-/// [now]'s calendar day — sorted most severe first via
-/// [sortAlertsBySeverity].
+/// The upcoming-forecast-alerts list (issue #169, extended by #229), per
+/// docs/design.md "Home: alert list"/"Forecast screen". Issue #289 moved
+/// the full list off Home onto the dedicated Forecast screen — `HomeScreen`
+/// now only ever feeds this widget an empty [alerts] plus its single
+/// [nextHourNote], while `ForecastScreen` feeds it the full, severity-sorted
+/// list and no note — but the widget itself still supports both shapes
+/// rather than forking into two near-duplicates. [nextHourNote] (issue
+/// #229), when non-null, renders first as a visually distinct "Next hour"
+/// row — it is based on the current time rather than daylight, so it can
+/// still show after sunset while [alerts] (already daylight-filtered by the
+/// caller) is empty. Below it, one row per [ForecastAlert] in [alerts] — a
+/// type icon (colored by [ForecastAlert.severity] via [_colorForSeverity]),
+/// the alert's message, and a compact time-window label underneath,
+/// prefixed with a day label when the alert is not on [now]'s calendar day
+/// — sorted most severe first via [sortAlertsBySeverity].
 ///
 /// Renders nothing — `const SizedBox.shrink()`, not a gap-leaving spacer —
-/// when both [alerts] and [nextHourNote] are empty/null, so the Home
-/// screen never shows a dangling blank space when there is nothing to warn
-/// about. `home_screen.dart` mirrors this by only inserting its own
-/// spacing before this widget when there is something to show.
+/// when both [alerts] and [nextHourNote] are empty/null, so neither Home
+/// nor the Forecast screen ever shows a dangling blank space when there is
+/// nothing to warn about. Both callers mirror this by only inserting their
+/// own spacing before this widget when there is something to show.
+///
+/// [wrap] (issue #289) switches every row's message from Home's one-line,
+/// ellipsized treatment (the default, `false`) to full wrapped text with no
+/// line cap — the Forecast screen's "full text, wrapped, no ellipsis"
+/// requirement.
 ///
 /// Pure presentational widget: no network, provider, or clock dependency.
-/// [now] only decides the day-label text; `home_screen.dart` always passes
-/// it (the same `effectiveNow` it feeds `buildForecastAlerts`), and a test
-/// that doesn't care about day labels can simply omit it — a bare time
-/// window is shown instead of falling back to the real system clock. The
-/// caller computes [alerts] and
+/// [now] only decides the day-label text; a caller that doesn't care about
+/// day labels can simply omit it — a bare time window is shown instead of
+/// falling back to the real system clock. The caller computes [alerts] and
 /// [nextHourNote] via `buildForecastAlerts`/`buildNextHourNote` from the
 /// real `WeatherProvider`/`MarineProvider` data, the same pattern
 /// `SeaConditionsRow` and `StatTile` already follow.
@@ -126,11 +132,19 @@ class ForecastAlertList extends StatelessWidget {
     required this.alerts,
     this.nextHourNote,
     this.now,
+    this.wrap = false,
   });
 
   final List<ForecastAlert> alerts;
   final ForecastAlert? nextHourNote;
   final DateTime? now;
+
+  /// Issue #289: the Forecast screen shows every alert's full message,
+  /// wrapped onto as many lines as it needs, instead of Home's one-line
+  /// ellipsized treatment — so both [_ForecastAlertRow] and [_NextHourRow]
+  /// take this flag rather than this file growing a second, near-duplicate
+  /// pair of row widgets. Defaults to `false`, the original Home behavior.
+  final bool wrap;
 
   @override
   Widget build(BuildContext context) {
@@ -145,11 +159,11 @@ class ForecastAlertList extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (note != null) _NextHourRow(alert: note),
+        if (note != null) _NextHourRow(alert: note, wrap: wrap),
         if (note != null && sorted.isNotEmpty) const SizedBox(height: 10),
         for (var i = 0; i < sorted.length; i++) ...[
           if (i > 0) const SizedBox(height: 10),
-          _ForecastAlertRow(alert: sorted[i], now: now),
+          _ForecastAlertRow(alert: sorted[i], now: now, wrap: wrap),
         ],
       ],
     );
@@ -161,10 +175,15 @@ class ForecastAlertList extends StatelessWidget {
 /// `StatTile`/`SwimSuggestionPill`'s own single-line treatment) and its
 /// compact time-window label underneath.
 class _ForecastAlertRow extends StatelessWidget {
-  const _ForecastAlertRow({required this.alert, required this.now});
+  const _ForecastAlertRow({
+    required this.alert,
+    required this.now,
+    required this.wrap,
+  });
 
   final ForecastAlert alert;
   final DateTime? now;
+  final bool wrap;
 
   @override
   Widget build(BuildContext context) {
@@ -186,8 +205,8 @@ class _ForecastAlertRow extends StatelessWidget {
               children: [
                 Text(
                   alert.message,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: wrap ? null : 1,
+                  overflow: wrap ? TextOverflow.clip : TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
                 const SizedBox(height: 2),
@@ -211,9 +230,10 @@ class _ForecastAlertRow extends StatelessWidget {
 /// soft tinted circle rather than bare, so it reads as a different kind of
 /// row at a glance.
 class _NextHourRow extends StatelessWidget {
-  const _NextHourRow({required this.alert});
+  const _NextHourRow({required this.alert, required this.wrap});
 
   final ForecastAlert alert;
+  final bool wrap;
 
   @override
   Widget build(BuildContext context) {
@@ -252,8 +272,8 @@ class _NextHourRow extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   alert.message,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: wrap ? null : 1,
+                  overflow: wrap ? TextOverflow.clip : TextOverflow.ellipsis,
                   style: const TextStyle(color: Colors.white, fontSize: 13),
                 ),
               ],

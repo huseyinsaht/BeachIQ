@@ -17,17 +17,19 @@ String dayLabelFor(DateTime date, {required DateTime now}) {
   return _weekdayLabels[date.weekday - 1];
 }
 
-/// Home screen's "7-14 day outlook" section (issue #273): one row per
-/// forecast day with its weekday label, a swim-verdict icon/color (the
-/// same [paletteForVerdict] mapping the smart suggestion pill uses — good
-/// = green, caution = orange, poor = red-orange, unknown = neutral grey)
-/// and its high/low temperature, already formatted by the caller so this
-/// widget stays unit-agnostic (matching [DailyOutlookEntry] itself, which
-/// carries raw values).
+/// The "7-14 day outlook" section (issue #273): one row per forecast day
+/// with its weekday label, a swim-verdict icon/color (the same
+/// [paletteForVerdict] mapping the smart suggestion pill uses — good =
+/// green, caution = orange, poor = red-orange, unknown = neutral grey) and
+/// its high/low temperature, already formatted by the caller so this widget
+/// stays unit-agnostic (matching [DailyOutlookEntry] itself, which carries
+/// raw values). Issue #289 moved this section off Home onto the dedicated
+/// Forecast screen, full verdict message wrapped rather than ellipsized —
+/// this widget's row has no line cap, so it already renders that way.
 ///
-/// A plain vertical [Column], not its own scroll view — the Home screen's
-/// body is already one [SingleChildScrollView], and nesting an unbounded
-/// scrollable inside it would break layout.
+/// A plain vertical [Column], not its own scroll view — the Forecast
+/// screen's body is already one [SingleChildScrollView], and nesting an
+/// unbounded scrollable inside it would break layout.
 ///
 /// Pure presentational widget — no network, provider or repository
 /// dependency; the caller supplies the already-combined [entries] (see
@@ -108,8 +110,6 @@ class _DailyOutlookRow extends StatelessWidget {
           Expanded(
             child: Text(
               entry.verdict.message,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: const TextStyle(color: _textSecondary, fontSize: 12),
             ),
           ),

@@ -97,6 +97,37 @@ class _PendingNetworkClient extends http.BaseClient {
   }
 }
 
+/// Counts [addListener]/[removeListener] calls so a test can assert
+/// directly on whether `_SearchScreenState`'s `didUpdateWidget` actually
+/// detached from an old provider instance and attached to a new one (and,
+/// just as importantly, never re-subscribes on every rebuild when the
+/// provider instance hasn't changed), rather than inferring it indirectly
+/// from a widget rebuild.
+mixin _ListenerProbe on ChangeNotifier {
+  int addListenerCallCount = 0;
+  int removeListenerCallCount = 0;
+
+  bool get isListenedTo => hasListeners;
+
+  @override
+  void addListener(VoidCallback listener) {
+    addListenerCallCount++;
+    super.addListener(listener);
+  }
+
+  @override
+  void removeListener(VoidCallback listener) {
+    removeListenerCallCount++;
+    super.removeListener(listener);
+  }
+}
+
+class _ProbeFavoritesProvider = FavoritesProvider with _ListenerProbe;
+class _ProbeUnitPreferencesProvider = UnitPreferencesProvider
+    with _ListenerProbe;
+class _ProbeNearbyBeachesProvider = NearbyBeachesProvider with _ListenerProbe;
+class _ProbePlaceSearchProvider = PlaceSearchProvider with _ListenerProbe;
+
 Future<NearbyBeachesProvider> _loadedFixtureProvider(
   WidgetTester tester,
 ) async {
@@ -988,4 +1019,115 @@ void main() {
       );
     },
   );
+
+  group('didUpdateWidget provider swap', () {
+    testWidgets('given every provider is replaced with a new instance, '
+        'didUpdateWidget -> detaches from each old provider and attaches to '
+        'its replacement', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final emptyClient = FakeHttpClient()
+        ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+        ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[])
+        ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]})
+        ..queueJson(host: 'marine-api.open-meteo.com', json: <Object?>[]);
+
+      final favoritesA = _ProbeFavoritesProvider(prefs);
+      final favoritesB = _ProbeFavoritesProvider(prefs);
+      final unitPrefsA = _ProbeUnitPreferencesProvider(prefs);
+      final unitPrefsB = _ProbeUnitPreferencesProvider(prefs);
+      final nearbyA = _ProbeNearbyBeachesProvider(
+        OverpassService(emptyClient),
+        BeachCache(prefs),
+        MarineBatchService(emptyClient),
+      );
+      final nearbyB = _ProbeNearbyBeachesProvider(
+        OverpassService(emptyClient),
+        BeachCache(prefs),
+        MarineBatchService(emptyClient),
+      );
+      final placeA = _ProbePlaceSearchProvider(GeocodingService(emptyClient));
+      final placeB = _ProbePlaceSearchProvider(GeocodingService(emptyClient));
+      addTearDown(() {
+        for (final p in [
+          favoritesA,
+          favoritesB,
+          unitPrefsA,
+          unitPrefsB,
+          nearbyA,
+          nearbyB,
+          placeA,
+          placeB,
+        ]) {
+          p.dispose();
+        }
+      });
+
+      await tester.pumpWidget(
+        wrap(
+          SearchScreen(
+            favoritesProvider: favoritesA,
+            unitPreferencesProvider: unitPrefsA,
+            nearbyBeachesProvider: nearbyA,
+            placeSearchProvider: placeA,
+          ),
+        ),
+      );
+
+      expect(favoritesA.isListenedTo, isTrue);
+      expect(unitPrefsA.isListenedTo, isTrue);
+      expect(nearbyA.isListenedTo, isTrue);
+      expect(placeA.isListenedTo, isTrue);
+      expect(favoritesB.isListenedTo, isFalse);
+      expect(unitPrefsB.isListenedTo, isFalse);
+      expect(nearbyB.isListenedTo, isFalse);
+      expect(placeB.isListenedTo, isFalse);
+
+      await tester.pumpWidget(
+        wrap(
+          SearchScreen(
+            favoritesProvider: favoritesB,
+            unitPreferencesProvider: unitPrefsB,
+            nearbyBeachesProvider: nearbyB,
+            placeSearchProvider: placeB,
+          ),
+        ),
+      );
+
+      expect(favoritesA.isListenedTo, isFalse);
+      expect(unitPrefsA.isListenedTo, isFalse);
+      expect(nearbyA.isListenedTo, isFalse);
+      expect(placeA.isListenedTo, isFalse);
+      expect(favoritesB.isListenedTo, isTrue);
+      expect(unitPrefsB.isListenedTo, isTrue);
+      expect(nearbyB.isListenedTo, isTrue);
+      expect(placeB.isListenedTo, isTrue);
+    });
+
+    testWidgets('given the same provider instance is kept across a rebuild, '
+        'didUpdateWidget -> never re-subscribes (addListener/removeListener '
+        'are each called exactly once, from initState/dispose, not again)', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final favorites = _ProbeFavoritesProvider(prefs);
+      addTearDown(favorites.dispose);
+
+      await tester.pumpWidget(wrap(SearchScreen(favoritesProvider: favorites)));
+      expect(favorites.addListenerCallCount, 1);
+      expect(favorites.removeListenerCallCount, 0);
+
+      // A rebuild with an unchanged `favoritesProvider` instance (only
+      // `isLoading` differs) still runs `didUpdateWidget` — it must not
+      // drop and re-add the listener on every such rebuild.
+      await tester.pumpWidget(
+        wrap(SearchScreen(favoritesProvider: favorites, isLoading: false)),
+      );
+
+      expect(favorites.addListenerCallCount, 1);
+      expect(favorites.removeListenerCallCount, 0);
+      expect(favorites.isListenedTo, isTrue);
+    });
+  });
 }

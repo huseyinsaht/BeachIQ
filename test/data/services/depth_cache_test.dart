@@ -142,6 +142,79 @@ void main() {
     );
   });
 
+  group('DepthCache.create', () {
+    test('given the default parameters, create -> returns a working cache '
+        'backed by the real SharedPreferences singleton', () async {
+      final cache = await DepthCache.create();
+
+      expect(cache.ttl, const Duration(days: 90));
+      expect(cache.gridSize, 0.001);
+
+      var fetchCount = 0;
+      Future<DepthProfile> fetch() async {
+        fetchCount++;
+        return _profile;
+      }
+
+      final first = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+      // A second create() call reaches the same on-disk SharedPreferences
+      // instance, so this still finds the entry the first call wrote.
+      final second = await (await DepthCache.create()).get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+
+      expect(fetchCount, 1);
+      expect(first.available, isTrue);
+      expect(second.available, isTrue);
+    });
+
+    test('given custom ttl/gridSize/now, create -> passes them through to '
+        'the cache', () async {
+      final now = DateTime(2026, 1, 1);
+      final cache = await DepthCache.create(
+        now: () => now,
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      expect(cache.ttl, const Duration(days: 30));
+      expect(cache.gridSize, 0.01);
+
+      var fetchCount = 0;
+      Future<DepthProfile> fetch() async {
+        fetchCount++;
+        return _profile;
+      }
+
+      await cache.get(latitude: 36.90, longitude: 30.65, fetch: fetch);
+      expect(fetchCount, 1);
+
+      // Still within the 30-day ttl: a fresh instance over the same prefs
+      // finds the cached entry without re-fetching.
+      final withinTtl = await DepthCache.create(
+        now: () => now.add(const Duration(days: 29)),
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      await withinTtl.get(latitude: 36.90, longitude: 30.65, fetch: fetch);
+      expect(fetchCount, 1);
+
+      // Past the 30-day ttl: the entry is stale, so it refetches.
+      final pastTtl = await DepthCache.create(
+        now: () => now.add(const Duration(days: 31)),
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      await pastTtl.get(latitude: 36.90, longitude: 30.65, fetch: fetch);
+      expect(fetchCount, 2);
+    });
+  });
+
   group('DepthCache.gridKeyFor (rounding)', () {
     test('given two positions within the same grid cell, gridKeyFor -> '
         'resolves to the same cache key', () async {

@@ -24,6 +24,14 @@ const String depthApproximationCaveat =
     'Approximate (~115 m data). Not a safety guarantee. Waves, currents, '
     'sandbars and sudden drop-offs are not captured.';
 
+/// A shortened form of [depthApproximationCaveat] -- its first two
+/// sentences verbatim, never new wording -- for compact contexts where the
+/// full caveat would crowd out the verdict/distance it sits next to (issue
+/// #257's selected-beach depth summary). [depthApproximationCaveat] itself
+/// stays the one shown in full on the water-depth detail screen.
+const String depthApproximationCaveatShort =
+    'Approximate (~115 m data). Not a safety guarantee.';
+
 /// Shown instead of a (never invented) shallow-start label when
 /// [hasNoShallowZone] is `true`. Never uses the word "safe".
 const String noShallowZoneMessage =
