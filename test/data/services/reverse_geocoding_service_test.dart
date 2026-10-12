@@ -1,10 +1,47 @@
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:geocoding_platform_interface/geocoding_platform_interface.dart'
+    as pi;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../helpers/fake_location.dart';
+
+/// Stands in for the real platform plugin that `Geocoding`'s factory
+/// constructor delegates to, so [GeocodingPlacemarkLookup] can be exercised
+/// without a real method channel (which throws outside a running app),
+/// mirroring `device_location_service_test.dart`'s
+/// `_FakeGeolocatorPlatform` pattern.
+class _FakeGeocodingPlatform extends pi.Geocoding {
+  _FakeGeocodingPlatform({this.result, this.error})
+    : super.implementation(const pi.GeocodingCreationParams());
+
+  List<pi.Placemark>? result;
+  Object? error;
+  final List<(double, double)> calls = [];
+
+  @override
+  Future<List<pi.Placemark>> placemarkFromCoordinates(
+    double latitude,
+    double longitude, {
+    Locale? locale,
+  }) async {
+    calls.add((latitude, longitude));
+    if (error != null) throw error!;
+    return result ?? const [];
+  }
+}
+
+class _FakeGeocodingPlatformFactory extends pi.GeocodingPlatformFactory {
+  _FakeGeocodingPlatformFactory(this._platform);
+
+  final pi.Geocoding _platform;
+
+  @override
+  pi.Geocoding createGeocoding(pi.GeocodingCreationParams params) => _platform;
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -139,6 +176,43 @@ void main() {
 
       expect(second, 'Çeşme, İzmir');
       expect(lookup.calls, hasLength(2));
+    });
+  });
+
+  group('GeocodingPlacemarkLookup', () {
+    test('given the real plugin resolves placemarks, lookup -> forwards the '
+        'coordinates and returns them unchanged', () async {
+      final platform = _FakeGeocodingPlatform(
+        result: const [
+          Placemark(locality: 'Çeşme', administrativeArea: 'İzmir'),
+        ],
+      );
+      pi.GeocodingPlatformFactory.instance = _FakeGeocodingPlatformFactory(
+        platform,
+      );
+      final lookup = GeocodingPlacemarkLookup();
+
+      final result = await lookup.lookup(38.3220, 26.3260);
+
+      expect(result, [
+        const Placemark(locality: 'Çeşme', administrativeArea: 'İzmir'),
+      ]);
+      expect(platform.calls, [(38.3220, 26.3260)]);
+    });
+
+    test('given the real plugin throws, lookup -> propagates the exception '
+        '(the caller, ReverseGeocodingService, is the one that swallows '
+        'it)', () async {
+      final platform = _FakeGeocodingPlatform(error: Exception('IO_ERROR'));
+      pi.GeocodingPlatformFactory.instance = _FakeGeocodingPlatformFactory(
+        platform,
+      );
+      final lookup = GeocodingPlacemarkLookup();
+
+      await expectLater(
+        () => lookup.lookup(38.3220, 26.3260),
+        throwsA(isA<Exception>()),
+      );
     });
   });
 }
