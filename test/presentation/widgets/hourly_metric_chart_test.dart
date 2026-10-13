@@ -164,6 +164,26 @@ void main() {
       expect(painter.valueBands, isEmpty);
     });
 
+    testWidgets(
+      'given a bandColor and a gap in the data, HourlyMetricChart -> paints '
+      'the area under each side of the gap as its own piece without '
+      'throwing',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: somePoints(withNullAt: 2),
+              bandColor: Colors.blue,
+            ),
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        final painter = painterOf(tester);
+        expect(painter.bandColor, Colors.blue);
+      },
+    );
+
     group('axes (issue #212)', () {
       testWidgets('given a valueFormatter and unitLabel, HourlyMetricChart -> '
           'forwards at least 3 nice tick values, each formatted with the '
@@ -405,6 +425,31 @@ void main() {
           expect(find.byType(HourlyMetricChart), findsOneWidget);
         },
       );
+
+      testWidgets('given a very narrow chart with many hourly points, '
+          'HourlyMetricChart -> falls back to the coarsest x-axis step when '
+          'even the sparsest candidate would still crowd the labels', (
+        tester,
+      ) async {
+        final points = [
+          for (var i = 0; i < 240; i++)
+            HourlyChartPoint(
+              time: DateTime(2026, 1, 1).add(Duration(hours: i)),
+              value: 1010.0,
+            ),
+        ];
+
+        await tester.pumpWidget(
+          wrap(SizedBox(width: 100, child: HourlyMetricChart(points: points))),
+        );
+
+        final painter = painterOf(tester);
+        // 240 points at the coarsest 24h step land exactly on indices
+        // 0, 24, 48, ..., 216 -> 10 labels, none of them "Now" since
+        // nowIndex is null here.
+        expect(painter.xAxisLabels, hasLength(10));
+        expect(painter.xAxisLabels.every((l) => l.text != 'Now'), isTrue);
+      });
     });
 
     group('shouldRepaint', () {
