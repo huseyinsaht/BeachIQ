@@ -429,16 +429,31 @@ void main() {
     });
 
     test('given no explicit now, buildForecastAlerts -> defaults to the '
-        'real current time rather than ignoring every hour', () {
+        'real current time, ignoring a crossing already in the past and '
+        'reporting only the one still ahead', () {
       final realNow = DateTime.now();
       final alerts = buildForecastAlerts(
         weather: [
+          // A moderate-threshold crossing entirely in the past: must be
+          // ignored. A wrong-but-early default (e.g. epoch) would instead
+          // treat every one of these hours as "after now" and report it
+          // too, so this is what makes the test fail on a bad default
+          // rather than just a too-late one.
           aWeatherHourly(
-            time: realNow.subtract(const Duration(minutes: 30)),
+            time: realNow.subtract(const Duration(hours: 2)),
             windSpeed: 5,
           ),
           aWeatherHourly(
+            time: realNow.subtract(const Duration(hours: 1)),
+            windSpeed: 30,
+          ),
+          // The only crossing that should be reported.
+          aWeatherHourly(
             time: realNow.add(const Duration(hours: 1)),
+            windSpeed: 5,
+          ),
+          aWeatherHourly(
+            time: realNow.add(const Duration(hours: 2)),
             windSpeed: 30,
           ),
         ],
@@ -446,6 +461,8 @@ void main() {
       );
 
       expect(alerts, hasLength(1));
+      expect(alerts.single.start, realNow.add(const Duration(hours: 1)));
+      expect(alerts.single.end, realNow.add(const Duration(hours: 2)));
       expect(alerts.single.type, ForecastAlertType.wind);
     });
   });
