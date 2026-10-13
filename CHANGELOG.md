@@ -5,6 +5,26 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Additional test coverage for `buildForecastAlerts`/`buildNextHourNote`'s default
+  `now` parameter, confirming both still produce a usable result when the caller
+  omits it instead of relying on an explicit timestamp (#322)
+- Additional test coverage for `LocationMapCard`: the ≥1 km distance label format,
+  an OSM amenity with no `name` tag showing just its kind label, and a place-search
+  result's `admin1`/`country` subtitle line (#323)
+- Additional test coverage for the Compare beaches screen's depth-fetch error
+  handling and its "unknown" shallow-entry steepness fallback, both now showing "No
+  data" instead of hanging or guessing (#324)
+- Additional test coverage for `HourlyMetricChart`'s `bandColor` fill (including a
+  gap splitting the filled area into two pieces) and its narrowest-chart x-axis
+  label-step fallback (#325)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up a newer transitive `archive` dependency
+  version already allowed by `pubspec.yaml`; no application code changed (#321)
+
 ## [2026.10.12] - 2026-10-12
 
 ### Added
