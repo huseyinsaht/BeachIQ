@@ -119,12 +119,14 @@ Future<NearbyBeachesProvider> fakeNearbyBeachesProvider({
 /// instead of calling the network (issue #217), mirroring
 /// [FakeMarineRepository]/[FakeWeatherRepository] above.
 class FakeBathymetryService extends BathymetryService {
-  FakeBathymetryService({this.profile}) : super(FakeHttpClient());
+  FakeBathymetryService({this.profile, this.error}) : super(FakeHttpClient());
 
   final DepthProfile? profile;
+  final Object? error;
 
   @override
   Future<DepthProfile> fetchProfile(Beach beach) async {
+    if (error != null) throw error!;
     return profile ?? const DepthProfile.unavailable();
   }
 }
