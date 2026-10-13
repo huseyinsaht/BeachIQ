@@ -427,6 +427,44 @@ void main() {
 
       expect(alerts, isEmpty);
     });
+
+    test('given no explicit now, buildForecastAlerts -> defaults to the '
+        'real current time, ignoring a crossing already in the past and '
+        'reporting only the one still ahead', () {
+      final realNow = DateTime.now();
+      final alerts = buildForecastAlerts(
+        weather: [
+          // A moderate-threshold crossing entirely in the past: must be
+          // ignored. A wrong-but-early default (e.g. epoch) would instead
+          // treat every one of these hours as "after now" and report it
+          // too, so this is what makes the test fail on a bad default
+          // rather than just a too-late one.
+          aWeatherHourly(
+            time: realNow.subtract(const Duration(hours: 2)),
+            windSpeed: 5,
+          ),
+          aWeatherHourly(
+            time: realNow.subtract(const Duration(hours: 1)),
+            windSpeed: 30,
+          ),
+          // The only crossing that should be reported.
+          aWeatherHourly(
+            time: realNow.add(const Duration(hours: 1)),
+            windSpeed: 5,
+          ),
+          aWeatherHourly(
+            time: realNow.add(const Duration(hours: 2)),
+            windSpeed: 30,
+          ),
+        ],
+        sea: const [],
+      );
+
+      expect(alerts, hasLength(1));
+      expect(alerts.single.start, realNow.add(const Duration(hours: 1)));
+      expect(alerts.single.end, realNow.add(const Duration(hours: 2)));
+      expect(alerts.single.type, ForecastAlertType.wind);
+    });
   });
 
   group('buildForecastAlerts daylight filter (issue #229)', () {
@@ -974,6 +1012,28 @@ void main() {
 
       expect(note, isNotNull);
       expect(note!.message, 'Wind picks up between 23:00 and tomorrow 00:00.');
+    });
+
+    test('given no explicit now, buildNextHourNote -> defaults to the real '
+        'current time rather than ignoring every hour', () {
+      final realNow = DateTime.now();
+      final note = buildNextHourNote(
+        weather: [
+          aWeatherHourly(
+            time: realNow.subtract(const Duration(minutes: 10)),
+            windSpeed: 5,
+          ),
+          aWeatherHourly(
+            time: realNow.add(const Duration(minutes: 50)),
+            windSpeed: 45,
+          ),
+        ],
+        sea: const [],
+      );
+
+      expect(note, isNotNull);
+      expect(note!.start, realNow.subtract(const Duration(minutes: 10)));
+      expect(note.type, ForecastAlertType.wind);
     });
   });
 }
