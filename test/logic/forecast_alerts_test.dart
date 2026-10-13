@@ -1032,7 +1032,8 @@ void main() {
       );
 
       expect(note, isNotNull);
-      expect(note!.type, ForecastAlertType.wind);
+      expect(note!.start, realNow.subtract(const Duration(minutes: 10)));
+      expect(note.type, ForecastAlertType.wind);
     });
   });
 }
