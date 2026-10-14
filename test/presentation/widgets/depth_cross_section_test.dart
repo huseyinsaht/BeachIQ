@@ -258,5 +258,98 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    group('DepthCrossSectionPainter.shouldRepaint', () {
+      // A single shared samples/personSamples list: shouldRepaint
+      // OR-combines several field comparisons, so two painters built from
+      // *different* lists would already report a repaint regardless of the
+      // field under test, defeating these tests' whole point.
+      const sharedSamples = [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+      ];
+      const sharedPersonSamples = [
+        DepthCrossSectionPerson(distanceMeters: 0, depthMeters: 0.3),
+      ];
+      const sharedPlotRect = Rect.fromLTWH(0, 0, 300, 150);
+      const sharedBandColors = DepthCrossSectionBandColors(
+        standUp: Colors.blue,
+        gettingDeep: Colors.orange,
+        overHead: Colors.red,
+      );
+
+      DepthCrossSectionPainter painterWith({
+        List<DepthSample> samples = sharedSamples,
+        List<DepthCrossSectionPerson> personSamples = sharedPersonSamples,
+        double xMax = 400,
+        double yMax = 4,
+        Rect plotRect = sharedPlotRect,
+        DepthCrossSectionBandColors bandColors = sharedBandColors,
+      }) {
+        return DepthCrossSectionPainter(
+          samples: samples,
+          personSamples: personSamples,
+          xMax: xMax,
+          yMax: yMax,
+          plotRect: plotRect,
+          bandColors: bandColors,
+          seabedColor: Colors.brown,
+          personColor: Colors.black,
+          personSubmergedColor: Colors.black54,
+        );
+      }
+
+      test('given identical fields, shouldRepaint -> false', () {
+        expect(painterWith().shouldRepaint(painterWith()), isFalse);
+      });
+
+      test('given different samples, shouldRepaint -> true', () {
+        final a = painterWith(samples: sharedSamples);
+        final b = painterWith(samples: const []);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given different personSamples, shouldRepaint -> true', () {
+        final a = painterWith(personSamples: sharedPersonSamples);
+        final b = painterWith(personSamples: const []);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different xMax, shouldRepaint -> true', () {
+        final a = painterWith(xMax: 400);
+        final b = painterWith(xMax: 500);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different yMax, shouldRepaint -> true', () {
+        final a = painterWith(yMax: 4);
+        final b = painterWith(yMax: 6);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different plotRect, shouldRepaint -> true', () {
+        final a = painterWith(plotRect: sharedPlotRect);
+        final b = painterWith(plotRect: const Rect.fromLTWH(0, 0, 320, 150));
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given different bandColors, shouldRepaint -> true', () {
+        final a = painterWith(bandColors: sharedBandColors);
+        final b = painterWith(
+          bandColors: const DepthCrossSectionBandColors(
+            standUp: Colors.green,
+            gettingDeep: Colors.orange,
+            overHead: Colors.red,
+          ),
+        );
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+    });
   });
 }
