@@ -19,6 +19,17 @@ All notable changes to this project are documented here. Format loosely follows
 - Additional test coverage for `HourlyMetricChart`'s `bandColor` fill (including a
   gap splitting the filled area into two pieces) and its narrowest-chart x-axis
   label-step fallback (#325)
+- Additional test coverage for `DepthProfileChartPainter.shouldRepaint`, exercising
+  every field it compares (samples, axis bounds, line color, thresholds, plot rect,
+  tick lists) one at a time (#327)
+- Additional test coverage for `DepthCrossSectionPainter.shouldRepaint`, exercising
+  every field it compares (samples, person samples, axis bounds, plot rect, band
+  colors) one at a time (#328)
+- Additional test coverage for `buildForecastAlerts`'s clouds rule crossing from
+  clear into showers (WMO weather codes 80-82) (#329)
+- Additional test coverage for `buildNextHourNote`'s two-hour lookback, confirming a
+  gradually rising current is still flagged even when no single hour-to-hour step
+  reaches the rise threshold (#330)
 
 ### Changed
 
