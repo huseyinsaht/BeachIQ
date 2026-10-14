@@ -1050,5 +1050,26 @@ void main() {
       expect(note!.start, realNow.subtract(const Duration(minutes: 10)));
       expect(note.type, ForecastAlertType.wind);
     });
+
+    test('given current speed rising gradually over 2 hours with no single '
+        'hour-to-hour step reaching ${currentRiseThresholdKmh}km/h, '
+        'buildNextHourNote -> a note for it (the two-hour lookback)', () {
+      final note = buildNextHourNote(
+        weather: const [],
+        sea: [
+          aSeaHourly(time: h(7), currentVelocity: 1.0), // two hours back
+          aSeaHourly(time: h(8), currentVelocity: 2.1), // +1.1, under
+          aSeaHourly(time: h(9), currentVelocity: 3.3), // +1.2, under
+          // but hour 9 vs hour 7 (two back) is +2.3, over threshold
+        ],
+        now: DateTime(2024, 1, 1, 8, 30),
+      );
+
+      expect(note, isNotNull);
+      expect(note!.type, ForecastAlertType.current);
+      expect(note.severity, ForecastAlertSeverity.moderate);
+      expect(note.start, h(8));
+      expect(note.end, h(9));
+    });
   });
 }
