@@ -252,6 +252,24 @@ void main() {
         },
       );
 
+      test(
+        'given the weather code moving from clear into showers (80-82), '
+        'buildForecastAlerts -> one clouds alert',
+        () {
+          final alerts = buildForecastAlerts(
+            weather: [
+              aWeatherHourly(time: h(13), weatherCode: 1), // mainly clear
+              aWeatherHourly(time: h(14), weatherCode: 80), // showers
+            ],
+            sea: const [],
+            now: now,
+          );
+
+          expect(alerts, hasLength(1));
+          expect(alerts.single.type, ForecastAlertType.clouds);
+        },
+      );
+
       test('given the weather code stays clear, buildForecastAlerts -> no '
           'clouds alert', () {
         final alerts = buildForecastAlerts(
