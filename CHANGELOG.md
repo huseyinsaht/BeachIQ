@@ -30,11 +30,28 @@ All notable changes to this project are documented here. Format loosely follows
 - Additional test coverage for `buildNextHourNote`'s two-hour lookback, confirming a
   gradually rising current is still flagged even when no single hour-to-hour step
   reaches the rise threshold (#330)
+- Additional test coverage for `HomeScreen`'s hourly row weather-code-to-icon
+  mapping, exercising every WMO code group (partly cloudy, overcast, fog, drizzle/
+  rain, snow, thunderstorm) that previously fell through to the catch-all icon
+  (#333)
+- Additional test coverage for the "Use my location" failure message's generic/
+  `unavailable` branch, confirming the previous location is kept and a short
+  message is shown instead of a raw exception when the platform fails after
+  service/permission checks pass (#334)
+- Additional test coverage for `HomeScreen.didUpdateWidget`'s provider-listener
+  resubscription across `weatherProvider`, `depthProvider` and
+  `unitPreferencesProvider` swaps (#335) and the `nearbyBeachesProvider` swap
+  (#336)
+- Additional test coverage for the floating search field's live results panel:
+  its loading, error and empty states (#337)
 
 ### Changed
 
 - Refreshed `pubspec.lock` to pick up a newer transitive `archive` dependency
   version already allowed by `pubspec.yaml`; no application code changed (#321)
+- Refreshed `pubspec.lock` to pick up newer transitive `archive` and
+  `geolocator_apple` dependency versions already allowed by `pubspec.yaml`; no
+  application code changed (#332)
 
 ## [2026.10.12] - 2026-10-12
 
