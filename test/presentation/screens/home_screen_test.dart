@@ -6,10 +6,13 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
+import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/notification_service.dart';
+import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
@@ -2989,6 +2992,35 @@ void main() {
         expect(newProvider.isListening, isTrue);
       },
     );
+
+    testWidgets('given nearbyBeachesProvider is swapped for a new instance on '
+        'rebuild, the old instance loses its listener and the new one '
+        'gains one', (tester) async {
+      final client = FakeHttpClient();
+      final prefs = await SharedPreferences.getInstance();
+      _SpyNearbyBeachesProvider spy() => _SpyNearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(prefs),
+        MarineBatchService(client),
+      );
+      final oldProvider = spy();
+      final newProvider = spy();
+
+      await pumpApp(tester, HomeScreen(nearbyBeachesProvider: oldProvider));
+      expect(oldProvider.isListening, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(nearbyBeachesProvider: newProvider)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        oldProvider.isListening,
+        isFalse,
+        reason: 'swapped-out provider must not keep a dangling listener',
+      );
+      expect(newProvider.isListening, isTrue);
+    });
   });
 }
 
@@ -3009,6 +3041,16 @@ class _SpyDepthProvider extends DepthProvider {
 
 class _SpyUnitPreferencesProvider extends UnitPreferencesProvider {
   _SpyUnitPreferencesProvider(super.prefs);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyNearbyBeachesProvider extends NearbyBeachesProvider {
+  _SpyNearbyBeachesProvider(
+    super.overpassService,
+    super.beachCache,
+    super.marineBatchService,
+  ) : super(debounceDuration: const Duration(milliseconds: 1));
 
   bool get isListening => hasListeners;
 }
