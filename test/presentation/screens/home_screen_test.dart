@@ -6,6 +6,7 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/notification_service.dart';
@@ -2894,6 +2895,122 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen didUpdateWidget provider listener resubscription', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'given weatherProvider is swapped for a new instance on rebuild, '
+      'the old instance loses its listener and the new one gains one',
+      (tester) async {
+        final oldProvider = _SpyWeatherProvider(
+          FakeWeatherRepository(data: aWeatherCondition(temperature: 20)),
+        );
+        final newProvider = _SpyWeatherProvider(
+          FakeWeatherRepository(data: aWeatherCondition(temperature: 25)),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(weatherProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+
+    testWidgets(
+      'given depthProvider is swapped for a new instance on rebuild, the '
+      'old instance loses its listener and the new one gains one',
+      (tester) async {
+        const profile = DepthProfile(
+          available: true,
+          samples: [DepthSample(distanceMeters: 0, depthMeters: 0.5)],
+        );
+        final prefs = await SharedPreferences.getInstance();
+        final oldProvider = _SpyDepthProvider(
+          FakeBathymetryService(profile: profile),
+          DepthCache(prefs),
+        );
+        final newProvider = _SpyDepthProvider(
+          FakeBathymetryService(profile: profile),
+          DepthCache(prefs),
+        );
+
+        await pumpApp(tester, HomeScreen(depthProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(depthProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+
+    testWidgets(
+      'given unitPreferencesProvider is swapped for a new instance on '
+      'rebuild, the old instance loses its listener and the new one '
+      'gains one',
+      (tester) async {
+        final prefs = await SharedPreferences.getInstance();
+        final oldProvider = _SpyUnitPreferencesProvider(prefs);
+        final newProvider = _SpyUnitPreferencesProvider(prefs);
+
+        await pumpApp(tester, HomeScreen(unitPreferencesProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(unitPreferencesProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+  });
+}
+
+/// Exposes [ChangeNotifier.hasListeners] (protected) for the
+/// didUpdateWidget resubscription tests above, which need to assert
+/// directly on listener attachment rather than inferring it indirectly.
+class _SpyWeatherProvider extends WeatherProvider {
+  _SpyWeatherProvider(super.repository);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyDepthProvider extends DepthProvider {
+  _SpyDepthProvider(super.service, super.cache);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyUnitPreferencesProvider extends UnitPreferencesProvider {
+  _SpyUnitPreferencesProvider(super.prefs);
+
+  bool get isListening => hasListeners;
 }
 
 /// A [WeatherRepository] that answers the first call with 20°C and every
