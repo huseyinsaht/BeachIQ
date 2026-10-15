@@ -2789,6 +2789,79 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen hourly row weather icon mapping', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'each WMO weather-code group picks the matching base icon for its '
+      'hourly row entry: partly cloudy (2), overcast (3), fog (45/48), '
+      'drizzle/rain (51-67, 80-82), snow (71-86) and thunderstorm '
+      '(95/96/99)',
+      (tester) async {
+        final sheetController = DraggableScrollableController();
+        final now = DateTime(2026, 7, 1, 12);
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: now, weatherCode: 2),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 1)),
+                weatherCode: 3,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 2)),
+                weatherCode: 45,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 3)),
+                weatherCode: 61,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 4)),
+                weatherCode: 81,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 5)),
+                weatherCode: 73,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 6)),
+                weatherCode: 95,
+              ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => now,
+            sheetController: sheetController,
+          ),
+        );
+        await expandSheet(tester, sheetController);
+
+        final icons = tester
+            .widgetList<HourlyForecastItem>(find.byType(HourlyForecastItem))
+            .map((item) => item.icon)
+            .toList();
+
+        expect(icons, [
+          Icons.wb_cloudy, // 2: partly cloudy
+          Icons.cloud, // 3: overcast
+          Icons.foggy, // 45: fog
+          Icons.grain, // 61: rain
+          Icons.grain, // 81: rain showers
+          Icons.ac_unit, // 73: snow
+          Icons.thunderstorm, // 95: thunderstorm
+        ]);
+      },
+    );
+  });
 }
 
 /// A [WeatherRepository] that answers the first call with 20°C and every
