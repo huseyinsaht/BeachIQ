@@ -1998,6 +1998,38 @@ void main() {
     );
 
     testWidgets(
+      'given service is enabled and permission is granted but the platform '
+      'fails to produce a position, tapping "Use my location" keeps the '
+      'previous place and shows a short, non-blocking message — never a '
+      'raw exception',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(positionError: Exception('TIMEOUT: no fix')),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+        expect(
+          find.textContaining("Couldn't get your location right now"),
+          findsOneWidget,
+        );
+        expect(find.textContaining('TIMEOUT'), findsNothing);
+      },
+    );
+
+    testWidgets(
       'given a map tap and a reverse geocoder that resolves, the header '
       'upgrades from formatted coordinates to the real city name',
       (tester) async {
