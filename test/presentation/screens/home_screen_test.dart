@@ -2763,6 +2763,115 @@ void main() {
       },
     );
 
+    testWidgets(
+      'given a geocoding request still in flight, the search results panel '
+      'shows a small loading spinner',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+              ],
+            },
+            delay: const Duration(milliseconds: 50),
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.text('Bodrum'), findsNothing);
+
+        await tester.pumpAndSettle();
+        expect(find.text('Bodrum'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given the geocoding service fails, the search results panel shows a '
+      'short error message, never a raw exception',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueResponse(
+            host: 'geocoding-api.open-meteo.com',
+            statusCode: 500,
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(
+          find.text('Could not search for places. Please try again.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Exception'), findsNothing);
+        expect(find.textContaining('500'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given no place matches the query, the search results panel says so '
+      'by name, not just an empty list',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {'results': []},
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'zzzzz');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(find.text('No places match "zzzzz".'), findsOneWidget);
+      },
+    );
+
     testWidgets('given no placeSearchProvider, the floating search field still '
         'renders (no toggle to tap first) but shows no results panel', (
       tester,
