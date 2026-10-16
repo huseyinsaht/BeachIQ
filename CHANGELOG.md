@@ -44,6 +44,19 @@ All notable changes to this project are documented here. Format loosely follows
   (#336)
 - Additional test coverage for the floating search field's live results panel:
   its loading, error and empty states (#337)
+- Additional test coverage for the water-depth stat tile's tap wiring, confirming
+  the live `MarineProvider` wave height and current speed/direction reach
+  `DepthDetailScreen` instead of being left null (#340)
+- Additional test coverage for the selected-beach depth summary's tap wiring,
+  mirroring the same live sea-condition pass-through check for the bottom-sheet
+  variant of the depth tile (#341)
+- Additional test coverage for the UV index stat tile's tap wiring, confirming the
+  live `WeatherProvider` UV index reaches `UvIndexDetailScreen` instead of being
+  left null (#342)
+- Additional test coverage for `HourlyMetricChart`'s `_paintBand` gap handling
+  (band flushing at a null gap, at the series start, and never drawing when every
+  value is null) and `_paintValueBand`'s below-range and open-ended clipping
+  (#343)
 
 ### Changed
 
@@ -52,6 +65,8 @@ All notable changes to this project are documented here. Format loosely follows
 - Refreshed `pubspec.lock` to pick up newer transitive `archive` and
   `geolocator_apple` dependency versions already allowed by `pubspec.yaml`; no
   application code changed (#332)
+- Refreshed `pubspec.lock` to pick up a newer transitive `vm_service` dependency
+  version already allowed by `pubspec.yaml`; no application code changed (#339)
 
 ## [2026.10.12] - 2026-10-12
 
