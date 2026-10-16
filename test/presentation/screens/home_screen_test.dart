@@ -784,6 +784,7 @@ void main() {
       NearbyBeachesProvider provider, {
       DraggableScrollableController? sheetController,
       DepthProvider? depthProvider,
+      MarineProvider? marineProvider,
     }) async {
       final weatherProvider = await aLoadedWeatherProvider(
         aWeatherCondition(temperature: 27),
@@ -793,6 +794,7 @@ void main() {
         HomeScreen(
           nearbyBeachesProvider: provider,
           weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           sheetController: sheetController,
           depthProvider: depthProvider,
         ),
@@ -1007,6 +1009,55 @@ void main() {
 
           expect(find.byType(DepthDetailScreen), findsNothing);
           expect(find.byType(HomeScreen), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'tapping the depth summary opens DepthDetailScreen with the current '
+        "wave height and current speed/direction wired through (never left "
+        'null when live data is available)',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final marineProvider = await aLoadedMarineProvider(
+            SeaCondition(
+              waveHeight: 0.5,
+              currentVelocity: 4.0,
+              currentDirection: 135,
+            ),
+          );
+          final client = fixtureClient();
+          final provider = await fakeNearbyBeachesProvider(client: client);
+          addTearDown(provider.dispose);
+          final sheetController = DraggableScrollableController();
+          await pumpLoadedHome(
+            tester,
+            provider,
+            sheetController: sheetController,
+            depthProvider: depthProvider,
+            marineProvider: marineProvider,
+          );
+
+          await tester.tap(find.byTooltip('More'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Beaches'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Fixture Beach'));
+          await tester.pumpAndSettle();
+          await expandSheet(tester, sheetController);
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          );
+          await tester.pumpAndSettle();
+
+          final screen = tester.widget<DepthDetailScreen>(
+            find.byType(DepthDetailScreen),
+          );
+          expect(screen.currentWaveHeightMeters, 0.5);
+          expect(screen.currentSpeedKmh, 4.0);
+          expect(screen.currentDirectionDegrees, 135);
         },
       );
 
