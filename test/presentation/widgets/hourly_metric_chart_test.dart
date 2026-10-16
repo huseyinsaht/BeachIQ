@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:beachiq/presentation/widgets/hourly_metric_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -492,6 +494,115 @@ void main() {
         final b = painterWith(valueBands: bands);
 
         expect(a.shouldRepaint(b), isFalse);
+      });
+    });
+
+    group('paint with a bandColor', () {
+      // bandColor fills the area under the line and must break into
+      // separate shapes at each null gap, same as the line itself
+      // (_paintBand mirrors the line-drawing loop in _paintLine).
+      HourlyMetricChartPainter painterWith(List<HourlyChartPoint> points) {
+        return HourlyMetricChartPainter(
+          points: points,
+          minValue: 1010,
+          maxValue: 1014,
+          lineColor: Colors.white,
+          bandColor: Colors.white24,
+          thresholds: const [],
+          plotRect: const Rect.fromLTWH(0, 0, 200, 100),
+        );
+      }
+
+      void paintOn(HourlyMetricChartPainter painter) {
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        painter.paint(canvas, const Size(200, 100));
+        recorder.endRecording();
+      }
+
+      test('given a gap in the middle, paint -> closes the band on either '
+          'side of the gap instead of bridging across it', () {
+        final painter = painterWith(somePoints(withNullAt: 2));
+
+        expect(() => paintOn(painter), returnsNormally);
+      });
+
+      test(
+        'given no gaps, paint -> draws a single band under the whole line',
+        () {
+          final painter = painterWith(somePoints());
+
+          expect(() => paintOn(painter), returnsNormally);
+        },
+      );
+
+      test('given every value null, paint -> draws no band at all', () {
+        final painter = painterWith([
+          for (var i = 0; i < 5; i++)
+            HourlyChartPoint(time: DateTime(2026, 1, 1, i), value: null),
+        ]);
+
+        expect(() => paintOn(painter), returnsNormally);
+      });
+
+      test('given a leading gap before the first real value, paint -> starts '
+          'the band at the first non-null point rather than throwing', () {
+        final painter = painterWith(somePoints(withNullAt: 0));
+
+        expect(() => paintOn(painter), returnsNormally);
+      });
+    });
+
+    group('paint with value bands', () {
+      // _paintValueBand is skipped entirely when a band doesn't overlap
+      // the chart's visible [minValue, maxValue] range at all.
+      test('given a band entirely below minValue, paint -> skips it without '
+          'throwing', () {
+        final painter = HourlyMetricChartPainter(
+          points: somePoints(),
+          minValue: 1010,
+          maxValue: 1014,
+          lineColor: Colors.white,
+          bandColor: null,
+          thresholds: const [],
+          valueBands: const [
+            HourlyChartValueBand(min: 0, max: 5, color: Colors.green),
+          ],
+          plotRect: const Rect.fromLTWH(0, 0, 200, 100),
+        );
+
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        expect(
+          () => painter.paint(canvas, const Size(200, 100)),
+          returnsNormally,
+        );
+        recorder.endRecording();
+      });
+
+      test('given a band that overlaps and extends past maxValue (max: null, '
+          '"and above"), paint -> clips it to the visible range without '
+          'throwing', () {
+        final painter = HourlyMetricChartPainter(
+          points: somePoints(),
+          minValue: 1010,
+          maxValue: 1014,
+          lineColor: Colors.white,
+          bandColor: null,
+          thresholds: const [],
+          valueBands: const [
+            HourlyChartValueBand(min: 1012, color: Colors.red),
+          ],
+          plotRect: const Rect.fromLTWH(0, 0, 200, 100),
+        );
+
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder);
+        expect(
+          () => painter.paint(canvas, const Size(200, 100)),
+          returnsNormally,
+        );
+        recorder.endRecording();
       });
     });
   });
