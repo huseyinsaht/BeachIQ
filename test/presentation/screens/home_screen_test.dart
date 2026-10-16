@@ -1490,7 +1490,7 @@ void main() {
       expect(screen.currentUvIndex, 2);
     });
 
-    testWidgets('renders a thin divider between each of the three groups (two'
+    testWidgets('renders a thin divider between each of the three groups (two '
         'dividers total)', (tester) async {
       final sheetController = DraggableScrollableController();
       await pumpApp(
