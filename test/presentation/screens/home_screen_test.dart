@@ -1396,6 +1396,25 @@ void main() {
       ]);
     });
 
+    testWidgets('given loaded marine data, tapping the water-depth tile opens '
+        'DepthDetailScreen with that same wave height and current speed/'
+        'direction wired through (never left null when live data is '
+        'available)', (tester) async {
+      await pumpApp(tester, await loadedHome(tester));
+      await tester.ensureVisible(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<DepthDetailScreen>(
+        find.byType(DepthDetailScreen),
+      );
+      expect(screen.currentWaveHeightMeters, 0.9);
+      expect(screen.currentSpeedKmh, 4.0);
+      expect(screen.currentDirectionDegrees, 135);
+    });
+
     testWidgets('renders a thin divider between each of the three groups (two '
         'dividers total)', (tester) async {
       final sheetController = DraggableScrollableController();
