@@ -31,6 +31,7 @@ import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/forecast_screen.dart';
@@ -1464,6 +1465,29 @@ void main() {
       expect(screen.currentWaveHeightMeters, 0.9);
       expect(screen.currentSpeedKmh, 4.0);
       expect(screen.currentDirectionDegrees, 135);
+    });
+
+    testWidgets('given loaded weather data, tapping the UV index tile opens '
+        'UvIndexDetailScreen with that same current UV index wired through '
+        '(never left null when live data is available)', (tester) async {
+      final sheetController = DraggableScrollableController();
+      await pumpApp(
+        tester,
+        await loadedHome(tester, sheetController: sheetController),
+      );
+      // Issue #284: the Current/Air groups (and so the UV index tile) only
+      // exist once the sheet is expanded.
+      await expandSheet(tester, sheetController);
+      await tester.ensureVisible(find.text('UV index'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('UV index'));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<UvIndexDetailScreen>(
+        find.byType(UvIndexDetailScreen),
+      );
+      expect(screen.currentUvIndex, 2);
     });
 
     testWidgets('renders a thin divider between each of the three groups (two '
