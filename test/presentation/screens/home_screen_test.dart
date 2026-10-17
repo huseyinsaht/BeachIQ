@@ -2004,6 +2004,17 @@ void main() {
     );
 
     testWidgets(
+      'given no deviceLocationService, the floating "my location" map '
+      'button is not rendered either (same optional pattern as the '
+      'overflow menu entry)',
+      (tester) async {
+        await pumpApp(tester, HomeScreen(tileProvider: FakeTileProvider()));
+
+        expect(find.byKey(const Key('home-my-location-button')), findsNothing);
+      },
+    );
+
+    testWidgets(
       'given a deviceLocationService and a reverse geocoder that resolves, '
       'tapping "Use my location" selects the device position and shows '
       'its resolved city name in the header',
@@ -2034,6 +2045,38 @@ void main() {
         expect(find.text('Antalya'), findsAtLeastNWidgets(1));
         expect(find.text('Çeşme, İzmir'), findsNothing);
         expect(find.text('My Location'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a deviceLocationService and a reverse geocoder that resolves, '
+      'tapping the floating "my location" map button (the second, '
+      'always-visible entry point to the same flow) selects the device '
+      'position and shows its resolved city name in the header too',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(position: const LatLng(36.8969, 30.7133)),
+        );
+        final reverseGeocodingService = await aReverseGeocodingService(
+          result: const [
+            Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+          ],
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byKey(const Key('home-my-location-button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Antalya'), findsAtLeastNWidgets(1));
+        expect(find.text('Çeşme, İzmir'), findsNothing);
       },
     );
 
