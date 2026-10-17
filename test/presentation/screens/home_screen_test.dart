@@ -2574,6 +2574,49 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'given both beaches are checked, unchecking one removes it from the '
+      'selection -- the checkbox clears and "Compare" disables again',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        final confirmFinder = find.byKey(const Key('compare-select-confirm'));
+        expect(
+          tester.widget<ElevatedButton>(confirmFinder).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.descendant(
+                  of: find.byKey(const Key('compare-select-Alpha Beach')),
+                  matching: find.byType(Checkbox),
+                ),
+              )
+              .value,
+          isFalse,
+        );
+        expect(tester.widget<ElevatedButton>(confirmFinder).onPressed, isNull);
+      },
+    );
   });
 
   group('HomeScreen map-first layout with draggable bottom sheet (issue '
