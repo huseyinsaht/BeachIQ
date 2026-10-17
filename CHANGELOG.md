@@ -57,6 +57,18 @@ All notable changes to this project are documented here. Format loosely follows
   (band flushing at a null gap, at the series start, and never drawing when every
   value is null) and `_paintValueBand`'s below-range and open-ended clipping
   (#343)
+- Additional test coverage for the compare-selection bottom sheet's uncheck branch,
+  confirming an already-selected beach is actually removed from the comparison set
+  instead of only the checked path being exercised (#345)
+- Additional test coverage for the Home screen's floating "my location" map button
+  (next to the zoom controls), confirming it wires into the same
+  `_handleUseMyLocation` flow as the overflow menu's "Use my location" entry (#346)
+- Additional test coverage for `MetricDetailScaffold`'s optional status chip,
+  covering both the render path when `statusLabel`/`statusColor` are supplied and
+  the assert that requires both or neither to be set (#347)
+- Additional test coverage for a place search result's region/country subtitle row,
+  covering the `admin1`/`country` branch of `HomeScreen`'s search result list
+  (#348)
 
 ### Changed
 
