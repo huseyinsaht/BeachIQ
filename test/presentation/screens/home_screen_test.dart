@@ -2944,6 +2944,48 @@ void main() {
     );
 
     testWidgets(
+      'given a geocoding result with an admin1/country, the search results '
+      'panel shows a "region, country" subtitle under its name',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {
+                  'name': 'Bodrum',
+                  'latitude': 37.03,
+                  'longitude': 27.43,
+                  'admin1': 'Muğla',
+                  'country': 'Turkey',
+                },
+              ],
+            },
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(find.text('Bodrum'), findsOneWidget);
+        expect(find.text('Muğla, Turkey'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'given a geocoding request still in flight, the search results panel '
       'shows a small loading spinner',
       (tester) async {
