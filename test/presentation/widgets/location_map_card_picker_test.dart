@@ -492,6 +492,58 @@ void main() {
     );
 
     testWidgets(
+      'a result with an admin1/country shows them as a subtitle under the '
+      'place name',
+      (tester) async {
+        final provider = await _fakeProvider();
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {
+                  'name': 'Bodrum',
+                  'latitude': 37.03,
+                  'longitude': 27.43,
+                  'admin1': 'Mugla',
+                  'country': 'Turkiye',
+                },
+              ],
+            },
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+                placeSearchProvider: placeSearchProvider,
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await tester.tap(find.byKey(const Key('map-search-toggle')));
+        await tester.pump();
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(find.text('Bodrum'), findsOneWidget);
+        expect(find.text('Mugla, Turkiye'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'given no matching places, typing a query -> shows an empty message',
       (tester) async {
         final provider = await _fakeProvider();

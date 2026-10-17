@@ -335,6 +335,179 @@ void main() {
 
       expect(find.text('Fixture Cafe · Cafe'), findsOneWidget);
     });
+
+    /// A single beach with a single, unnamed amenity — same shape as
+    /// [buildSingleAmenityFixtureProvider] but without a `name` tag, so the
+    /// tapped-marker card's "no OSM name" (kind-label-only) branch is
+    /// exercised instead of its "name · kind" one.
+    NearbyBeachesProvider buildSingleUnnamedAmenityFixtureProvider() {
+      final client = FakeHttpClient();
+      client.queueResponse(
+        host: 'marine-api.open-meteo.com',
+        body: json.encode([
+          {
+            'current': {
+              'wave_height': 0.5,
+              'wave_direction': 90,
+              'wave_period': 4,
+              'sea_surface_temperature': 23.0,
+            },
+          },
+        ]),
+      );
+      client.queueResponse(
+        host: 'overpass-api.de',
+        body: json.encode({
+          'elements': [
+            {
+              'type': 'way',
+              'id': 1,
+              'tags': {'natural': 'beach', 'name': 'Fixture Beach'},
+              'geometry': [
+                {'lat': 38.3220, 'lon': 26.3260},
+                {'lat': 38.3230, 'lon': 26.3260},
+                {'lat': 38.3230, 'lon': 26.3270},
+              ],
+            },
+            {
+              'type': 'node',
+              'id': 2,
+              'lat': 38.32205,
+              'lon': 26.3261,
+              'tags': {'amenity': 'parking'},
+            },
+          ],
+        }),
+      );
+
+      return NearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(_mockPrefs!),
+        MarineBatchService(client),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+    }
+
+    testWidgets('tapping a marker with no OSM name shows just its kind label', (
+      tester,
+    ) async {
+      final provider = buildSingleUnnamedAmenityFixtureProvider();
+      addTearDown(provider.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LocationMapCard(
+              center: center,
+              placeName: 'Cesme, Izmir',
+              tileProvider: _FakeTileProvider(),
+              nearbyBeachesProvider: provider,
+            ),
+          ),
+        ),
+      );
+      provider.pickLocation(center);
+      await tester.pumpAndSettle();
+
+      // The pin's own label and the legend chip already read "Parking"
+      // (it has no OSM name); tapping the marker adds a third "Parking"
+      // text from the selected-amenity card, which would instead read
+      // "<name> · Parking" if the amenity had one.
+      final beforeTap = find.text('Parking').evaluate().length;
+
+      await tester.tap(find.byType(AmenityMarker));
+      await tester.pump();
+
+      expect(find.text('Parking').evaluate().length, beforeTap + 1);
+      expect(find.textContaining('·'), findsNothing);
+    });
+
+    /// A single beach with a single, named amenity about 1.5 km from
+    /// [center] — covers the tapped-marker card's "1 km or farther" (km,
+    /// not metre) distance formatting, not exercised by
+    /// [buildSingleAmenityFixtureProvider] above (whose cafe sits a few
+    /// metres from the picked point).
+    NearbyBeachesProvider buildFarNamedAmenityFixtureProvider() {
+      final client = FakeHttpClient();
+      client.queueResponse(
+        host: 'marine-api.open-meteo.com',
+        body: json.encode([
+          {
+            'current': {
+              'wave_height': 0.5,
+              'wave_direction': 90,
+              'wave_period': 4,
+              'sea_surface_temperature': 23.0,
+            },
+          },
+        ]),
+      );
+      client.queueResponse(
+        host: 'overpass-api.de',
+        body: json.encode({
+          'elements': [
+            {
+              'type': 'way',
+              'id': 1,
+              'tags': {'natural': 'beach', 'name': 'Far Fixture Beach'},
+              'geometry': [
+                {'lat': 38.3350, 'lon': 26.3260},
+                {'lat': 38.3360, 'lon': 26.3260},
+                {'lat': 38.3360, 'lon': 26.3270},
+              ],
+            },
+            {
+              'type': 'node',
+              'id': 2,
+              'lat': 38.3355,
+              'lon': 26.3260,
+              'tags': {'amenity': 'cafe', 'name': 'Fixture Cafe'},
+            },
+          ],
+        }),
+      );
+
+      return NearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(_mockPrefs!),
+        MarineBatchService(client),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+    }
+
+    testWidgets(
+      'tapping a marker 1 km or farther away shows the distance in km',
+      (tester) async {
+        final provider = buildFarNamedAmenityFixtureProvider();
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+              ),
+            ),
+          ),
+        );
+        provider.pickLocation(center);
+        await tester.pumpAndSettle();
+
+        // The camera auto-fits the newly loaded beach's bounds (#214),
+        // which can push a marker 1.5 km away to the edge of (or outside)
+        // the test viewport, so its `onTap` is invoked directly rather than
+        // relying on an on-screen `tester.tap` hit test.
+        final marker = tester.widget<AmenityMarker>(find.byType(AmenityMarker));
+        marker.onTap!();
+        await tester.pump();
+
+        expect(find.text('Fixture Cafe · Cafe'), findsOneWidget);
+        expect(find.textContaining('km'), findsOneWidget);
+      },
+    );
   });
 
   group('beachBoundsToFit (#214)', () {

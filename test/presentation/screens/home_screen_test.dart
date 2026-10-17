@@ -6,9 +6,13 @@ import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/api_service.dart';
+import 'package:beachiq/data/services/beach_cache.dart';
+import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
+import 'package:beachiq/data/services/marine_batch_service.dart';
 import 'package:beachiq/data/services/notification_service.dart';
+import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
@@ -27,6 +31,7 @@ import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
+import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/water_temperature_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.dart';
 import 'package:beachiq/presentation/screens/forecast_screen.dart';
@@ -780,6 +785,7 @@ void main() {
       NearbyBeachesProvider provider, {
       DraggableScrollableController? sheetController,
       DepthProvider? depthProvider,
+      MarineProvider? marineProvider,
     }) async {
       final weatherProvider = await aLoadedWeatherProvider(
         aWeatherCondition(temperature: 27),
@@ -789,6 +795,7 @@ void main() {
         HomeScreen(
           nearbyBeachesProvider: provider,
           weatherProvider: weatherProvider,
+          marineProvider: marineProvider,
           sheetController: sheetController,
           depthProvider: depthProvider,
         ),
@@ -1003,6 +1010,55 @@ void main() {
 
           expect(find.byType(DepthDetailScreen), findsNothing);
           expect(find.byType(HomeScreen), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'tapping the depth summary opens DepthDetailScreen with the current '
+        "wave height and current speed/direction wired through (never left "
+        'null when live data is available)',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final marineProvider = await aLoadedMarineProvider(
+            SeaCondition(
+              waveHeight: 0.5,
+              currentVelocity: 4.0,
+              currentDirection: 135,
+            ),
+          );
+          final client = fixtureClient();
+          final provider = await fakeNearbyBeachesProvider(client: client);
+          addTearDown(provider.dispose);
+          final sheetController = DraggableScrollableController();
+          await pumpLoadedHome(
+            tester,
+            provider,
+            sheetController: sheetController,
+            depthProvider: depthProvider,
+            marineProvider: marineProvider,
+          );
+
+          await tester.tap(find.byTooltip('More'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Beaches'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Fixture Beach'));
+          await tester.pumpAndSettle();
+          await expandSheet(tester, sheetController);
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          );
+          await tester.pumpAndSettle();
+
+          final screen = tester.widget<DepthDetailScreen>(
+            find.byType(DepthDetailScreen),
+          );
+          expect(screen.currentWaveHeightMeters, 0.5);
+          expect(screen.currentSpeedKmh, 4.0);
+          expect(screen.currentDirectionDegrees, 135);
         },
       );
 
@@ -1390,6 +1446,48 @@ void main() {
         'Rain chance',
         'UV index',
       ]);
+    });
+
+    testWidgets('given loaded marine data, tapping the water-depth tile opens '
+        'DepthDetailScreen with that same wave height and current speed/'
+        'direction wired through (never left null when live data is '
+        'available)', (tester) async {
+      await pumpApp(tester, await loadedHome(tester));
+      await tester.ensureVisible(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Water depth'));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<DepthDetailScreen>(
+        find.byType(DepthDetailScreen),
+      );
+      expect(screen.currentWaveHeightMeters, 0.9);
+      expect(screen.currentSpeedKmh, 4.0);
+      expect(screen.currentDirectionDegrees, 135);
+    });
+
+    testWidgets('given loaded weather data, tapping the UV index tile opens '
+        'UvIndexDetailScreen with that same current UV index wired through '
+        '(never left null when live data is available)', (tester) async {
+      final sheetController = DraggableScrollableController();
+      await pumpApp(
+        tester,
+        await loadedHome(tester, sheetController: sheetController),
+      );
+      // Issue #284: the Current/Air groups (and so the UV index tile) only
+      // exist once the sheet is expanded.
+      await expandSheet(tester, sheetController);
+      await tester.ensureVisible(find.text('UV index'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('UV index'));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<UvIndexDetailScreen>(
+        find.byType(UvIndexDetailScreen),
+      );
+      expect(screen.currentUvIndex, 2);
     });
 
     testWidgets('renders a thin divider between each of the three groups (two '
@@ -1906,6 +2004,17 @@ void main() {
     );
 
     testWidgets(
+      'given no deviceLocationService, the floating "my location" map '
+      'button is not rendered either (same optional pattern as the '
+      'overflow menu entry)',
+      (tester) async {
+        await pumpApp(tester, HomeScreen(tileProvider: FakeTileProvider()));
+
+        expect(find.byKey(const Key('home-my-location-button')), findsNothing);
+      },
+    );
+
+    testWidgets(
       'given a deviceLocationService and a reverse geocoder that resolves, '
       'tapping "Use my location" selects the device position and shows '
       'its resolved city name in the header',
@@ -1936,6 +2045,38 @@ void main() {
         expect(find.text('Antalya'), findsAtLeastNWidgets(1));
         expect(find.text('Çeşme, İzmir'), findsNothing);
         expect(find.text('My Location'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given a deviceLocationService and a reverse geocoder that resolves, '
+      'tapping the floating "my location" map button (the second, '
+      'always-visible entry point to the same flow) selects the device '
+      'position and shows its resolved city name in the header too',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(position: const LatLng(36.8969, 30.7133)),
+        );
+        final reverseGeocodingService = await aReverseGeocodingService(
+          result: const [
+            Placemark(locality: 'Antalya', administrativeArea: 'Antalya'),
+          ],
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+            reverseGeocodingService: reverseGeocodingService,
+          ),
+        );
+
+        await tester.tap(find.byKey(const Key('home-my-location-button')));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Antalya'), findsAtLeastNWidgets(1));
+        expect(find.text('Çeşme, İzmir'), findsNothing);
       },
     );
 
@@ -1994,6 +2135,38 @@ void main() {
 
         expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
         expect(find.textContaining('turned off'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given service is enabled and permission is granted but the platform '
+      'fails to produce a position, tapping "Use my location" keeps the '
+      'previous place and shows a short, non-blocking message — never a '
+      'raw exception',
+      (tester) async {
+        final deviceLocationService = DeviceLocationService(
+          FakeDeviceLocationSource(positionError: Exception('TIMEOUT: no fix')),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            deviceLocationService: deviceLocationService,
+          ),
+        );
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Çeşme, İzmir'), findsAtLeastNWidgets(1));
+        expect(
+          find.textContaining("Couldn't get your location right now"),
+          findsOneWidget,
+        );
+        expect(find.textContaining('TIMEOUT'), findsNothing);
       },
     );
 
@@ -2444,6 +2617,49 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'given both beaches are checked, unchecking one removes it from the '
+      'selection -- the checkbox clears and "Compare" disables again',
+      (tester) async {
+        final provider = await fakeNearbyBeachesProvider(
+          client: twoBeachClient(),
+        );
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-Beta Beach')));
+        await tester.pump();
+        final confirmFinder = find.byKey(const Key('compare-select-confirm'));
+        expect(
+          tester.widget<ElevatedButton>(confirmFinder).onPressed,
+          isNotNull,
+        );
+
+        await tester.tap(find.byKey(const Key('compare-select-Alpha Beach')));
+        await tester.pump();
+
+        expect(
+          tester
+              .widget<Checkbox>(
+                find.descendant(
+                  of: find.byKey(const Key('compare-select-Alpha Beach')),
+                  matching: find.byType(Checkbox),
+                ),
+              )
+              .value,
+          isFalse,
+        );
+        expect(tester.widget<ElevatedButton>(confirmFinder).onPressed, isNull);
+      },
+    );
   });
 
   group('HomeScreen map-first layout with draggable bottom sheet (issue '
@@ -2727,6 +2943,157 @@ void main() {
       },
     );
 
+    testWidgets(
+      'given a geocoding result with an admin1/country, the search results '
+      'panel shows a "region, country" subtitle under its name',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {
+                  'name': 'Bodrum',
+                  'latitude': 37.03,
+                  'longitude': 27.43,
+                  'admin1': 'Muğla',
+                  'country': 'Turkey',
+                },
+              ],
+            },
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pump();
+
+        expect(find.text('Bodrum'), findsOneWidget);
+        expect(find.text('Muğla, Turkey'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given a geocoding request still in flight, the search results panel '
+      'shows a small loading spinner',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {
+              'results': [
+                {'name': 'Bodrum', 'latitude': 37.03, 'longitude': 27.43},
+              ],
+            },
+            delay: const Duration(milliseconds: 50),
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.text('Bodrum'), findsNothing);
+
+        await tester.pumpAndSettle();
+        expect(find.text('Bodrum'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given the geocoding service fails, the search results panel shows a '
+      'short error message, never a raw exception',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueResponse(
+            host: 'geocoding-api.open-meteo.com',
+            statusCode: 500,
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'bodrum');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(
+          find.text('Could not search for places. Please try again.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('Exception'), findsNothing);
+        expect(find.textContaining('500'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'given no place matches the query, the search results panel says so '
+      'by name, not just an empty list',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'geocoding-api.open-meteo.com',
+            json: {'results': []},
+          );
+        final placeSearchProvider = PlaceSearchProvider(
+          GeocodingService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(placeSearchProvider.dispose);
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            tileProvider: FakeTileProvider(),
+            placeSearchProvider: placeSearchProvider,
+          ),
+        );
+
+        await tester.enterText(find.byType(TextField), 'zzzzz');
+        await tester.pump(const Duration(milliseconds: 2));
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('home-search-results')), findsOneWidget);
+        expect(find.text('No places match "zzzzz".'), findsOneWidget);
+      },
+    );
+
     testWidgets('given no placeSearchProvider, the floating search field still '
         'renders (no toggle to tap first) but shows no results panel', (
       tester,
@@ -2789,6 +3156,234 @@ void main() {
       },
     );
   });
+
+  group('HomeScreen hourly row weather icon mapping', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'each WMO weather-code group picks the matching base icon for its '
+      'hourly row entry: partly cloudy (2), overcast (3), fog (45/48), '
+      'drizzle/rain (51-67, 80-82), snow (71-86) and thunderstorm '
+      '(95/96/99)',
+      (tester) async {
+        final sheetController = DraggableScrollableController();
+        final now = DateTime(2026, 7, 1, 12);
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              aWeatherHourly(time: now, weatherCode: 2),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 1)),
+                weatherCode: 3,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 2)),
+                weatherCode: 45,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 3)),
+                weatherCode: 61,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 4)),
+                weatherCode: 81,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 5)),
+                weatherCode: 73,
+              ),
+              aWeatherHourly(
+                time: now.add(const Duration(hours: 6)),
+                weatherCode: 95,
+              ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => now,
+            sheetController: sheetController,
+          ),
+        );
+        await expandSheet(tester, sheetController);
+
+        final icons = tester
+            .widgetList<HourlyForecastItem>(find.byType(HourlyForecastItem))
+            .map((item) => item.icon)
+            .toList();
+
+        expect(icons, [
+          Icons.wb_cloudy, // 2: partly cloudy
+          Icons.cloud, // 3: overcast
+          Icons.foggy, // 45: fog
+          Icons.grain, // 61: rain
+          Icons.grain, // 81: rain showers
+          Icons.ac_unit, // 73: snow
+          Icons.thunderstorm, // 95: thunderstorm
+        ]);
+      },
+    );
+  });
+
+  group('HomeScreen didUpdateWidget provider listener resubscription', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'given weatherProvider is swapped for a new instance on rebuild, '
+      'the old instance loses its listener and the new one gains one',
+      (tester) async {
+        final oldProvider = _SpyWeatherProvider(
+          FakeWeatherRepository(data: aWeatherCondition(temperature: 20)),
+        );
+        final newProvider = _SpyWeatherProvider(
+          FakeWeatherRepository(data: aWeatherCondition(temperature: 25)),
+        );
+
+        await pumpApp(tester, HomeScreen(weatherProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(weatherProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+
+    testWidgets(
+      'given depthProvider is swapped for a new instance on rebuild, the '
+      'old instance loses its listener and the new one gains one',
+      (tester) async {
+        const profile = DepthProfile(
+          available: true,
+          samples: [DepthSample(distanceMeters: 0, depthMeters: 0.5)],
+        );
+        final prefs = await SharedPreferences.getInstance();
+        final oldProvider = _SpyDepthProvider(
+          FakeBathymetryService(profile: profile),
+          DepthCache(prefs),
+        );
+        final newProvider = _SpyDepthProvider(
+          FakeBathymetryService(profile: profile),
+          DepthCache(prefs),
+        );
+
+        await pumpApp(tester, HomeScreen(depthProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(depthProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+
+    testWidgets(
+      'given unitPreferencesProvider is swapped for a new instance on '
+      'rebuild, the old instance loses its listener and the new one '
+      'gains one',
+      (tester) async {
+        final prefs = await SharedPreferences.getInstance();
+        final oldProvider = _SpyUnitPreferencesProvider(prefs);
+        final newProvider = _SpyUnitPreferencesProvider(prefs);
+
+        await pumpApp(tester, HomeScreen(unitPreferencesProvider: oldProvider));
+        expect(oldProvider.isListening, isTrue);
+
+        await tester.pumpWidget(
+          MaterialApp(home: HomeScreen(unitPreferencesProvider: newProvider)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          oldProvider.isListening,
+          isFalse,
+          reason: 'swapped-out provider must not keep a dangling listener',
+        );
+        expect(newProvider.isListening, isTrue);
+      },
+    );
+
+    testWidgets('given nearbyBeachesProvider is swapped for a new instance on '
+        'rebuild, the old instance loses its listener and the new one '
+        'gains one', (tester) async {
+      final client = FakeHttpClient();
+      final prefs = await SharedPreferences.getInstance();
+      _SpyNearbyBeachesProvider spy() => _SpyNearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(prefs),
+        MarineBatchService(client),
+      );
+      final oldProvider = spy();
+      final newProvider = spy();
+
+      await pumpApp(tester, HomeScreen(nearbyBeachesProvider: oldProvider));
+      expect(oldProvider.isListening, isTrue);
+
+      await tester.pumpWidget(
+        MaterialApp(home: HomeScreen(nearbyBeachesProvider: newProvider)),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        oldProvider.isListening,
+        isFalse,
+        reason: 'swapped-out provider must not keep a dangling listener',
+      );
+      expect(newProvider.isListening, isTrue);
+    });
+  });
+}
+
+/// Exposes [ChangeNotifier.hasListeners] (protected) for the
+/// didUpdateWidget resubscription tests above, which need to assert
+/// directly on listener attachment rather than inferring it indirectly.
+class _SpyWeatherProvider extends WeatherProvider {
+  _SpyWeatherProvider(super.repository);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyDepthProvider extends DepthProvider {
+  _SpyDepthProvider(super.service, super.cache);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyUnitPreferencesProvider extends UnitPreferencesProvider {
+  _SpyUnitPreferencesProvider(super.prefs);
+
+  bool get isListening => hasListeners;
+}
+
+class _SpyNearbyBeachesProvider extends NearbyBeachesProvider {
+  _SpyNearbyBeachesProvider(
+    super.overpassService,
+    super.beachCache,
+    super.marineBatchService,
+  ) : super(debounceDuration: const Duration(milliseconds: 1));
+
+  bool get isListening => hasListeners;
 }
 
 /// A [WeatherRepository] that answers the first call with 20°C and every

@@ -225,6 +225,33 @@ void main() {
       expect(beaches.single.amenities, isEmpty);
     });
 
+    test('attaches a changing_room amenity and sets hasChangingRoom', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'way',
+            'id': 1,
+            'tags': {'natural': 'beach', 'name': 'Changing Room Beach'},
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+          {
+            'type': 'node',
+            'id': 201,
+            'lat': 10.0001,
+            'lon': 20.0,
+            'tags': {'amenity': 'changing_room'},
+          },
+        ],
+      });
+
+      final beach = beaches.single;
+      expect(beach.hasChangingRoom, isTrue);
+      expect(beach.amenities.single.kind, AmenityKind.changingRoom);
+    });
+
     test(
       'ignores elements without natural=beach or a recognized amenity tag',
       () {
