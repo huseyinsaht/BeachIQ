@@ -1971,6 +1971,64 @@ void main() {
     },
   );
 
+  group('HomeScreen hourly forecast sectional loading placeholder (#213)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets(
+      'given marine data has already arrived but the weather fetch for '
+      'the same location is still in flight, the expanded sheet shows a '
+      'loading spinner in the hourly row\'s place instead of leaving it '
+      'blank or showing stale hourly items',
+      (tester) async {
+        final marineProvider = await aLoadedMarineProvider(aSeaCondition());
+        final readyToResolve = Completer<void>();
+        final weatherProvider = WeatherProvider(
+          _PendingWeatherRepository(
+            readyToResolve.future,
+            aWeatherCondition(
+              hourly: [aWeatherHourly(time: DateTime(2026, 7, 1, 12))],
+            ),
+          ),
+        );
+        final sheetController = DraggableScrollableController();
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => DateTime(2026, 7, 1, 12),
+            sheetController: sheetController,
+          ),
+        );
+        // Not `expandSheet`/`pumpAndSettle`: the spinner this test is
+        // about to assert on animates forever while weatherLoading stays
+        // true, so settling would never return. `jumpTo` itself is not
+        // animated, so one bounded pump is enough to lay the sheet out
+        // at its expanded size.
+        sheetController.jumpTo(1.0);
+        await tester.pump();
+
+        // The fetch started by HomeScreen's own initState is still stuck
+        // on `readyToResolve`, so weatherLoading is true while marine
+        // data is already there — the case this placeholder exists for.
+        expect(weatherProvider.isLoading, isTrue);
+        expect(weatherProvider.currentData, isNull);
+        expect(find.text('Hourly forecast'), findsOneWidget);
+        expect(find.byType(HourlyForecastItem), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        readyToResolve.complete();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        expect(find.byType(HourlyForecastItem), findsOneWidget);
+      },
+    );
+  });
+
   group('HomeScreen device location and reverse geocoding (issue #254)', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
@@ -3400,6 +3458,23 @@ class _TwoStepWeatherRepository extends WeatherRepository {
     return _calls == 1
         ? aWeatherCondition(temperature: 20)
         : aWeatherCondition(temperature: 35);
+  }
+}
+
+/// A [WeatherRepository] whose fetch doesn't resolve until [whenReady]
+/// completes — used to inspect `HomeScreen`'s sectional loading placeholder
+/// for the hourly row while a weather fetch is deliberately kept in flight.
+class _PendingWeatherRepository extends WeatherRepository {
+  _PendingWeatherRepository(this.whenReady, this.data)
+    : super(WeatherApiService());
+
+  final Future<void> whenReady;
+  final WeatherCondition data;
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async {
+    await whenReady;
+    return data;
   }
 }
 
