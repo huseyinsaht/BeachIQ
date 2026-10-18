@@ -69,6 +69,10 @@ All notable changes to this project are documented here. Format loosely follows
 - Additional test coverage for a place search result's region/country subtitle row,
   covering the `admin1`/`country` branch of `HomeScreen`'s search result list
   (#348)
+- Additional test coverage for `HomeScreen`'s hourly forecast row, confirming a
+  loading spinner is shown in its place (instead of a blank or stale row) while
+  marine data has already arrived but the weather fetch for the same location is
+  still in flight (#351)
 
 ### Changed
 
@@ -79,6 +83,9 @@ All notable changes to this project are documented here. Format loosely follows
   application code changed (#332)
 - Refreshed `pubspec.lock` to pick up a newer transitive `vm_service` dependency
   version already allowed by `pubspec.yaml`; no application code changed (#339)
+- Refreshed `pubspec.lock` to pick up newer transitive `shared_preferences_android`/
+  `shared_preferences_foundation` dependency versions already allowed by
+  `pubspec.yaml`; no application code changed (#350)
 
 ## [2026.10.12] - 2026-10-12
 
