@@ -87,6 +87,13 @@ All notable changes to this project are documented here. Format loosely follows
   `shared_preferences_foundation` dependency versions already allowed by
   `pubspec.yaml`; no application code changed (#350)
 
+### Fixed
+
+- Fixed a blank screen on app launch on the web build: the `geocoding` plugin has no
+  web implementation, and constructing it eagerly in `main()` threw synchronously
+  before the first frame. Reverse geocoding is now skipped on web (falling back to
+  the existing formatted-coordinate label), and other platforms are unaffected (#354)
+
 ## [2026.10.12] - 2026-10-12
 
 ### Added

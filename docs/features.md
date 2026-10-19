@@ -36,7 +36,9 @@ screen, with the location's details living in a sheet dragged up from the bottom
   the background to a short place name (e.g. "Çeşme, İzmir") once available, replacing
   the coordinate label shown while that lookup is in flight; a failure (permission
   denied, location services off, or any other device error) keeps the previous
-  location and shows a brief message instead of guessing a position.
+  location and shows a brief message instead of guessing a position. On the web build,
+  reverse geocoding isn't available at all, so a location pick there always shows plain
+  coordinates instead of a resolved place name.
 - The sheet's title is always the selected location's own real place name (not a
   generic "My Location" label) — the exact text a reverse-geocoded pick, a place
   search result, or a picked beach resolved to, or plain coordinates for a bare map
