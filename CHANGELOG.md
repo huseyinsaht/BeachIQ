@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.13] - 2026-10-19
+
 ### Added
 
 - Additional test coverage for `buildForecastAlerts`/`buildNextHourNote`'s default
