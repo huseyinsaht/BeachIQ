@@ -215,4 +215,38 @@ void main() {
       );
     });
   });
+
+  group('buildReverseGeocodingService', () {
+    test('given isWeb is true, build -> returns null without constructing the '
+        'geocoding plugin (it has no web implementation and would crash the '
+        'app before its first frame, per the 2026-10-07 blank-screenshot '
+        'regression)', () async {
+      final result = buildReverseGeocodingService(
+        isWeb: true,
+        prefs: await SharedPreferences.getInstance(),
+      );
+
+      expect(result, isNull);
+    });
+
+    test('given isWeb is false, build -> returns a usable '
+        'ReverseGeocodingService backed by the geocoding plugin', () async {
+      final platform = _FakeGeocodingPlatform(
+        result: const [
+          Placemark(locality: 'Çeşme', administrativeArea: 'İzmir'),
+        ],
+      );
+      pi.GeocodingPlatformFactory.instance = _FakeGeocodingPlatformFactory(
+        platform,
+      );
+
+      final result = buildReverseGeocodingService(
+        isWeb: false,
+        prefs: await SharedPreferences.getInstance(),
+      );
+
+      expect(result, isNotNull);
+      expect(await result!.resolveName(38.3220, 26.3260), 'Çeşme, İzmir');
+    });
+  });
 }

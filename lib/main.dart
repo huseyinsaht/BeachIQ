@@ -17,7 +17,6 @@ import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
-import 'data/services/reverse_geocode_cache.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/providers/condition_alert_dispatcher.dart';
@@ -52,10 +51,7 @@ void main() async {
   final deviceLocationService = DeviceLocationService(
     GeolocatorDeviceLocationSource(),
   );
-  final reverseGeocodingService = ReverseGeocodingService(
-    GeocodingPlacemarkLookup(),
-    ReverseGeocodeCache(prefs),
-  );
+  final reverseGeocodingService = buildReverseGeocodingService(prefs: prefs);
 
   // Built here (rather than left to MarineApp's own default) so the
   // condition-alert dispatcher below can listen to the exact same
