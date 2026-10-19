@@ -131,7 +131,12 @@ is cached yet.
   `ReverseGeocodeCache` (below) so the same area is never looked up twice. Any failure
   (a `PlatformException` — rate limiting, no Google Play Services — an empty result, or
   a placemark with no usable name) resolves to `null`, never a made-up name; `HomeScreen`
-  falls back to `location_map_card.dart`'s `formatCoordinates` in that case.
+  falls back to `location_map_card.dart`'s `formatCoordinates` in that case. The
+  `geocoding` plugin has no web implementation, so the module's top-level
+  `buildReverseGeocodingService({bool isWeb = kIsWeb, required prefs})` factory (used by
+  `main()` instead of calling the constructor directly) returns `null` on web rather than
+  constructing `GeocodingPlacemarkLookup()` there, which would otherwise throw
+  synchronously and crash the app before its first frame.
 - `BathymetryService` (`lib/data/services/bathymetry_service.dart`) — fetches a beach's
   nearshore depth profile (#216) from EMODnet Bathymetry's public WMS `GetFeatureInfo`
   endpoint (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer, no API
@@ -717,8 +722,9 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, a
   `PlaceSearchProvider` (`GeocodingService`), a `DepthProvider` (#217:
   `BathymetryService` + `DepthCache`), a `DeviceLocationService` (#254:
-  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` (#254:
-  `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`); also builds the
+  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` via
+  `buildReverseGeocodingService` (#254: `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`,
+  or `null` on web — #354); also builds the
   `MarineProvider`/`WeatherProvider` instances here (rather than leaving it to
   `MarineApp`'s default) so it can start a `NotificationService` and a
   `ConditionAlertDispatcher` listening to those same instances before `runApp`, then
