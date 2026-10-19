@@ -121,6 +121,58 @@ void main() {
     },
   );
 
+  testWidgets('given a bathymetryService that fails, shows "No data" for '
+      'depth instead of spinning forever', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CompareBeachesScreen(
+          beaches: [beachA],
+          seaConditions: {beachA: aSeaCondition()},
+          weatherRepository: FakeWeatherRepository(
+            data: aWeatherCondition(windSpeed: 10, rainChancePercent: 5),
+          ),
+          bathymetryService: FakeBathymetryService(
+            error: Exception('network down'),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('No data'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'given a depth profile with no reading at the classifier\'s anchor '
+    'distance, shows "No data" for depth instead of a steepness label',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompareBeachesScreen(
+            beaches: [beachA],
+            seaConditions: {beachA: aSeaCondition()},
+            weatherRepository: FakeWeatherRepository(
+              data: aWeatherCondition(windSpeed: 10, rainChancePercent: 5),
+            ),
+            bathymetryService: FakeBathymetryService(
+              profile: const DepthProfile(
+                available: true,
+                samples: [
+                  DepthSample(distanceMeters: 50, depthMeters: 0.5),
+                  DepthSample(distanceMeters: 150, depthMeters: 1.2),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('No data'), findsOneWidget);
+    },
+  );
+
   testWidgets(
     'given no weatherRepository or bathymetryService at all, never shows '
     'a loading spinner and falls straight to "No data" for those rows',

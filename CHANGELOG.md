@@ -7,6 +7,90 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added
 
+- Additional test coverage for `buildForecastAlerts`/`buildNextHourNote`'s default
+  `now` parameter, confirming both still produce a usable result when the caller
+  omits it instead of relying on an explicit timestamp (#322)
+- Additional test coverage for `LocationMapCard`: the ≥1 km distance label format,
+  an OSM amenity with no `name` tag showing just its kind label, and a place-search
+  result's `admin1`/`country` subtitle line (#323)
+- Additional test coverage for the Compare beaches screen's depth-fetch error
+  handling and its "unknown" shallow-entry steepness fallback, both now showing "No
+  data" instead of hanging or guessing (#324)
+- Additional test coverage for `HourlyMetricChart`'s `bandColor` fill (including a
+  gap splitting the filled area into two pieces) and its narrowest-chart x-axis
+  label-step fallback (#325)
+- Additional test coverage for `DepthProfileChartPainter.shouldRepaint`, exercising
+  every field it compares (samples, axis bounds, line color, thresholds, plot rect,
+  tick lists) one at a time (#327)
+- Additional test coverage for `DepthCrossSectionPainter.shouldRepaint`, exercising
+  every field it compares (samples, person samples, axis bounds, plot rect, band
+  colors) one at a time (#328)
+- Additional test coverage for `buildForecastAlerts`'s clouds rule crossing from
+  clear into showers (WMO weather codes 80-82) (#329)
+- Additional test coverage for `buildNextHourNote`'s two-hour lookback, confirming a
+  gradually rising current is still flagged even when no single hour-to-hour step
+  reaches the rise threshold (#330)
+- Additional test coverage for `HomeScreen`'s hourly row weather-code-to-icon
+  mapping, exercising every WMO code group (partly cloudy, overcast, fog, drizzle/
+  rain, snow, thunderstorm) that previously fell through to the catch-all icon
+  (#333)
+- Additional test coverage for the "Use my location" failure message's generic/
+  `unavailable` branch, confirming the previous location is kept and a short
+  message is shown instead of a raw exception when the platform fails after
+  service/permission checks pass (#334)
+- Additional test coverage for `HomeScreen.didUpdateWidget`'s provider-listener
+  resubscription across `weatherProvider`, `depthProvider` and
+  `unitPreferencesProvider` swaps (#335) and the `nearbyBeachesProvider` swap
+  (#336)
+- Additional test coverage for the floating search field's live results panel:
+  its loading, error and empty states (#337)
+- Additional test coverage for the water-depth stat tile's tap wiring, confirming
+  the live `MarineProvider` wave height and current speed/direction reach
+  `DepthDetailScreen` instead of being left null (#340)
+- Additional test coverage for the selected-beach depth summary's tap wiring,
+  mirroring the same live sea-condition pass-through check for the bottom-sheet
+  variant of the depth tile (#341)
+- Additional test coverage for the UV index stat tile's tap wiring, confirming the
+  live `WeatherProvider` UV index reaches `UvIndexDetailScreen` instead of being
+  left null (#342)
+- Additional test coverage for `HourlyMetricChart`'s `_paintBand` gap handling
+  (band flushing at a null gap, at the series start, and never drawing when every
+  value is null) and `_paintValueBand`'s below-range and open-ended clipping
+  (#343)
+- Additional test coverage for the compare-selection bottom sheet's uncheck branch,
+  confirming an already-selected beach is actually removed from the comparison set
+  instead of only the checked path being exercised (#345)
+- Additional test coverage for the Home screen's floating "my location" map button
+  (next to the zoom controls), confirming it wires into the same
+  `_handleUseMyLocation` flow as the overflow menu's "Use my location" entry (#346)
+- Additional test coverage for `MetricDetailScaffold`'s optional status chip,
+  covering both the render path when `statusLabel`/`statusColor` are supplied and
+  the assert that requires both or neither to be set (#347)
+- Additional test coverage for a place search result's region/country subtitle row,
+  covering the `admin1`/`country` branch of `HomeScreen`'s search result list
+  (#348)
+- Additional test coverage for `HomeScreen`'s hourly forecast row, confirming a
+  loading spinner is shown in its place (instead of a blank or stale row) while
+  marine data has already arrived but the weather fetch for the same location is
+  still in flight (#351)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up a newer transitive `archive` dependency
+  version already allowed by `pubspec.yaml`; no application code changed (#321)
+- Refreshed `pubspec.lock` to pick up newer transitive `archive` and
+  `geolocator_apple` dependency versions already allowed by `pubspec.yaml`; no
+  application code changed (#332)
+- Refreshed `pubspec.lock` to pick up a newer transitive `vm_service` dependency
+  version already allowed by `pubspec.yaml`; no application code changed (#339)
+- Refreshed `pubspec.lock` to pick up newer transitive `shared_preferences_android`/
+  `shared_preferences_foundation` dependency versions already allowed by
+  `pubspec.yaml`; no application code changed (#350)
+
+## [2026.10.12] - 2026-10-12
+
+### Added
+
 - Additional test coverage for `SearchScreen`'s `didUpdateWidget` provider-listener
   swap: detaching from a replaced provider instance and attaching to its replacement,
   and never re-subscribing on a rebuild that keeps the same instance (#300)
@@ -30,6 +114,19 @@ All notable changes to this project are documented here. Format loosely follows
   (#310)
 - Additional test coverage for `DeviceLocationService`'s
   `GeolocatorDeviceLocationSource` (#311)
+- Additional test coverage for `ReverseGeocodingService`'s
+  `GeocodingPlacemarkLookup`, exercising the real `geocoding` plugin against a fake
+  platform implementation instead of just the injectable interface (#313)
+- Additional test coverage for `WeatherCondition.daylightWindows` when the daily
+  `sunrise`/`sunset` lists have mismatched lengths, confirming it stops at the
+  shorter list instead of indexing past it (#314)
+- Additional test coverage for `BeachCache.create`'s default parameters and custom
+  ttl/gridSize/now handling, and for a cached entry whose `fee` value matches no
+  known `BeachFee` falling back to `BeachFee.unknown` instead of throwing (#315)
+- Additional test coverage for `scoreSwimSuitability`'s wave height, wind speed and
+  rain chance thresholds at their exact moderate/high boundaries (#316)
+- Additional test coverage for `mapOverpassToBeaches` attaching a `changing_room`
+  amenity and setting `hasChangingRoom` (#317)
 
 ### Changed
 

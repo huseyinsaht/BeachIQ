@@ -224,5 +224,98 @@ void main() {
 
       expect(tester.takeException(), isNull);
     });
+
+    group('DepthProfileChartPainter.shouldRepaint', () {
+      // A single shared samples list: shouldRepaint OR-combines several
+      // field comparisons, so two painters built from *different* samples
+      // lists would already report a repaint regardless of the field under
+      // test, defeating these tests' whole point.
+      const sharedSamples = [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+      ];
+      const sharedThresholds = [
+        DepthChartThreshold(
+          valueMeters: shallowLimitMeters,
+          color: Colors.orange,
+        ),
+      ];
+      const sharedPlotRect = Rect.fromLTWH(0, 0, 300, 150);
+
+      DepthProfileChartPainter painterWith({
+        List<DepthSample> samples = sharedSamples,
+        double xMax = 400,
+        double yMax = 4,
+        Color lineColor = Colors.blue,
+        List<DepthChartThreshold> thresholds = sharedThresholds,
+        Rect plotRect = sharedPlotRect,
+        List<double> xTicks = const [],
+        List<double> yTicks = const [],
+      }) {
+        return DepthProfileChartPainter(
+          samples: samples,
+          xMax: xMax,
+          yMax: yMax,
+          lineColor: lineColor,
+          thresholds: thresholds,
+          plotRect: plotRect,
+          xTicks: xTicks,
+          yTicks: yTicks,
+        );
+      }
+
+      test('given identical fields, shouldRepaint -> false', () {
+        expect(painterWith().shouldRepaint(painterWith()), isFalse);
+      });
+
+      test('given a different xMax, shouldRepaint -> true', () {
+        final a = painterWith(xMax: 400);
+        final b = painterWith(xMax: 500);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different yMax, shouldRepaint -> true', () {
+        final a = painterWith(yMax: 4);
+        final b = painterWith(yMax: 6);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different lineColor, shouldRepaint -> true', () {
+        final a = painterWith(lineColor: Colors.blue);
+        final b = painterWith(lineColor: Colors.red);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given different thresholds, shouldRepaint -> true', () {
+        final a = painterWith(thresholds: sharedThresholds);
+        final b = painterWith(thresholds: const []);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given a different plotRect, shouldRepaint -> true', () {
+        final a = painterWith(plotRect: sharedPlotRect);
+        final b = painterWith(plotRect: const Rect.fromLTWH(0, 0, 320, 150));
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given different xTicks, shouldRepaint -> true', () {
+        final a = painterWith(xTicks: const [0, 200, 400]);
+        final b = painterWith(xTicks: const []);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+
+      test('given different yTicks, shouldRepaint -> true', () {
+        final a = painterWith(yTicks: const [0, 2, 4]);
+        final b = painterWith(yTicks: const []);
+
+        expect(a.shouldRepaint(b), isTrue);
+      });
+    });
   });
 }

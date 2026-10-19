@@ -90,5 +90,53 @@ void main() {
 
       expect(verdict.level, SwimSuitabilityLevel.poor);
     });
+
+    test('boundary moderate wave height counts as caution, not good', () {
+      final verdict = scoreSwimSuitability(waveHeightM: 0.6);
+
+      expect(verdict.level, SwimSuitabilityLevel.caution);
+    });
+
+    test('just below the moderate wave height boundary is still good', () {
+      final verdict = scoreSwimSuitability(waveHeightM: 0.59);
+
+      expect(verdict.level, SwimSuitabilityLevel.good);
+    });
+
+    test('boundary wind speed counts as poor, not caution', () {
+      final verdict = scoreSwimSuitability(windSpeedKmh: 40);
+
+      expect(verdict.level, SwimSuitabilityLevel.poor);
+    });
+
+    test('boundary moderate wind speed counts as caution, not good', () {
+      final verdict = scoreSwimSuitability(windSpeedKmh: 20);
+
+      expect(verdict.level, SwimSuitabilityLevel.caution);
+    });
+
+    test('just below the moderate wind speed boundary is still good', () {
+      final verdict = scoreSwimSuitability(windSpeedKmh: 19.9);
+
+      expect(verdict.level, SwimSuitabilityLevel.good);
+    });
+
+    test('boundary rain chance counts as poor, not caution', () {
+      final verdict = scoreSwimSuitability(rainChancePercent: 70);
+
+      expect(verdict.level, SwimSuitabilityLevel.poor);
+    });
+
+    test('boundary moderate rain chance counts as caution, not good', () {
+      final verdict = scoreSwimSuitability(rainChancePercent: 40);
+
+      expect(verdict.level, SwimSuitabilityLevel.caution);
+    });
+
+    test('just below the moderate rain chance boundary is still good', () {
+      final verdict = scoreSwimSuitability(rainChancePercent: 39);
+
+      expect(verdict.level, SwimSuitabilityLevel.good);
+    });
   });
 }

@@ -263,6 +263,91 @@ void main() {
     });
   });
 
+  group('BeachCache.create', () {
+    test('given the default parameters, create -> returns a working cache '
+        'backed by the real SharedPreferences singleton', () async {
+      final cache = await BeachCache.create();
+
+      expect(cache.ttl, const Duration(days: 7));
+      expect(cache.gridSize, 0.25);
+      expect(cache.fallbackRadiusKm, 100);
+
+      var fetchCount = 0;
+      Future<List<Beach>> fetch() async {
+        fetchCount++;
+        return [_testBeach];
+      }
+
+      final first = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+      // A second create() call reaches the same on-disk SharedPreferences
+      // instance, so this still finds the entry the first call wrote.
+      final second = await (await BeachCache.create()).get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+
+      expect(fetchCount, 1);
+      _expectSameBeaches(first.beaches, [_testBeach]);
+      _expectSameBeaches(second.beaches, [_testBeach]);
+    });
+
+    test('given custom ttl/gridSize/now, create -> passes them through to '
+        'the cache', () async {
+      final now = DateTime(2026, 1, 1);
+      final cache = await BeachCache.create(
+        now: () => now,
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      expect(cache.ttl, const Duration(days: 30));
+      expect(cache.gridSize, 0.01);
+
+      var fetchCount = 0;
+      Future<List<Beach>> fetch() async {
+        fetchCount++;
+        return [_testBeach];
+      }
+
+      await cache.get(latitude: 36.90, longitude: 30.65, fetch: fetch);
+      expect(fetchCount, 1);
+
+      // Still within the 30-day ttl: a fresh instance over the same prefs
+      // finds the cached entry without re-fetching, and reports it fresh.
+      final withinTtl = await BeachCache.create(
+        now: () => now.add(const Duration(days: 29)),
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      final withinTtlResult = await withinTtl.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+      expect(fetchCount, 1);
+      expect(withinTtlResult.isStale, isFalse);
+
+      // Past the 30-day ttl: the same entry is still returned without a
+      // second fetch (stale-while-revalidate), but flagged as stale.
+      final pastTtl = await BeachCache.create(
+        now: () => now.add(const Duration(days: 31)),
+        ttl: const Duration(days: 30),
+        gridSize: 0.01,
+      );
+      final pastTtlResult = await pastTtl.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: fetch,
+      );
+      expect(fetchCount, 1);
+      expect(pastTtlResult.isStale, isTrue);
+    });
+  });
+
   group('BeachCache JSON round-trip', () {
     test('every Beach field survives a cache write then read, not just '
         'name/city/lat/lon', () async {
@@ -343,6 +428,50 @@ void main() {
 
       expect(result.beaches.single.name, 'Old Schema Plajı');
       expect(result.beaches.single.amenities, isEmpty);
+    });
+
+    test('a cache entry whose fee value matches no known BeachFee falls '
+        'back to BeachFee.unknown instead of throwing', () async {
+      final sharedPrefs = await prefs();
+      final cache = BeachCache(sharedPrefs);
+      final key = cache.gridKeyFor(36.90, 30.65);
+
+      // Simulates a fee value from a since-removed/renamed enum constant,
+      // which no longer matches any BeachFee.values entry.
+      await sharedPrefs.setString(
+        key,
+        json.encode({
+          'fetchedAt': DateTime.now().toIso8601String(),
+          'beaches': [
+            {
+              'name': 'Stale Enum Plajı',
+              'city': 'Test City',
+              'latitude': 36.90,
+              'longitude': 30.65,
+              'surface': null,
+              'hasLifeguard': null,
+              'fee': 'donation',
+              'hasShower': false,
+              'hasToilets': false,
+              'hasChangingRoom': false,
+              'hasParking': false,
+              'hasCafe': false,
+              'hasBeachResort': false,
+              'geometry': null,
+            },
+          ],
+        }),
+      );
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async =>
+            fail('fetch should not be called; this entry is not stale'),
+      );
+
+      expect(result.beaches.single.name, 'Stale Enum Plajı');
+      expect(result.beaches.single.fee, BeachFee.unknown);
     });
   });
 }

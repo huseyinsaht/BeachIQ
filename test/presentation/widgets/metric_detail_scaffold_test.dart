@@ -7,6 +7,8 @@ void main() {
     String title = 'Pressure',
     String heroValue = '1013',
     String? heroUnit = 'hPa',
+    String? statusLabel,
+    Color? statusColor,
     String? trendText,
     Widget chart = const SizedBox(key: Key('test-chart'), height: 10),
     String minValueLabel = '1005 hPa',
@@ -18,6 +20,8 @@ void main() {
       title: title,
       heroValue: heroValue,
       heroUnit: heroUnit,
+      statusLabel: statusLabel,
+      statusColor: statusColor,
       trendText: trendText,
       chart: chart,
       minValueLabel: minValueLabel,
@@ -31,6 +35,8 @@ void main() {
     String title = 'Pressure',
     String heroValue = '1013',
     String? heroUnit = 'hPa',
+    String? statusLabel,
+    Color? statusColor,
     String? trendText,
     Widget chart = const SizedBox(key: Key('test-chart'), height: 10),
     String minValueLabel = '1005 hPa',
@@ -43,6 +49,8 @@ void main() {
         title: title,
         heroValue: heroValue,
         heroUnit: heroUnit,
+        statusLabel: statusLabel,
+        statusColor: statusColor,
         trendText: trendText,
         chart: chart,
         minValueLabel: minValueLabel,
@@ -95,6 +103,57 @@ void main() {
       );
 
       expect(find.text('Rising — clearer weather likely.'), findsOneWidget);
+    });
+
+    group('status', () {
+      testWidgets(
+        'given a statusLabel and statusColor, renders a colored status chip',
+        (tester) async {
+          const statusColor = Color(0xFFEF5350);
+
+          await tester.pumpWidget(
+            buildScaffold(statusLabel: 'High', statusColor: statusColor),
+          );
+
+          final statusText = tester.widget<Text>(find.text('High'));
+          expect(statusText.style!.color, statusColor);
+        },
+      );
+
+      testWidgets(
+        'given no statusLabel, renders no status chip and does not crash',
+        (tester) async {
+          await tester.pumpWidget(buildScaffold());
+
+          expect(tester.takeException(), isNull);
+          // The only dot/circle-shaped Container in the tree would belong
+          // to a status chip, so none should be present.
+          final containers = tester.widgetList<Container>(
+            find.byType(Container),
+          );
+          for (final container in containers) {
+            final decoration = container.decoration;
+            expect(
+              decoration is BoxDecoration &&
+                  decoration.shape == BoxShape.circle,
+              isFalse,
+            );
+          }
+        },
+      );
+
+      test('given statusLabel without statusColor, asserts rather than '
+          'rendering an uncolored chip', () {
+        expect(() => scaffold(statusLabel: 'High'), throwsAssertionError);
+      });
+
+      test('given statusColor without statusLabel, asserts rather than '
+          'rendering a colorless chip', () {
+        expect(
+          () => scaffold(statusColor: const Color(0xFFEF5350)),
+          throwsAssertionError,
+        );
+      });
     });
 
     testWidgets('a back button pops the route back to the previous screen', (
