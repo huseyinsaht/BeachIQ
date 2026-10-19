@@ -53,6 +53,7 @@ jobs:
           cd /tmp/shot && node screenshot.mjs http://localhost:8080 /tmp/shot/shot.png
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: app-screenshot
           path: /tmp/shot/shot.png
