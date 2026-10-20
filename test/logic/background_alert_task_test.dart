@@ -13,9 +13,16 @@ import 'package:beachiq/logic/providers/weather_provider.dart';
 import 'package:beachiq/logic/swim_suitability.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:workmanager/workmanager.dart';
 
 import '../helpers/builders.dart';
+
+/// A mocked [Workmanager], so [WorkmanagerBackgroundScheduler] can be
+/// exercised without a real platform channel (see mocktail's docs on
+/// mocking a concrete class).
+class _MockWorkmanager extends Mock implements Workmanager {}
 
 /// A [MarineRepository] whose [getMarineData] result (or thrown error) is
 /// scripted per test, and which records whether it was ever called — so a
@@ -475,6 +482,12 @@ void main() {
         isA<NoopBackgroundScheduler>(),
       );
     });
+
+    test('given isAndroid omitted, -> falls back to the real platform '
+        'check instead of throwing (a NoopBackgroundScheduler here, since '
+        'the test VM is not Android)', () {
+      expect(buildBackgroundScheduler(), isA<NoopBackgroundScheduler>());
+    });
   });
 
   group('NoopBackgroundScheduler', () {
@@ -484,6 +497,77 @@ void main() {
 
       await expectLater(scheduler.registerPeriodic(), completes);
       await expectLater(scheduler.cancel(), completes);
+    });
+  });
+
+  group('WorkmanagerBackgroundScheduler', () {
+    late _MockWorkmanager workmanager;
+
+    setUp(() {
+      workmanager = _MockWorkmanager();
+      when(() => workmanager.initialize(any())).thenAnswer((_) async {});
+      when(
+        () => workmanager.registerPeriodicTask(
+          any(),
+          any(),
+          frequency: any(named: 'frequency'),
+          existingWorkPolicy: any(named: 'existingWorkPolicy'),
+        ),
+      ).thenAnswer((_) async {});
+      when(
+        () => workmanager.cancelByUniqueName(any()),
+      ).thenAnswer((_) async {});
+    });
+
+    test('given a fresh scheduler, registerPeriodic -> initializes the '
+        'plugin then registers the periodic task with this check\'s '
+        'identifiers', () async {
+      final scheduler = WorkmanagerBackgroundScheduler(workmanager);
+
+      await scheduler.registerPeriodic();
+
+      verify(
+        () => workmanager.initialize(backgroundAlertCallbackDispatcher),
+      ).called(1);
+      verify(
+        () => workmanager.registerPeriodicTask(
+          backgroundAlertTaskUniqueName,
+          backgroundAlertTaskName,
+          frequency: backgroundAlertCheckFrequency,
+          existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+        ),
+      ).called(1);
+    });
+
+    test('given registerPeriodic called twice, the scheduler -> '
+        'initializes the plugin only once but re-registers the task both '
+        'times', () async {
+      final scheduler = WorkmanagerBackgroundScheduler(workmanager);
+
+      await scheduler.registerPeriodic();
+      await scheduler.registerPeriodic();
+
+      verify(
+        () => workmanager.initialize(backgroundAlertCallbackDispatcher),
+      ).called(1);
+      verify(
+        () => workmanager.registerPeriodicTask(
+          backgroundAlertTaskUniqueName,
+          backgroundAlertTaskName,
+          frequency: backgroundAlertCheckFrequency,
+          existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
+        ),
+      ).called(2);
+    });
+
+    test('cancel -> cancels this check\'s task by its unique name', () async {
+      final scheduler = WorkmanagerBackgroundScheduler(workmanager);
+
+      await scheduler.cancel();
+
+      verify(
+        () => workmanager.cancelByUniqueName(backgroundAlertTaskUniqueName),
+      ).called(1);
     });
   });
 }
