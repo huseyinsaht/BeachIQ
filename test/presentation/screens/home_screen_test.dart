@@ -5,6 +5,7 @@ import 'package:beachiq/data/models/sea_condition.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/marine_repository.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
+import 'package:beachiq/data/selected_location_prefs_keys.dart';
 import 'package:beachiq/data/services/api_service.dart';
 import 'package:beachiq/data/services/beach_cache.dart';
 import 'package:beachiq/data/services/depth_cache.dart';
@@ -1744,6 +1745,20 @@ void main() {
         expect(find.text('38.3220°N, 26.3260°E'), findsOneWidget);
       },
     );
+
+    testWidgets('given a persisted location with no saved display name (e.g. '
+        'restored from an older app version that only saved lat/lon), '
+        'build -> the header falls back to the formatted coordinates as '
+        'the place name', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.1234,
+        selectedLocationLonPrefsKey: 26.5678,
+      });
+
+      await pumpApp(tester, const HomeScreen());
+
+      expect(find.text('38.1234°N, 26.5678°E'), findsAtLeastNWidgets(1));
+    });
 
     testWidgets('given a beach picked from Search results, the header title '
         'becomes the beach name — never "My Location" — with its own '
