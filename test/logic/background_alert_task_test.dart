@@ -71,19 +71,25 @@ class _RecordingPlugin implements LocalNotificationsPlugin {
 }
 
 /// A [BackgroundScheduler] that records every call instead of touching a
-/// real Workmanager platform channel.
+/// real Workmanager platform channel, and can be scripted to throw (e.g. a
+/// simulated plugin/platform-channel failure).
 class _RecordingScheduler implements BackgroundScheduler {
   int registerCount = 0;
   int cancelCount = 0;
+  Object? error;
 
   @override
   Future<void> registerPeriodic() async {
     registerCount++;
+    final err = error;
+    if (err != null) throw err;
   }
 
   @override
   Future<void> cancel() async {
     cancelCount++;
+    final err = error;
+    if (err != null) throw err;
   }
 }
 
@@ -206,6 +212,96 @@ void main() {
         );
       },
     );
+
+    test('given a weather fetch failure (marine succeeds), '
+        'runBackgroundAlertCheck -> does not throw and does not show a '
+        'notification', () async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.32,
+        selectedLocationLonPrefsKey: 26.32,
+        conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      weatherRepository.error = Exception('network error');
+
+      await expectLater(runCheck(prefs), completes);
+
+      expect(notificationPlugin.calls, isEmpty);
+      expect(
+        prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+        SwimSuitabilityLevel.poor.name,
+      );
+    });
+
+    test('given no persisted baseline (first-ever run), '
+        'runBackgroundAlertCheck -> shows no notification but persists a '
+        'baseline for the next run', () async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.32,
+        selectedLocationLonPrefsKey: 26.32,
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      await runCheck(prefs);
+
+      expect(notificationPlugin.calls, isEmpty);
+      expect(
+        prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+        SwimSuitabilityLevel.good.name,
+      );
+    });
+
+    test('given a malformed/unknown persisted level string, '
+        'runBackgroundAlertCheck -> treats it as no baseline (no notification) '
+        'and overwrites it with a valid one', () async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.32,
+        selectedLocationLonPrefsKey: 26.32,
+        conditionAlertPreviousVerdictPrefsKey: 'not_a_real_level',
+      });
+      final prefs = await SharedPreferences.getInstance();
+
+      await runCheck(prefs);
+
+      expect(notificationPlugin.calls, isEmpty);
+      expect(
+        prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+        SwimSuitabilityLevel.good.name,
+      );
+    });
+
+    test(
+      'given a null waveHeight and a null rainChancePercent from the '
+      'repositories (only windSpeed available), runBackgroundAlertCheck -> '
+      'still scores a verdict from windSpeed alone and persists it',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          selectedLocationLatPrefsKey: 38.32,
+          selectedLocationLonPrefsKey: 26.32,
+          conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        // SeaCondition.waveHeight and WeatherCondition.rainChancePercent are
+        // both nullable (unlike windSpeed, which the model declares
+        // non-nullable); nulling them out exercises
+        // scoreSwimSuitability's "independently missing inputs are simply
+        // skipped" behavior from this call site, with windSpeed as the only
+        // available signal.
+        marineRepository.data = aSeaCondition(waveHeight: null);
+        weatherRepository.data = aWeatherCondition(
+          windSpeed: 10,
+          rainChancePercent: null,
+        );
+
+        await expectLater(runCheck(prefs), completes);
+
+        expect(notificationPlugin.calls, hasLength(1));
+        expect(
+          prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+          SwimSuitabilityLevel.good.name,
+        );
+      },
+    );
   });
 
   group('SchedulingConditionAlertDispatcher', () {
@@ -291,6 +387,49 @@ void main() {
       await dispatcher.setAlertsEnabled(true);
 
       expect(scheduler.registerCount, 1);
+    });
+
+    test('given the scheduler throws on construction (a simulated '
+        'Workmanager plugin/platform-channel failure), constructing it -> '
+        'does not throw', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final scheduler = _RecordingScheduler()..error = Exception('boom');
+
+      SchedulingConditionAlertDispatcher(
+        weatherProvider: weatherProvider,
+        marineProvider: marineProvider,
+        notificationService: notificationService(),
+        prefs: prefs,
+        scheduler: scheduler,
+      );
+
+      // The failure happens inside the fire-and-forget `unawaited()` call
+      // in the constructor; flushing one microtask round-trip lets it run
+      // to completion without this test itself ever seeing the error.
+      await expectLater(Future<void>.delayed(Duration.zero), completes);
+    });
+
+    test('given the scheduler throws on setAlertsEnabled, the dispatcher -> '
+        'does not throw and still returns from setAlertsEnabled', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final scheduler = _RecordingScheduler();
+      final dispatcher = SchedulingConditionAlertDispatcher(
+        weatherProvider: weatherProvider,
+        marineProvider: marineProvider,
+        notificationService: notificationService(),
+        prefs: prefs,
+        scheduler: scheduler,
+      );
+      await Future<void>.delayed(Duration.zero);
+      scheduler.error = Exception('boom');
+
+      await expectLater(dispatcher.setAlertsEnabled(false), completes);
+
+      // The toggle itself is still persisted even though the scheduler
+      // call failed.
+      expect(prefs.getBool(alertsEnabledPrefsKey), false);
     });
   });
 

@@ -42,6 +42,15 @@ const backgroundAlertCheckFrequency = Duration(minutes: 15);
 /// background run never crashes the OS task or shows a false notification —
 /// the next periodic run simply tries again with the last persisted
 /// baseline.
+///
+/// Known limitation: this runs in a separate background isolate from a
+/// live foreground [ConditionAlertDispatcher], so a baseline this writes
+/// is not reflected in that dispatcher's own in-memory `_previousLevel`
+/// until it re-reads [conditionAlertPreviousVerdictPrefsKey] (it currently
+/// only does so once, at construction) — at worst a duplicate or missed
+/// foreground alert right after a background one, never a crash or a wrong
+/// verdict. Reconciling the two live is foreground listening logic this
+/// issue deliberately leaves untouched.
 Future<void> runBackgroundAlertCheck({
   required SharedPreferences prefs,
   required WeatherRepository weatherRepository,
@@ -235,6 +244,17 @@ class SchedulingConditionAlertDispatcher extends ConditionAlertDispatcher {
     await _syncSchedule(enabled);
   }
 
-  Future<void> _syncSchedule(bool enabled) =>
-      enabled ? scheduler.registerPeriodic() : scheduler.cancel();
+  /// Registers or cancels [scheduler]'s periodic check. Swallows any error
+  /// the scheduler throws (a `Workmanager` plugin/platform-channel failure)
+  /// rather than letting it escape the constructor as an uncaught async
+  /// error, or [setAlertsEnabled] as a failure the UI has to handle — the
+  /// toggle itself has already been persisted by [super.setAlertsEnabled]
+  /// regardless, matching `main.dart`'s existing rule that a notification
+  /// plugin failure must never stop the app (or, here, the toggle) from
+  /// working.
+  Future<void> _syncSchedule(bool enabled) async {
+    try {
+      await (enabled ? scheduler.registerPeriodic() : scheduler.cancel());
+    } catch (_) {}
+  }
 }
