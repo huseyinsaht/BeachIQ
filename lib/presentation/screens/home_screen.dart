@@ -12,6 +12,7 @@ import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../data/repositories/weather_repository.dart';
+import '../../data/selected_location_prefs_keys.dart';
 import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
@@ -647,10 +648,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static final _cesmeDefault = const LatLng(38.3220, 26.3260);
   static const _cesmeDefaultName = 'Çeşme, İzmir';
 
-  static const _prefsLatKey = 'home_selected_location_lat';
-  static const _prefsLonKey = 'home_selected_location_lon';
-  static const _prefsNameKey = 'home_selected_location_name';
-
   /// The location every fetch (weather, marine, nearby beaches) and the
   /// header/map-card place name are bound to. Starts at [_cesmeDefault] and
   /// is replaced either by a restored pick (see [_restoreSelectedLocation])
@@ -810,11 +807,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// case [_cesmeDefault] stays as-is.
   Future<_SavedLocation?> _restoreSelectedLocation() async {
     final prefs = await SharedPreferences.getInstance();
-    final lat = prefs.getDouble(_prefsLatKey);
-    final lon = prefs.getDouble(_prefsLonKey);
+    final lat = prefs.getDouble(selectedLocationLatPrefsKey);
+    final lon = prefs.getDouble(selectedLocationLonPrefsKey);
     if (lat == null || lon == null) return null;
     final point = LatLng(lat, lon);
-    final name = prefs.getString(_prefsNameKey) ?? formatCoordinates(point);
+    final name =
+        prefs.getString(selectedLocationNamePrefsKey) ??
+        formatCoordinates(point);
     return _SavedLocation(point, name);
   }
 
@@ -827,9 +826,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_prefsLatKey, point.latitude);
-      await prefs.setDouble(_prefsLonKey, point.longitude);
-      await prefs.setString(_prefsNameKey, displayName);
+      await prefs.setDouble(selectedLocationLatPrefsKey, point.latitude);
+      await prefs.setDouble(selectedLocationLonPrefsKey, point.longitude);
+      await prefs.setString(selectedLocationNamePrefsKey, displayName);
     } catch (_) {
       // Persisting the pick is a nice-to-have (the restart acceptance
       // criterion) — a failure here must never affect the live pick
