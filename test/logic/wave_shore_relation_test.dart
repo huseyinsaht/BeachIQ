@@ -205,6 +205,20 @@ void main() {
       expect(seawardBearingFromGeometry(beach), isNull);
     });
 
+    test('given a beach with an empty (non-null) geometry list, '
+        'seawardBearingFromGeometry -> null (never a fabricated bearing)', () {
+      final beach = Beach(
+        name: 'Empty Geometry Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        geometry: const [],
+        amenities: landSideAmenities,
+      );
+
+      expect(seawardBearingFromGeometry(beach), isNull);
+    });
+
     test(
       'given a beach with geometry but no amenities, '
       'seawardBearingFromGeometry -> null (no anchor to derive a side from)',
