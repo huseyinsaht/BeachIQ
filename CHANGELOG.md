@@ -5,6 +5,31 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Background/scheduled delivery for the "conditions turned favorable" notification
+  on Android: a periodic check (every ~15 minutes, via `workmanager`) now runs while
+  the app isn't open, using the exact same alert rule and threshold as the existing
+  foreground delivery, so the two never disagree about when conditions turned good.
+  The existing "Alerts" switch enables or disables both the foreground and
+  background checks together. iOS, web and desktop remain foreground-only for now
+  (#360)
+- Additional test coverage for `seawardBearingFromGeometry`'s empty (non-null)
+  geometry list, confirming it still returns `null` instead of a fabricated bearing
+  (#361)
+- Additional test coverage for `WorkmanagerBackgroundScheduler`'s
+  `registerPeriodic`/`cancel` behavior and `buildBackgroundScheduler`'s
+  platform-autodetect fallback (#362)
+- Additional test coverage for `HomeScreen`'s restore of a persisted location that
+  has no saved display name, confirming it falls back to showing the formatted
+  coordinates instead of a blank header (#363)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up newer transitive `geolocator`/
+  `shared_preferences_android` dependency versions already allowed by
+  `pubspec.yaml`; no application code changed (#358)
+
 ## [2026.10.13] - 2026-10-19
 
 ### Added
