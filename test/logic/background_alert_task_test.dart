@@ -54,9 +54,11 @@ class _ScriptedWeatherRepository extends WeatherRepository {
 }
 
 /// A [LocalNotificationsPlugin] that records every [show] call instead of
-/// touching a real platform channel.
+/// touching a real platform channel, and can be scripted to throw (e.g. a
+/// simulated plugin/permission failure).
 class _RecordingPlugin implements LocalNotificationsPlugin {
   final List<({String? title, String? body})> calls = [];
+  Object? error;
 
   @override
   Future<bool?> initialize(InitializationSettings settings) async => true;
@@ -67,6 +69,8 @@ class _RecordingPlugin implements LocalNotificationsPlugin {
   @override
   Future<void> show(int id, String? title, String? body) async {
     calls.add((title: title, body: body));
+    final err = error;
+    if (err != null) throw err;
   }
 }
 
@@ -140,6 +144,27 @@ void main() {
       // The new baseline is persisted under the same key
       // ConditionAlertDispatcher uses, so a later foreground/background
       // run never disagrees about the last-seen verdict.
+      expect(
+        prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+        SwimSuitabilityLevel.good.name,
+      );
+    });
+
+    test('given the notification service throws while showing the alert, '
+        'runBackgroundAlertCheck -> does not throw and still persists the '
+        'new baseline', () async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.32,
+        selectedLocationLonPrefsKey: 26.32,
+        conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      notificationPlugin.error = Exception('plugin error');
+
+      await expectLater(runCheck(prefs), completes);
+
+      // The next run must not re-alert on the same already-seen
+      // transition just because showing it failed once.
       expect(
         prefs.getString(conditionAlertPreviousVerdictPrefsKey),
         SwimSuitabilityLevel.good.name,

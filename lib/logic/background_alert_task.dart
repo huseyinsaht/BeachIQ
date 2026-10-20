@@ -37,11 +37,15 @@ const backgroundAlertCheckFrequency = Duration(minutes: 15);
 /// channel.
 ///
 /// Does nothing (no fetch, no notification) when alerts are disabled
-/// ([alertsEnabledPrefsKey]) or when no location has ever been picked.
-/// Never throws: a fetch failure is caught and swallowed so a flaky
-/// background run never crashes the OS task or shows a false notification —
-/// the next periodic run simply tries again with the last persisted
-/// baseline.
+/// ([alertsEnabledPrefsKey]) or when no location has ever been picked —
+/// intentionally: `home_screen.dart`'s in-memory default (Çeşme) is never
+/// itself persisted under [selectedLocationLatPrefsKey], so a user who has
+/// never tapped the map or picked a search result gets no background
+/// checks either, exactly like the foreground dispatcher only has a
+/// baseline once a real pick has happened. Never throws: a fetch or
+/// notification failure is caught and swallowed so a flaky background run
+/// never crashes the OS task or shows a false notification — the next
+/// periodic run simply tries again with the last persisted baseline.
 ///
 /// Known limitation: this runs in a separate background isolate from a
 /// live foreground [ConditionAlertDispatcher], so a baseline this writes
@@ -93,10 +97,18 @@ Future<void> runBackgroundAlertCheck({
       current: verdict,
     );
     if (shouldAlert) {
-      await notificationService.show(
-        title: 'Good swim conditions at $locationLabel',
-        body: verdict.message,
-      );
+      try {
+        await notificationService.show(
+          title: 'Good swim conditions at $locationLabel',
+          body: verdict.message,
+        );
+      } catch (_) {
+        // A plugin/permission failure showing the notification must not
+        // skip persisting the new baseline below (that would make the
+        // next run re-alert on the same already-seen transition) or
+        // propagate out of this function — see the "Never throws" note
+        // above.
+      }
     }
   }
 
