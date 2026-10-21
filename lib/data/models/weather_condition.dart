@@ -278,9 +278,15 @@ class WeatherCondition {
     }
 
     return WeatherCondition(
-      temperature: (json['temperature_2m'] ?? 0).toDouble(),
-      windSpeed: (json['wind_speed_10m'] ?? 0).toDouble(),
-      weatherCode: (json['weather_code'] ?? 0).toInt(),
+      // These three required fields default to 0 for a missing/null value,
+      // same as the rest of this file, but must go through `_asDouble`/
+      // `_asInt` rather than calling `.toDouble()`/`.toInt()` directly on
+      // the raw JSON value: a malformed response (e.g. a String instead of
+      // a number) would otherwise throw NoSuchMethodError instead of
+      // degrading gracefully like every other field here does.
+      temperature: _asDouble(json['temperature_2m']) ?? 0,
+      windSpeed: _asDouble(json['wind_speed_10m']) ?? 0,
+      weatherCode: _asInt(json['weather_code']) ?? 0,
       pressureHpa: pressureHpa,
       uvIndex: uvIndex,
       rainChancePercent: rainChancePercent,
