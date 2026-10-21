@@ -23,12 +23,26 @@ All notable changes to this project are documented here. Format loosely follows
 - Additional test coverage for `HomeScreen`'s restore of a persisted location that
   has no saved display name, confirming it falls back to showing the formatted
   coordinates instead of a blank header (#363)
+- Additional test coverage for `SearchField`'s `onSubmitted` wiring, confirming it
+  fires with the submitted text and that omitting the callback doesn't throw (#367)
 
 ### Changed
 
 - Refreshed `pubspec.lock` to pick up newer transitive `geolocator`/
   `shared_preferences_android` dependency versions already allowed by
   `pubspec.yaml`; no application code changed (#358)
+- The swim-suitability score's "not enough data" message is now sourced from a
+  single place instead of being duplicated, so the message shown when every input
+  is missing can no longer drift from its own lookup table; the text itself is
+  unchanged (#366)
+
+### Fixed
+
+- Fixed the weather fetch being discarded into a generic error state whenever the
+  API returned a non-numeric temperature, wind speed, or weather code: these three
+  fields now fall back to the same default as a missing value instead of throwing,
+  matching how the rest of the weather/marine data already handles malformed
+  responses (#365)
 
 ## [2026.10.13] - 2026-10-19
 
