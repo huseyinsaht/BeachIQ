@@ -15,7 +15,7 @@ const page = await browser.newPage({
 // Surface startup failures in the CI log: a crash before the first frame
 // otherwise just produces a blank white screenshot.
 page.on('console', (m) => console.log(`[browser ${m.type()}]`, m.text()));
-page.on('pageerror', (e) => console.log('[browser pageerror]', e.message));
+page.on('pageerror', (e) => console.log('[browser pageerror]', e.stack || e.message));
 page.on('requestfailed', (r) =>
   console.log('[browser requestfailed]', r.url(), r.failure()?.errorText));
 await page.goto(url, { waitUntil: 'load' });
