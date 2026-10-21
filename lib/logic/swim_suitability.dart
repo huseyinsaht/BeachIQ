@@ -46,9 +46,9 @@ SwimVerdict scoreSwimSuitability({
   if (waveHeightM == null &&
       windSpeedKmh == null &&
       rainChancePercent == null) {
-    return const SwimVerdict(
+    return SwimVerdict(
       SwimSuitabilityLevel.unknown,
-      'Not enough data to judge swim conditions right now.',
+      _messageFor(SwimSuitabilityLevel.unknown),
     );
   }
 
