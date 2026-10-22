@@ -727,6 +727,12 @@ class _HomeScreenState extends State<HomeScreen> {
   static const double _sheetMinSize = 0.34;
   static const double _sheetMaxSize = 0.90;
 
+  /// Fixed footprint of the Sea section's loading/error placeholder (see
+  /// [_buildSectionLoading] and [_buildSectionError]), shared by both call
+  /// sites below so they can't drift apart and re-introduce the layout
+  /// jump between the loading and error states that this constant fixes.
+  static const double _seaSectionPlaceholderHeight = 40;
+
   /// The fractional size above which the sheet is considered "expanded"
   /// (see [_sheetExpanded]) — roughly the midpoint between
   /// [_sheetMinSize]/[_sheetMaxSize], so a small drag off either resting
@@ -1556,10 +1562,13 @@ class _HomeScreenState extends State<HomeScreen> {
         // to show yet.
         if (marineLoading) ...[
           const SizedBox(height: 20),
-          _buildSectionLoading(height: 40),
+          _buildSectionLoading(height: _seaSectionPlaceholderHeight),
         ] else if (marineErrorMessage != null) ...[
           const SizedBox(height: 20),
-          _buildSectionError(marineErrorMessage, height: 40),
+          _buildSectionError(
+            marineErrorMessage,
+            height: _seaSectionPlaceholderHeight,
+          ),
         ],
         const SizedBox(height: 20),
         StatTileGroup(
@@ -2202,6 +2211,12 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'Unable to load marine data.\n$error',
               style: const TextStyle(color: _textPrimary, fontSize: 13),
+              // Bounded (rather than unbounded) only when [height] also
+              // bounds the box around this text, so a long error can never
+              // silently overflow past that fixed footprint and paint over
+              // the section below it.
+              maxLines: height == null ? null : 2,
+              overflow: height == null ? null : TextOverflow.ellipsis,
             ),
           ),
         ],

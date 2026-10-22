@@ -1704,6 +1704,64 @@ void main() {
     );
 
     testWidgets(
+      'given a marine fetch that fails with a long error message, the '
+      "error note's Text is bounded (maxLines + ellipsis) instead of "
+      'silently overflowing past the fixed-height box that keeps the Sea '
+      'section from jumping (issue #213/#228)',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(windSpeed: 10),
+        );
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+        final marineProvider = MarineProvider(
+          _ThenFailingMarineRepository(
+            message:
+                'a very long exception message that would need several '
+                'lines to render in full on a narrow screen with a large '
+                'text scale, far more than the two-line budget the fixed '
+                'height box actually has room for',
+          ),
+        );
+        final sheetController = DraggableScrollableController();
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            depthProvider: depthProvider,
+            sheetController: sheetController,
+          ),
+        );
+        await marineProvider.fetchData(38.3, 26.3);
+        await tester.pump();
+        unawaited(marineProvider.fetchData(50, 50));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        await expandSheet(tester, sheetController);
+        await tester.ensureVisible(find.text('Water depth'));
+        await tester.pumpAndSettle();
+
+        final errorText = tester.widget<Text>(
+          find.descendant(
+            of: find.ancestor(
+              of: find.textContaining('Unable to load marine data'),
+              matching: find.byWidgetPredicate(
+                (widget) => widget is SizedBox && widget.height == 40,
+              ),
+            ),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(errorText.maxLines, 2);
+        expect(errorText.overflow, TextOverflow.ellipsis);
+        // No RenderFlex/overflow assertion escaped the pump — the bounded
+        // Text is what keeps this silent rather than throwing.
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets(
       'the full 3x3 grid does not overflow at a narrow (360dp) width with '
       'a large text scale, with sea/current/air data all loaded',
       (tester) async {
@@ -3525,14 +3583,17 @@ class _NoopPlugin implements LocalNotificationsPlugin {
 /// reserved for the very first load (see `_hasLoadedOnce` in
 /// `home_screen.dart`).
 class _ThenFailingMarineRepository extends MarineRepository {
-  _ThenFailingMarineRepository() : super(MarineApiService());
+  _ThenFailingMarineRepository({String message = 'boom'})
+    : _message = message,
+      super(MarineApiService());
 
+  final String _message;
   int _calls = 0;
 
   @override
   Future<SeaCondition> getMarineData(double lat, double lon) async {
     _calls++;
     if (_calls == 1) return SeaCondition(waveHeight: 0.3);
-    throw Exception('boom');
+    throw Exception(_message);
   }
 }
