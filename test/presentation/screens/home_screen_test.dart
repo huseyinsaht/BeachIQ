@@ -1755,9 +1755,6 @@ void main() {
         );
         expect(errorText.maxLines, 2);
         expect(errorText.overflow, TextOverflow.ellipsis);
-        // No RenderFlex/overflow assertion escaped the pump — the bounded
-        // Text is what keeps this silent rather than throwing.
-        expect(tester.takeException(), isNull);
       },
     );
 

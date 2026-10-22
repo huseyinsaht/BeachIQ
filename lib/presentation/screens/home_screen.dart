@@ -2212,9 +2212,14 @@ class _HomeScreenState extends State<HomeScreen> {
               'Unable to load marine data.\n$error',
               style: const TextStyle(color: _textPrimary, fontSize: 13),
               // Bounded (rather than unbounded) only when [height] also
-              // bounds the box around this text, so a long error can never
-              // silently overflow past that fixed footprint and paint over
-              // the section below it.
+              // bounds the box around this text, so a long error is
+              // truncated with an ellipsis rather than wrapping onto a
+              // third line. Known limitation: at 1.0 text scale this still
+              // fits the fixed height below; at a large system text scale
+              // two lines can themselves exceed it, and `Center` neither
+              // clips nor throws, so the text would paint past the box
+              // rather than being cut off — capping the line count narrows
+              // that gap but doesn't close it.
               maxLines: height == null ? null : 2,
               overflow: height == null ? null : TextOverflow.ellipsis,
             ),
