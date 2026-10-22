@@ -912,8 +912,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = await service.getCurrentLocation();
     if (!context.mounted) return;
     if (!result.isSuccess) {
+      // DeviceLocationResult's own invariant (position xor failure) makes
+      // failure non-null here.
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_deviceLocationFailureMessage(result.failure))),
+        SnackBar(
+          content: Text(_deviceLocationFailureMessage(result.failure!)),
+        ),
       );
       return;
     }
@@ -924,14 +928,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// The short, non-blocking message [_handleUseMyLocation] shows for each
   /// [DeviceLocationFailure] reason — never a raw exception message.
-  String _deviceLocationFailureMessage(DeviceLocationFailure? failure) {
+  String _deviceLocationFailureMessage(DeviceLocationFailure failure) {
     switch (failure) {
       case DeviceLocationFailure.serviceDisabled:
         return 'Location services are turned off. Keeping your last location.';
       case DeviceLocationFailure.permissionDenied:
         return 'Location permission denied. Keeping your last location.';
       case DeviceLocationFailure.unavailable:
-      case null:
         return "Couldn't get your location right now. Keeping your last location.";
     }
   }
