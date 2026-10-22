@@ -1559,7 +1559,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _buildSectionLoading(height: 40),
         ] else if (marineErrorMessage != null) ...[
           const SizedBox(height: 20),
-          _buildSectionError(marineErrorMessage),
+          _buildSectionError(marineErrorMessage, height: 40),
         ],
         const SizedBox(height: 20),
         StatTileGroup(

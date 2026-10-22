@@ -1688,6 +1688,18 @@ void main() {
           find.widgetWithText(StatTile, 'Wave height'),
         );
         expect(waveHeightTile.value, 'No data');
+        // The error note is bounded to the same 40px footprint as the
+        // loading spinner it replaces, so the Sea section doesn't jump
+        // between the loading and error states of the same fetch.
+        expect(
+          find.ancestor(
+            of: find.textContaining('Unable to load marine data'),
+            matching: find.byWidgetPredicate(
+              (widget) => widget is SizedBox && widget.height == 40,
+            ),
+          ),
+          findsOneWidget,
+        );
       },
     );
 
