@@ -25,6 +25,11 @@ All notable changes to this project are documented here. Format loosely follows
   coordinates instead of a blank header (#363)
 - Additional test coverage for `SearchField`'s `onSubmitted` wiring, confirming it
   fires with the submitted text and that omitting the callback doesn't throw (#367)
+- Additional test coverage asserting the persisted selected-location
+  `SharedPreferences` keys (used by both the Home screen and the Android
+  background alert check) keep their exact string values and stay pairwise
+  distinct, so a future edit can't silently orphan a location already saved on a
+  user's device (#372)
 
 ### Changed
 
@@ -35,6 +40,10 @@ All notable changes to this project are documented here. Format loosely follows
   single place instead of being duplicated, so the message shown when every input
   is missing can no longer drift from its own lookup table; the text itself is
   unchanged (#366)
+- Internal cleanup: the "use my location" failure message and the Overpass
+  beach-amenity mapper now carry their already-known failure reason/amenity kind
+  as non-nullable values instead of re-deriving (and re-checking for null) them a
+  second time; no user-visible behavior change (#370, #371)
 
 ### Fixed
 
@@ -43,6 +52,10 @@ All notable changes to this project are documented here. Format loosely follows
   fields now fall back to the same default as a missing value instead of throwing,
   matching how the rest of the weather/marine data already handles malformed
   responses (#365)
+- Fixed the Sea section's error note (shown when a marine-data fetch fails) growing
+  past the 40px footprint of the loading spinner it replaces; it's now bounded to
+  the same height, and a long error message is truncated to two lines with an
+  ellipsis instead of wrapping or overflowing (#369)
 
 ## [2026.10.13] - 2026-10-19
 
