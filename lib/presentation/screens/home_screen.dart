@@ -915,9 +915,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // DeviceLocationResult's own invariant (position xor failure) makes
       // failure non-null here.
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_deviceLocationFailureMessage(result.failure!)),
-        ),
+        SnackBar(content: Text(_deviceLocationFailureMessage(result.failure!))),
       );
       return;
     }
