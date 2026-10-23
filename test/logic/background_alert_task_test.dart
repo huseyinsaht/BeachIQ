@@ -574,12 +574,9 @@ void main() {
   group('backgroundAlertCallbackDispatcher', () {
     TestWidgetsFlutterBinding.ensureInitialized();
 
-    test(
-      'calling it registers the real Workmanager background task handler '
-      'without throwing',
-      () {
-        expect(backgroundAlertCallbackDispatcher, returnsNormally);
-      },
-    );
+    test('calling it registers the real Workmanager background task handler '
+        'without throwing', () {
+      expect(backgroundAlertCallbackDispatcher, returnsNormally);
+    });
   });
 }
