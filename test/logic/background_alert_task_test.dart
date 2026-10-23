@@ -570,4 +570,16 @@ void main() {
       ).called(1);
     });
   });
+
+  group('backgroundAlertCallbackDispatcher', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+
+    test(
+      'calling it registers the real Workmanager background task handler '
+      'without throwing',
+      () {
+        expect(backgroundAlertCallbackDispatcher, returnsNormally);
+      },
+    );
+  });
 }
