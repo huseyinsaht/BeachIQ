@@ -30,6 +30,11 @@ All notable changes to this project are documented here. Format loosely follows
   background alert check) keep their exact string values and stay pairwise
   distinct, so a future edit can't silently orphan a location already saved on a
   user's device (#372)
+- Additional test coverage confirming `WeatherApiService.getWeatherData` and
+  `MarineApiService.getSeaData` already turn a malformed (non-JSON) response
+  body into a clear exception instead of a raw `FormatException` (#375)
+- Additional test coverage for `backgroundAlertCallbackDispatcher`'s
+  Workmanager background-task handler registration (#376)
 
 ### Changed
 
@@ -56,6 +61,10 @@ All notable changes to this project are documented here. Format loosely follows
   past the 40px footprint of the loading spinner it replaces; it's now bounded to
   the same height, and a long error message is truncated to two lines with an
   ellipsis instead of wrapping or overflowing (#369)
+- Fixed `GeocodingService.search` throwing a raw `FormatException` instead of a
+  clear exception when a place-search response's body isn't valid JSON, matching
+  how `WeatherApiService`/`MarineApiService` already handle a malformed
+  response (#374)
 
 ## [2026.10.13] - 2026-10-19
 
