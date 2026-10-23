@@ -68,6 +68,26 @@ void main() {
       }, () => mockClient);
     });
 
+    test('wraps a malformed (non-JSON) 200 response body in a clear '
+        'exception instead of a raw FormatException', () async {
+      final mockClient = MockClient((request) async {
+        return http.Response('not json', 200);
+      });
+
+      await http.runWithClient(() async {
+        await expectLater(
+          () => MarineApiService().getSeaData(38.3, 26.3),
+          throwsA(
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              contains('Network Error'),
+            ),
+          ),
+        );
+      }, () => mockClient);
+    });
+
     test('sends the expected latitude/longitude and fields', () async {
       http.Request? capturedRequest;
       final mockClient = MockClient((request) async {
