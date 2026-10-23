@@ -76,7 +76,10 @@ void main() {
       final verdict = scoreSwimSuitability();
 
       expect(verdict.level, SwimSuitabilityLevel.unknown);
-      expect(verdict.message, isNotEmpty);
+      expect(
+        verdict.message,
+        'Not enough data to judge swim conditions right now.',
+      );
     });
 
     test('scores from a single available input without crashing', () {

@@ -6,24 +6,19 @@ import 'swim_suitability.dart';
 ///
 /// This is the first slice of the alerting feature (issue #87): a pure,
 /// platform-agnostic trigger decision. It does not send, schedule or
-/// permission-check any actual notification — that is left to a follow-up
-/// issue that wires this decision into a real delivery mechanism (see the
-/// class doc below for what that follow-up needs).
+/// permission-check any actual notification — that is left to the delivery
+/// mechanisms that wire this decision into a real notification, both now
+/// built: `ConditionAlertDispatcher` (issue #221, foreground) and
+/// `lib/logic/background_alert_task.dart`'s `runBackgroundAlertCheck`
+/// (issue #359, periodic background check on Android), neither of which
+/// forks this class's decision rule — both call [shouldAlert] directly.
 ///
-/// Usage: the caller (e.g. a background poller once one exists) keeps track
-/// of the last [SwimVerdict] it saw for a location, calls
-/// [scoreSwimSuitability] again, and asks [shouldAlert] whether the change
-/// between the two verdicts warrants notifying the user. The caller is also
-/// responsible for persisting [alertsEnabled] (e.g. in shared preferences)
-/// and constructing this service with the current value.
-///
-/// Follow-up work (out of scope here): actually showing a notification
-/// needs the `flutter_local_notifications` package (or platform channel
-/// equivalent), Android POST_NOTIFICATIONS / iOS UNUserNotificationCenter
-/// permission requests and handling of denial, plus a background scheduling
-/// mechanism (e.g. periodic work via `workmanager`/`android_alarm_manager`
-/// or a foreground polling timer) to actually produce the "new" verdict to
-/// feed into [shouldAlert] while the app isn't open.
+/// Usage: the caller (foreground or background) keeps track of the last
+/// [SwimVerdict] it saw for a location, calls [scoreSwimSuitability] again,
+/// and asks [shouldAlert] whether the change between the two verdicts
+/// warrants notifying the user. The caller is also responsible for
+/// persisting [alertsEnabled] (e.g. in shared preferences) and constructing
+/// this service with the current value.
 class ConditionAlertService {
   /// Creates a service with alerts either enabled or disabled.
   ///

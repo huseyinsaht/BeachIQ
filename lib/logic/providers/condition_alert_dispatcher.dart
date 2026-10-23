@@ -15,7 +15,9 @@ import 'weather_provider.dart';
 /// a future settings screen (or a test) just needs to write this key.
 const alertsEnabledPrefsKey = 'alerts_enabled';
 
-@visibleForTesting
+/// `SharedPreferences` key for the last-seen verdict level, shared with
+/// `lib/logic/background_alert_task.dart` (issue #359) so a foreground run
+/// and a background run never disagree about the baseline.
 const conditionAlertPreviousVerdictPrefsKey =
     'condition_alert_previous_verdict_level';
 

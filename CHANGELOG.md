@@ -7,6 +7,69 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added
 
+- Background/scheduled delivery for the "conditions turned favorable" notification
+  on Android: a periodic check (every ~15 minutes, via `workmanager`) now runs while
+  the app isn't open, using the exact same alert rule and threshold as the existing
+  foreground delivery, so the two never disagree about when conditions turned good.
+  The existing "Alerts" switch enables or disables both the foreground and
+  background checks together. iOS, web and desktop remain foreground-only for now
+  (#360)
+- Additional test coverage for `seawardBearingFromGeometry`'s empty (non-null)
+  geometry list, confirming it still returns `null` instead of a fabricated bearing
+  (#361)
+- Additional test coverage for `WorkmanagerBackgroundScheduler`'s
+  `registerPeriodic`/`cancel` behavior and `buildBackgroundScheduler`'s
+  platform-autodetect fallback (#362)
+- Additional test coverage for `HomeScreen`'s restore of a persisted location that
+  has no saved display name, confirming it falls back to showing the formatted
+  coordinates instead of a blank header (#363)
+- Additional test coverage for `SearchField`'s `onSubmitted` wiring, confirming it
+  fires with the submitted text and that omitting the callback doesn't throw (#367)
+- Additional test coverage asserting the persisted selected-location
+  `SharedPreferences` keys (used by both the Home screen and the Android
+  background alert check) keep their exact string values and stay pairwise
+  distinct, so a future edit can't silently orphan a location already saved on a
+  user's device (#372)
+- Additional test coverage confirming `WeatherApiService.getWeatherData` and
+  `MarineApiService.getSeaData` already turn a malformed (non-JSON) response
+  body into a clear exception instead of a raw `FormatException` (#375)
+- Additional test coverage for `backgroundAlertCallbackDispatcher`'s
+  Workmanager background-task handler registration (#376)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up newer transitive `geolocator`/
+  `shared_preferences_android` dependency versions already allowed by
+  `pubspec.yaml`; no application code changed (#358)
+- The swim-suitability score's "not enough data" message is now sourced from a
+  single place instead of being duplicated, so the message shown when every input
+  is missing can no longer drift from its own lookup table; the text itself is
+  unchanged (#366)
+- Internal cleanup: the "use my location" failure message and the Overpass
+  beach-amenity mapper now carry their already-known failure reason/amenity kind
+  as non-nullable values instead of re-deriving (and re-checking for null) them a
+  second time; no user-visible behavior change (#370, #371)
+
+### Fixed
+
+- Fixed the weather fetch being discarded into a generic error state whenever the
+  API returned a non-numeric temperature, wind speed, or weather code: these three
+  fields now fall back to the same default as a missing value instead of throwing,
+  matching how the rest of the weather/marine data already handles malformed
+  responses (#365)
+- Fixed the Sea section's error note (shown when a marine-data fetch fails) growing
+  past the 40px footprint of the loading spinner it replaces; it's now bounded to
+  the same height, and a long error message is truncated to two lines with an
+  ellipsis instead of wrapping or overflowing (#369)
+- Fixed `GeocodingService.search` throwing a raw `FormatException` instead of a
+  clear exception when a place-search response's body isn't valid JSON, matching
+  how `WeatherApiService`/`MarineApiService` already handle a malformed
+  response (#374)
+
+## [2026.10.13] - 2026-10-19
+
+### Added
+
 - Additional test coverage for `buildForecastAlerts`/`buildNextHourNote`'s default
   `now` parameter, confirming both still produce a usable result when the caller
   omits it instead of relying on an explicit timestamp (#322)
@@ -86,6 +149,13 @@ All notable changes to this project are documented here. Format loosely follows
 - Refreshed `pubspec.lock` to pick up newer transitive `shared_preferences_android`/
   `shared_preferences_foundation` dependency versions already allowed by
   `pubspec.yaml`; no application code changed (#350)
+
+### Fixed
+
+- Fixed a blank screen on app launch on the web build: the `geocoding` plugin has no
+  web implementation, and constructing it eagerly in `main()` threw synchronously
+  before the first frame. Reverse geocoding is now skipped on web (falling back to
+  the existing formatted-coordinate label), and other platforms are unaffected (#354)
 
 ## [2026.10.12] - 2026-10-12
 

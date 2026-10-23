@@ -173,6 +173,19 @@ void main() {
       expect(condition.highTemperature, isNull);
     });
 
+    test('defaults the required top-level fields to 0 instead of throwing '
+        'when they are non-numeric', () {
+      final condition = WeatherCondition.fromJson({
+        'temperature_2m': 'not a number',
+        'wind_speed_10m': 'not a number',
+        'weather_code': 'not a number',
+      });
+
+      expect(condition.temperature, 0);
+      expect(condition.windSpeed, 0);
+      expect(condition.weatherCode, 0);
+    });
+
     group('daylightWindows (issue #229)', () {
       test('parses daily sunrise/sunset pairs into daylightWindows', () {
         final condition = WeatherCondition.fromJson({

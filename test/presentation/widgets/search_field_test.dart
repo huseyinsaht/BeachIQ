@@ -30,4 +30,25 @@ void main() {
 
     expect(typed, 'Cesme');
   });
+
+  testWidgets('onSubmitted fires with the submitted text', (tester) async {
+    String? submitted;
+    await tester.pumpWidget(
+      wrap(SearchField(onSubmitted: (value) => submitted = value)),
+    );
+
+    await tester.enterText(find.byType(TextField), 'Cesme');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+
+    expect(submitted, 'Cesme');
+  });
+
+  testWidgets('onSubmitted is not required', (tester) async {
+    await tester.pumpWidget(wrap(const SearchField()));
+
+    await tester.enterText(find.byType(TextField), 'Cesme');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+
+    expect(tester.takeException(), isNull);
+  });
 }

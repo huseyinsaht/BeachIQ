@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:geocoding/geocoding.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'reverse_geocode_cache.dart';
 
@@ -88,4 +90,27 @@ class ReverseGeocodingService {
       return null;
     }
   }
+}
+
+/// Builds the production [ReverseGeocodingService], or `null` on web.
+///
+/// The `geocoding` plugin (behind [GeocodingPlacemarkLookup]) has no web
+/// implementation: constructing its default `Geocoding()` there resolves a
+/// null platform instance and throws synchronously, crashing the app before
+/// its first frame (every daily screenshot since 2026-10-07 was blank
+/// because of this). [isWeb] is a parameter rather than a direct `kIsWeb`
+/// read so this can be exercised for both platforms in a plain unit test.
+/// A `null` result is the documented fallback this service's callers
+/// already handle (e.g. `HomeScreen` falls back to a formatted-coordinate
+/// label), so web users keep "Use my location" with coordinates instead of
+/// a resolved place name.
+ReverseGeocodingService? buildReverseGeocodingService({
+  bool isWeb = kIsWeb,
+  required SharedPreferences prefs,
+}) {
+  if (isWeb) return null;
+  return ReverseGeocodingService(
+    GeocodingPlacemarkLookup(),
+    ReverseGeocodeCache(prefs),
+  );
 }

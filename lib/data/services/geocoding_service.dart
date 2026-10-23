@@ -24,8 +24,9 @@ class GeocodingService {
 
   /// Returns places matching [query]. An empty/too-short query or a
   /// response without a `results` list yields `[]`, never an error. A
-  /// network failure or a non-200 response throws an [Exception] with a
-  /// clear message (mirrors `WeatherApiService.getWeatherData`'s style).
+  /// network failure, a non-200 response, or a response body that isn't
+  /// valid JSON throws an [Exception] with a clear message (mirrors
+  /// `WeatherApiService.getWeatherData`'s style).
   Future<List<Place>> search(String query, {int count = 10}) async {
     final trimmed = query.trim();
     if (trimmed.length < _minQueryLength) return const [];
@@ -50,7 +51,12 @@ class GeocodingService {
       throw Exception('Server Error: ${response.statusCode}');
     }
 
-    final decoded = json.decode(response.body);
+    dynamic decoded;
+    try {
+      decoded = json.decode(response.body);
+    } catch (e) {
+      throw Exception('Malformed Response: $e');
+    }
     final results = decoded is Map<String, dynamic> ? decoded['results'] : null;
     if (results is! List) return const [];
 
