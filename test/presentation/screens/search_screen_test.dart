@@ -266,15 +266,15 @@ void main() {
   testWidgets('typing a name filters the beach results list', (tester) async {
     await tester.pumpWidget(wrap(const SearchScreen()));
 
-    expect(find.text('Alaçatı Plajı'), findsOneWidget);
-    expect(find.text('Patara Plajı'), findsOneWidget);
+    expect(find.text('Alaçatı Beach'), findsOneWidget);
+    expect(find.text('Patara Beach'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Alaçatı');
     await tester.pump();
 
     expect(find.byType(BeachResultCard), findsOneWidget);
-    expect(find.text('Alaçatı Plajı'), findsOneWidget);
-    expect(find.text('Patara Plajı'), findsNothing);
+    expect(find.text('Alaçatı Beach'), findsOneWidget);
+    expect(find.text('Patara Beach'), findsNothing);
   });
 
   testWidgets('typing a city filters the beach results list', (tester) async {
@@ -287,8 +287,8 @@ void main() {
         .where((beach) => beach.city.toLowerCase() == 'antalya')
         .length;
     expect(find.byType(BeachResultCard), findsNWidgets(antalyaCount));
-    expect(find.text('Patara Plajı'), findsOneWidget);
-    expect(find.text('Alaçatı Plajı'), findsNothing);
+    expect(find.text('Patara Beach'), findsOneWidget);
+    expect(find.text('Alaçatı Beach'), findsNothing);
   });
 
   testWidgets('shows a "no matches" message when nothing matches the query', (
@@ -311,13 +311,13 @@ void main() {
     await tester.enterText(find.byType(TextField), 'Alaçatı');
     await tester.pump();
     expect(find.byType(BeachResultCard), findsOneWidget);
-    expect(find.text('Patara Plajı'), findsNothing);
+    expect(find.text('Patara Beach'), findsNothing);
 
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
 
-    expect(find.text('Alaçatı Plajı'), findsOneWidget);
-    expect(find.text('Patara Plajı'), findsOneWidget);
+    expect(find.text('Alaçatı Beach'), findsOneWidget);
+    expect(find.text('Patara Beach'), findsOneWidget);
   });
 
   group('favorites', () {

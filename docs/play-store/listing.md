@@ -1,6 +1,6 @@
 # Google Play listing — BeachIQ v1 (free)
 
-Ready-to-paste content for Play Console. Graphics: `docs/assets/play-store/` (icon 512x512,
+Ready-to-paste content for Play Console. The app and the store listing are English-only. Feature claims were checked against the code on 2026-10-25 (wave period is shown in the wave-height detail screen, not on the Home grid). Graphics: `docs/assets/play-store/` (icon 512x512,
 feature graphic 1024x500). Phone screenshots: Play Console needs 2-8; take them from the app
 (see "Screenshots" below). Privacy policy URL:
 `https://github.com/huseyinsaht/BeachIQ/blob/main/docs/privacy-policy.md`
@@ -10,13 +10,12 @@ feature graphic 1024x500). Phone screenshots: Play Console needs 2-8; take them 
 - **Short description** (max 80): `Waves, wind, water temp & depth — know if it's good to swim today.`
 - **Full description** (max 4000):
 
-> Know before you go. BeachIQ tells you whether today is a good day for the water — at a glance.
+> Know before you go. BeachIQ tells you whether today is a good day for the water, at a glance.
 >
-> • One-look verdict for swimming, with a clear reason and safety hints
-> • Wave height, wave period, wind, water and air temperature, UV and more
-> • Hourly and multi-day forecast, with an alert when conditions turn favorable
-> • Nearby beaches on a map, with toilets, showers, cafes and parking
-> • Approximate water depth near the shore
+> • One-look swim verdict with a clear reason and safety hints
+> • Wave height, direction and period, water temperature and depth, ocean current, wind, rain chance and UV index
+> • Hourly forecast plus a 7-14 day outlook, with an alert when conditions turn favorable
+> • Nearby beaches on a map, with toilets, showers, changing rooms, cafes, parking, beach clubs and lifeguard posts
 > • Compare beaches side by side
 > • No account, no ads, no tracking
 >
@@ -26,10 +25,6 @@ feature graphic 1024x500). Phone screenshots: Play Console needs 2-8; take them 
 - **App category:** Weather. **Tags:** weather, travel/outdoors.
 - **Contact email:** (Play Console requires one — yours)
 - **Contact website:** https://github.com/huseyinsaht/BeachIQ
-
-## Turkish (optional second language)
-- **Name:** `BeachIQ: Yüzme Koşulları`
-- **Short:** `Dalga, rüzgar, su sıcaklığı ve derinlik — bugün denize girilir mi?`
 
 ## App content declarations
 - **Ads:** No. **Account required:** No. **In-app purchases:** No (v1 is free; Pro tier #269/#272 is deferred).

@@ -214,7 +214,11 @@ class _BeachGroup {
         : null;
 
     return _BeachGroup(
-      name: _firstTag(members, 'name') ?? 'Unnamed beach',
+      // Prefer the English name where OSM has one: the app UI is English-only.
+      name:
+          _firstTag(members, 'name:en') ??
+          _firstTag(members, 'name') ??
+          'Unnamed beach',
       city: _firstTag(members, 'addr:city') ?? '',
       surface: _firstTag(members, 'surface'),
       fee: _parseFee(_firstTag(members, 'fee')),
@@ -331,7 +335,7 @@ void _attachAmenityToNearestBeach(
     case AmenityKind.beachResort:
       nearest.hasBeachResort = true;
   }
-  final name = amenity.tags['name'];
+  final name = amenity.tags['name:en'] ?? amenity.tags['name'];
   nearest.amenities.add(
     BeachAmenity(
       kind: kind,
