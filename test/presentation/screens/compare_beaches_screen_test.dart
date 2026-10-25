@@ -1,6 +1,6 @@
+import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/models/sea_condition.dart';
-import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/models/weather_condition.dart';
 import 'package:beachiq/data/repositories/weather_repository.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
