@@ -7,6 +7,9 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added
 
+- Measured nearshore depth: beaches with an on-site measurement (`assets/measured_depths.json`, guide in
+  `docs/measured-depth.md`) show real depths at 1-10 m from the water's edge on the Water depth screen, with a
+  "MEASURED" badge, date, method and caveat. Beaches without one show nothing for 0-10 m; nothing is estimated (#390)
 - General rip-current safety advice in the swim verdict's info sheet ("A guide, not a guarantee"):
   swim near a lifeguard and, if pulled out, swim parallel to the shore. It is standard guidance, not a
   prediction; the app has no rip-current data. The sheet text now scrolls on short screens or large text

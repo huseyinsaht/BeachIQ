@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/beach.dart';
 import '../../../data/models/depth_profile.dart';
+import '../../../data/models/measured_nearshore_depth.dart';
 import '../../../logic/shallow_entry.dart';
 import '../../../logic/shallow_entry_status.dart';
 import '../../../logic/shallow_entry_verdict.dart';
@@ -9,6 +10,7 @@ import '../../../logic/unit_preferences.dart';
 import '../../../logic/wave_shore_relation.dart';
 import '../../widgets/depth_cross_section.dart';
 import '../../widgets/depth_profile_chart.dart';
+import '../../widgets/measured_nearshore_depth_card.dart';
 import '../../widgets/metric_detail_scaffold.dart';
 // `driftOutWarningSpeedKmh` (issue #164's drift-out threshold) is defined
 // on `CurrentDetailScreen`, the screen it was first added for — reused
@@ -50,6 +52,7 @@ class DepthDetailScreen extends StatelessWidget {
     this.currentDirectionDegrees,
     this.seawardBearingDegrees,
     this.unitSystem = UnitSystem.metric,
+    this.measuredNearshoreDepth,
   });
 
   /// The fetched nearshore depth profile. `null` (not yet fetched, or no
@@ -85,6 +88,11 @@ class DepthDetailScreen extends StatelessWidget {
   /// The user's display-unit preference (m or ft). Defaults to metric,
   /// matching every other detail screen's default.
   final UnitSystem unitSystem;
+
+  /// An on-site measurement of the first ~10 m from the water's edge for
+  /// this beach (issue #390), or null when none exists. Never estimated:
+  /// without one, this screen shows no 0-10 m values.
+  final MeasuredNearshoreDepth? measuredNearshoreDepth;
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +176,13 @@ class DepthDetailScreen extends StatelessWidget {
             key: Key('depth-verdict-caveat'),
             style: TextStyle(color: _textSecondary, fontSize: 12),
           ),
+          if (measuredNearshoreDepth != null) ...[
+            const SizedBox(height: 16),
+            MeasuredNearshoreDepthCard(
+              data: measuredNearshoreDepth!,
+              unitSystem: unitSystem,
+            ),
+          ],
           const SizedBox(height: 16),
           // Issue #256, part 1: a human-scale side-view cross-section,
           // sitting above the existing numeric DepthProfileChart below

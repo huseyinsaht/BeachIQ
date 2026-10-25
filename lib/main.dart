@@ -15,6 +15,7 @@ import 'data/services/depth_cache.dart';
 import 'data/services/device_location_service.dart';
 import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
+import 'data/services/measured_depth_repository.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
@@ -92,6 +93,7 @@ void main() async {
       nearbyBeachesProvider: nearbyBeachesProvider,
       placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
       depthProvider: depthProvider,
+      measuredDepthRepository: await MeasuredDepthRepository.load(),
       deviceLocationService: deviceLocationService,
       reverseGeocodingService: reverseGeocodingService,
       conditionAlertDispatcher: conditionAlertDispatcher,
@@ -116,6 +118,7 @@ class MarineApp extends StatelessWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.measuredDepthRepository,
     this.deviceLocationService,
     this.reverseGeocodingService,
     this.conditionAlertDispatcher,
@@ -161,6 +164,10 @@ class MarineApp extends StatelessWidget {
   /// pass one, e.g. most widget/integration tests) renders that tile as
   /// "No data", unchanged from before.
   final DepthProvider? depthProvider;
+
+  /// Forwarded to `HomeScreen` for on-site nearshore depth measurements
+  /// (issue #390).
+  final MeasuredDepthRepository? measuredDepthRepository;
 
   /// Drives `HomeScreen`'s map card overflow "Use my location" action
   /// (issue #254). Null (the default for any existing call site that
@@ -224,6 +231,7 @@ class MarineApp extends StatelessWidget {
             nearbyBeachesProvider: nearbyBeachesProvider,
             placeSearchProvider: placeSearchProvider,
             depthProvider: depthProvider,
+            measuredDepthRepository: measuredDepthRepository,
             deviceLocationService: deviceLocationService,
             reverseGeocodingService: reverseGeocodingService,
             conditionAlertDispatcher: conditionAlertDispatcher,

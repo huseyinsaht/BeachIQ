@@ -1,4 +1,5 @@
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/data/models/measured_nearshore_depth.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/navigation/detail_routes.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
@@ -238,6 +239,35 @@ void main() {
         expect(screen.unitSystem, UnitSystem.imperial);
       },
     );
+
+    testWidgets('given DetailMetric.depth and a measurement, passes it to '
+        'DepthDetailScreen (#390)', (tester) async {
+      final measured = MeasuredNearshoreDepth(
+        beachName: 'Ilica Beach',
+        latitude: 38.287,
+        longitude: 26.373,
+        radiusMeters: 150,
+        measuredOn: DateTime(2026, 10, 25),
+        measuredBy: 'Vaen',
+        method: 'Marked rope and depth stick',
+        reference: 'Water edge',
+        points: const [MeasuredDepthPoint(distanceMeters: 2, depthCm: 40)],
+      );
+
+      final route = buildDetailRoute(
+        DetailMetric.depth,
+        hourly: const [],
+        measuredNearshoreDepth: measured,
+      );
+
+      await tester.pumpWidget(MaterialApp(onGenerateRoute: (_) => route));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<DepthDetailScreen>(
+        find.byType(DepthDetailScreen),
+      );
+      expect(screen.measuredNearshoreDepth, same(measured));
+    });
 
     testWidgets('given DetailMetric.depth, builds a named MaterialPageRoute to '
         'DepthDetailScreen carrying the profile, beach, context-row data and '

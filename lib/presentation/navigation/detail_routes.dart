@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/models/beach.dart';
 import '../../data/models/depth_profile.dart';
+import '../../data/models/measured_nearshore_depth.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_condition.dart';
 import '../../logic/unit_preferences.dart';
@@ -82,6 +83,7 @@ Route<void> buildDetailRoute(
   double? currentWaveHeightMeters,
   UnitSystem unitSystem = UnitSystem.metric,
   DateTime Function()? now,
+  MeasuredNearshoreDepth? measuredNearshoreDepth,
 }) {
   switch (metric) {
     case DetailMetric.pressure:
@@ -164,6 +166,7 @@ Route<void> buildDetailRoute(
           currentDirectionDegrees: currentDirectionValue,
           seawardBearingDegrees: seawardBearingDegrees,
           unitSystem: unitSystem,
+          measuredNearshoreDepth: measuredNearshoreDepth,
         ),
       );
   }

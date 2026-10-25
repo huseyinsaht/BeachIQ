@@ -1,10 +1,12 @@
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/data/models/measured_nearshore_depth.dart';
 import 'package:beachiq/logic/shallow_entry.dart';
 import 'package:beachiq/logic/shallow_entry_verdict.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/depth_cross_section.dart';
 import 'package:beachiq/presentation/widgets/depth_profile_chart.dart';
+import 'package:beachiq/presentation/widgets/measured_nearshore_depth_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -459,6 +461,61 @@ void main() {
 
       expect(find.byType(DepthDetailScreen), findsNothing);
       expect(find.text('open'), findsOneWidget);
+    });
+
+    group('measured nearshore depth (#390)', () {
+      final measured = MeasuredNearshoreDepth(
+        beachName: 'Ilica Beach',
+        latitude: 38.287,
+        longitude: 26.373,
+        radiusMeters: 150,
+        measuredOn: DateTime(2026, 10, 25),
+        measuredBy: 'Vaen',
+        method: 'Marked rope and depth stick',
+        reference: 'Water edge at 14:00',
+        points: const [
+          MeasuredDepthPoint(distanceMeters: 1, depthCm: 20),
+          MeasuredDepthPoint(distanceMeters: 10, depthCm: 135),
+        ],
+      );
+
+      testWidgets('given a measurement, shows the MEASURED card with its '
+          'readings above the approximate cross-section', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              measuredNearshoreDepth: measured,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MeasuredNearshoreDepthCard), findsOneWidget);
+        expect(find.text('MEASURED'), findsOneWidget);
+        expect(find.text('20 cm'), findsOneWidget);
+        expect(find.text('1.35 m'), findsOneWidget);
+        // The ~115 m approximation caveat is still shown alongside it.
+        expect(find.byKey(const Key('depth-verdict-caveat')), findsOneWidget);
+        final cardTop = tester
+            .getTopLeft(find.byKey(const Key('measured-depth-card')))
+            .dy;
+        final crossSectionTop = tester
+            .getTopLeft(find.byType(DepthCrossSection))
+            .dy;
+        expect(cardTop, lessThan(crossSectionTop));
+      });
+
+      testWidgets('given no measurement, shows no measured card and no 0-10 m '
+          'values', (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _gentleProfile)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MeasuredNearshoreDepthCard), findsNothing);
+        expect(find.text('MEASURED'), findsNothing);
+      });
     });
   });
 }

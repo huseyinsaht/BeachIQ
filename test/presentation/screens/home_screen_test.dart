@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/models/sea_condition.dart';
@@ -12,6 +13,7 @@ import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/data/services/device_location_service.dart';
 import 'package:beachiq/data/services/geocoding_service.dart';
 import 'package:beachiq/data/services/marine_batch_service.dart';
+import 'package:beachiq/data/services/measured_depth_repository.dart';
 import 'package:beachiq/data/services/notification_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
@@ -788,6 +790,7 @@ void main() {
       DraggableScrollableController? sheetController,
       DepthProvider? depthProvider,
       MarineProvider? marineProvider,
+      MeasuredDepthRepository? measuredDepthRepository,
     }) async {
       final weatherProvider = await aLoadedWeatherProvider(
         aWeatherCondition(temperature: 27),
@@ -800,6 +803,7 @@ void main() {
           marineProvider: marineProvider,
           sheetController: sheetController,
           depthProvider: depthProvider,
+          measuredDepthRepository: measuredDepthRepository,
         ),
       );
       await tester.pump(const Duration(milliseconds: 10));
@@ -957,6 +961,7 @@ void main() {
         WidgetTester tester,
         DraggableScrollableController sheetController, {
         DepthProvider? depthProvider,
+        MeasuredDepthRepository? measuredDepthRepository,
       }) async {
         final client = fixtureClient();
         final provider = await fakeNearbyBeachesProvider(client: client);
@@ -966,6 +971,7 @@ void main() {
           provider,
           sheetController: sheetController,
           depthProvider: depthProvider,
+          measuredDepthRepository: measuredDepthRepository,
         );
 
         await tester.tap(find.byTooltip('More'));
@@ -1014,6 +1020,76 @@ void main() {
           findsOneWidget,
         );
       });
+
+      testWidgets(
+        'a measurement near the picked beach shows up in DepthDetailScreen '
+        '(#390)',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final sheetController = DraggableScrollableController();
+          // The fixture beach sits at ~38.40, 26.40.
+          final repository = MeasuredDepthRepository.fromJsonString(
+            jsonEncode({
+              'beaches': [
+                {
+                  'beachName': 'Fixture Beach',
+                  'latitude': 38.405,
+                  'longitude': 26.405,
+                  'radiusMeters': 1000,
+                  'measuredOn': '2026-10-25',
+                  'measuredBy': 'Vaen',
+                  'method': 'Marked rope and depth stick',
+                  'points': [
+                    {'distanceMeters': 3, 'depthCm': 55},
+                  ],
+                },
+              ],
+            }),
+          );
+          await pickFixtureBeach(
+            tester,
+            sheetController,
+            depthProvider: depthProvider,
+            measuredDepthRepository: repository,
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byType(DepthDetailScreen), findsOneWidget);
+          expect(find.text('MEASURED'), findsOneWidget);
+          expect(find.text('55 cm'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
+        'without a measurement near the picked beach, DepthDetailScreen shows '
+        'no measured card (#390)',
+        (tester) async {
+          final depthProvider = await aLoadedDepthProvider(gentleProfile);
+          final sheetController = DraggableScrollableController();
+          await pickFixtureBeach(
+            tester,
+            sheetController,
+            depthProvider: depthProvider,
+            measuredDepthRepository: const MeasuredDepthRepository.empty(),
+          );
+          await tester.pump(const Duration(milliseconds: 10));
+          await tester.pumpAndSettle();
+
+          await tester.tap(
+            find.text('Shallow for a long way out. Easier for non-swimmers.'),
+          );
+          await tester.pumpAndSettle();
+
+          expect(find.byType(DepthDetailScreen), findsOneWidget);
+          expect(find.text('MEASURED'), findsNothing);
+        },
+      );
 
       testWidgets(
         'tapping the depth summary opens DepthDetailScreen, back returns '
