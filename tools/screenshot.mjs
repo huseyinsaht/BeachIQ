@@ -12,11 +12,23 @@ const page = await browser.newPage({
   isMobile: true,
   hasTouch: true,
 });
+// Surface startup failures in the CI log: a crash before the first frame
+// otherwise just produces a blank white screenshot.
+page.on('console', (m) => console.log(`[browser ${m.type()}]`, m.text()));
+page.on('pageerror', (e) => console.log('[browser pageerror]', e.stack || e.message));
+page.on('requestfailed', (r) =>
+  console.log('[browser requestfailed]', r.url(), r.failure()?.errorText));
 await page.goto(url, { waitUntil: 'load' });
 await page.waitForSelector('flt-glass-pane', { state: 'attached', timeout: 60000 });
 // Let map tiles and first frames settle; networkidle may never happen with tiles, so cap it.
 await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
 await page.waitForTimeout(5000);
-await page.screenshot({ path: out });
+const shot = await page.screenshot({ path: out });
 await browser.close();
-console.log('saved', out);
+console.log('saved', out, `${shot.length} bytes`);
+// A blank (single-colour) PNG at this size compresses to a few KB; real app
+// screenshots are hundreds of KB. Fail so a blank image is not published.
+if (shot.length < 30000) {
+  console.error('Screenshot looks blank - the app probably failed to render.');
+  process.exit(1);
+}

@@ -29,7 +29,7 @@ List<Beach> mapOverpassToBeaches(Map<String, dynamic> rawResponse) {
   if (rawElements is! List) return [];
 
   final beachElements = <_OsmElement>[];
-  final amenityElements = <_OsmElement>[];
+  final amenityElements = <(_OsmElement, AmenityKind)>[];
 
   for (final raw in rawElements) {
     if (raw is! Map) continue;
@@ -38,8 +38,9 @@ List<Beach> mapOverpassToBeaches(Map<String, dynamic> rawResponse) {
 
     if (element.tags['natural'] == 'beach') {
       beachElements.add(element);
-    } else if (_amenityKind(element.tags) != null) {
-      amenityElements.add(element);
+    } else {
+      final kind = _amenityKind(element.tags);
+      if (kind != null) amenityElements.add((element, kind));
     }
   }
 
@@ -47,8 +48,8 @@ List<Beach> mapOverpassToBeaches(Map<String, dynamic> rawResponse) {
 
   final groups = _mergeAdjoiningBeaches(beachElements);
 
-  for (final amenity in amenityElements) {
-    _attachAmenityToNearestBeach(amenity, groups);
+  for (final (amenity, kind) in amenityElements) {
+    _attachAmenityToNearestBeach(amenity, kind, groups);
   }
 
   return groups.map((g) => g.toBeach()).toList();
@@ -292,9 +293,13 @@ List<_BeachGroup> _mergeAdjoiningBeaches(List<_OsmElement> beachElements) {
 
 /// Finds the nearest beach group to [amenity] (by minimum distance to its
 /// reference points) and, if within [_amenityAttachRadiusMeters], marks the
-/// matching flag on it.
+/// matching flag on it. [kind] is [amenity]'s already-classified
+/// [AmenityKind] — the only call site filters to non-null kinds before
+/// building its amenity list, so there is no "unknown kind" case to handle
+/// here.
 void _attachAmenityToNearestBeach(
   _OsmElement amenity,
+  AmenityKind kind,
   List<_BeachGroup> groups,
 ) {
   _BeachGroup? nearest;
@@ -310,7 +315,6 @@ void _attachAmenityToNearestBeach(
 
   if (nearest == null || nearestDistance > _amenityAttachRadiusMeters) return;
 
-  final kind = _amenityKind(amenity.tags);
   switch (kind) {
     case AmenityKind.shower:
       nearest.hasShower = true;
@@ -326,17 +330,13 @@ void _attachAmenityToNearestBeach(
       nearest.hasLifeguard = true;
     case AmenityKind.beachResort:
       nearest.hasBeachResort = true;
-    case null:
-      break;
   }
-  if (kind != null) {
-    final name = amenity.tags['name'];
-    nearest.amenities.add(
-      BeachAmenity(
-        kind: kind,
-        position: amenity.point,
-        name: name is String && name.isNotEmpty ? name : null,
-      ),
-    );
-  }
+  final name = amenity.tags['name'];
+  nearest.amenities.add(
+    BeachAmenity(
+      kind: kind,
+      position: amenity.point,
+      name: name is String && name.isNotEmpty ? name : null,
+    ),
+  );
 }

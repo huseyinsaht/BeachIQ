@@ -25,8 +25,8 @@ BeachIQ tells you what to expect *before* you leave the house, so every trip to 
 - 🌊 **Live wave height** — no more guessing
 - 📍 **Nearby spots** — find the best conditions close to you
 - 📊 **One glance, all you need** — clean dashboard, no clutter
-- 🔔 Alerts when conditions turn perfect (while the app is running — background
-  delivery is still coming)
+- 🔔 Alerts when conditions turn perfect — on Android this keeps checking in the
+  background even while the app is closed; other platforms alert while it's open
 
 ## 📱 See it in action
 

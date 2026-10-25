@@ -36,7 +36,9 @@ screen, with the location's details living in a sheet dragged up from the bottom
   the background to a short place name (e.g. "Çeşme, İzmir") once available, replacing
   the coordinate label shown while that lookup is in flight; a failure (permission
   denied, location services off, or any other device error) keeps the previous
-  location and shows a brief message instead of guessing a position.
+  location and shows a brief message instead of guessing a position. On the web build,
+  reverse geocoding isn't available at all, so a location pick there always shows plain
+  coordinates instead of a resolved place name.
 - The sheet's title is always the selected location's own real place name (not a
   generic "My Location" label) — the exact text a reverse-geocoded pick, a place
   search result, or a picked beach resolved to, or plain coordinates for a bare map
@@ -61,10 +63,12 @@ screen, with the location's details living in a sheet dragged up from the bottom
   (one row per day with the same good/caution/poor swim verdict as the suggestion
   pill, plus that day's high/low temperature).
 - A real notification when conditions turn favorable: if the swim verdict for the
-  selected location flips from caution/poor/unknown to good while the app is running,
-  a local notification is shown (after a one-time permission prompt). An "Alerts"
-  switch in the overflow menu turns this on or off (issue #267); it only fires while
-  the app is open — there's no background/scheduled check.
+  selected location flips from caution/poor/unknown to good, a local notification is
+  shown (after a one-time permission prompt) — both while the app is running, and on
+  Android, via a periodic background check every 15 minutes while it isn't open
+  (issue #359; iOS/web/desktop stay foreground-only for now). An "Alerts" switch in
+  the overflow menu turns this on or off (issue #267), registering/cancelling the
+  background check as it's flipped.
 - A grid of nine equally-sized stat tiles, once marine data has loaded, grouped under
   three labels:
   - **Sea** — wave height, water temperature, water depth. Always visible, even with
@@ -149,9 +153,6 @@ feature, built ungated for now (no entitlement system exists yet).
 From the roadmap on `README.md`:
 
 - Google Play launch
-- Background/scheduled delivery so the "conditions turned favorable" notification
-  can fire while the app isn't open (today it only fires while the app is running,
-  and only when the "Alerts" switch above is on — see "Today" above)
 
-The core wave-height dashboard and nearby beach search from the original roadmap are
-now implemented, as described above.
+The core wave-height dashboard, nearby beach search, and background condition alerts
+from the original roadmap are now implemented, as described above.

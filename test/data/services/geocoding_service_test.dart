@@ -96,6 +96,24 @@ void main() {
       );
     });
 
+    test('wraps a malformed (non-JSON) 200 response body in a clear '
+        'exception instead of a raw FormatException', () async {
+      final client = MockClient((request) async {
+        return http.Response('not json', 200);
+      });
+
+      await expectLater(
+        () => GeocodingService(client).search('Cesme'),
+        throwsA(
+          isA<Exception>().having(
+            (e) => e.toString(),
+            'message',
+            contains('Malformed Response'),
+          ),
+        ),
+      );
+    });
+
     test('wraps a network error in a clear exception', () async {
       final client = MockClient((request) async {
         throw http.ClientException('Connection failed');

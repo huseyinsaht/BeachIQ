@@ -75,6 +75,14 @@ placeholder data when no `NearbyBeachesProvider` is supplied, and as `BeachCache
 offline fallback (filtered to a radius) when a live Overpass fetch fails and nothing
 is cached yet.
 
+### `lib/data/selected_location_prefs_keys.dart`
+
+`SharedPreferences` key constants (`selectedLocationLatPrefsKey`/
+`selectedLocationLonPrefsKey`/`selectedLocationNamePrefsKey`) for the Home screen's
+persisted selected location. Promoted out of `home_screen.dart` (where they used to
+be private) so `lib/logic/background_alert_task.dart` (#359) can read the same
+persisted location without duplicating the string literals.
+
 ### `lib/data/services`
 
 - `MarineApiService` (`lib/data/services/api_service.dart`) — single-location
@@ -131,7 +139,12 @@ is cached yet.
   `ReverseGeocodeCache` (below) so the same area is never looked up twice. Any failure
   (a `PlatformException` — rate limiting, no Google Play Services — an empty result, or
   a placemark with no usable name) resolves to `null`, never a made-up name; `HomeScreen`
-  falls back to `location_map_card.dart`'s `formatCoordinates` in that case.
+  falls back to `location_map_card.dart`'s `formatCoordinates` in that case. The
+  `geocoding` plugin has no web implementation, so the module's top-level
+  `buildReverseGeocodingService({bool isWeb = kIsWeb, required prefs})` factory (used by
+  `main()` instead of calling the constructor directly) returns `null` on web rather than
+  constructing `GeocodingPlacemarkLookup()` there, which would otherwise throw
+  synchronously and crash the app before its first frame.
 - `BathymetryService` (`lib/data/services/bathymetry_service.dart`) — fetches a beach's
   nearshore depth profile (#216) from EMODnet Bathymetry's public WMS `GetFeatureInfo`
   endpoint (`ows.emodnet-bathymetry.eu/wms`, the `emodnet:mean` layer, no API
@@ -357,6 +370,41 @@ Pure, platform-agnostic logic with no I/O:
   no-op if called again for the same beach, and a request token guards a superseded
   fetch's result from overwriting a newer one. `null` (no beach to key a transect off
   of) clears `profile` to `DepthProfile.unavailable()` with no network call.
+
+### `lib/logic/background_alert_task.dart`
+
+Issue #359's background half of the "conditions turned favorable" notification — the
+`ConditionAlertDispatcher` above only fires while the app is running:
+
+- `runBackgroundAlertCheck` — fetches weather + marine data for the persisted
+  selected location (`lib/data/selected_location_prefs_keys.dart`'s keys, the same
+  ones `HomeScreen` persists on every pick) and shows a notification on exactly the
+  same caution/poor/unknown → good transition `ConditionAlertService.shouldAlert`
+  already defines for the foreground dispatcher — no new threshold, no new
+  notification channel. No-ops (no fetch, no notification) when alerts are disabled
+  or no location has ever been picked; never throws, so a fetch or notification
+  failure is swallowed rather than crashing the background task or showing a false
+  notification.
+- `BackgroundScheduler`/`WorkmanagerBackgroundScheduler`/`NoopBackgroundScheduler`/
+  `buildBackgroundScheduler` — an injectable wrapper around the `workmanager`
+  plugin, so tests never touch a real platform channel. `buildBackgroundScheduler`
+  wires the real scheduler (a periodic task, `backgroundAlertCheckFrequency` = 15
+  minutes, Workmanager's own floor for periodic work) on **Android only**; iOS/web/
+  desktop get a no-op (iOS's BGTaskScheduler support is real in the `workmanager`
+  package but unverified in this environment, and web/desktop have no equivalent
+  "while the app isn't open" execution model for this plugin to hook into).
+- `backgroundAlertCallbackDispatcher` — the Workmanager entry point
+  (`@pragma('vm:entry-point')`), invoked by the OS in a separate background
+  isolate; it builds its own `SharedPreferences` and repositories rather than
+  reusing `main()`'s long-lived instances, which don't exist in that isolate.
+- `SchedulingConditionAlertDispatcher` — extends `ConditionAlertDispatcher` so
+  flipping the Home screen's "Alerts" switch (the only call site of
+  `setAlertsEnabled`) also registers/cancels the periodic background check via a
+  `BackgroundScheduler`, without forking or re-wiring the base dispatcher's own
+  foreground listening logic. Also syncs on construction, matching whichever state
+  the toggle was already persisted in, and swallows any scheduler error so a
+  `Workmanager` plugin/platform failure never stops the toggle (or app startup)
+  from working. `main()` wires this in place of a plain `ConditionAlertDispatcher`.
 
 ### `lib/presentation/widgets`
 
@@ -717,12 +765,14 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, a
   `PlaceSearchProvider` (`GeocodingService`), a `DepthProvider` (#217:
   `BathymetryService` + `DepthCache`), a `DeviceLocationService` (#254:
-  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` (#254:
-  `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`); also builds the
+  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` via
+  `buildReverseGeocodingService` (#254: `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`,
+  or `null` on web — #354); also builds the
   `MarineProvider`/`WeatherProvider` instances here (rather than leaving it to
   `MarineApp`'s default) so it can start a `NotificationService` and a
-  `ConditionAlertDispatcher` listening to those same instances before `runApp`, then
-  runs `MarineApp` with all of them.
+  `SchedulingConditionAlertDispatcher` (#359, wired with `buildBackgroundScheduler()`)
+  listening to those same instances before `runApp`, then runs `MarineApp` with all
+  of them.
 - `MarineApp` — the root widget. Creates `MarineProvider`/`WeatherProvider` via
   `MultiProvider`/`ChangeNotifierProvider` and hosts `HomeScreen` inside a
   `MaterialApp`, forwarding the `UnitPreferencesProvider`/`NearbyBeachesProvider`/
@@ -823,6 +873,10 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
   position and city name, behind `DeviceLocationService`/`ReverseGeocodingService`.
   Both only ever run in response to the explicit "Use my location" action or a map
   tap; resolved names are cached 30 days by `ReverseGeocodeCache`.
+- **Platform background task scheduling** (via the `workmanager` plugin, **Android
+  only**) — issue #359's periodic "conditions turned favorable" background check,
+  registered/cancelled by `SchedulingConditionAlertDispatcher`/
+  `buildBackgroundScheduler` as the "Alerts" toggle flips.
 
 ## Tests
 
@@ -845,6 +899,9 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
   `shallow_entry_status_test.dart`, `shallow_entry_verdict_test.dart` (#256),
   `wind_status_test.dart`, `rain_status_test.dart`, `chart_axis_test.dart`,
   `daily_outlook_test.dart` (#273), `swim_safety_disclaimer_test.dart` (#271)),
+  `background_alert_task_test.dart` (#359, covering `runBackgroundAlertCheck`'s
+  alert/no-op/failure paths and `WorkmanagerBackgroundScheduler`'s
+  `registerPeriodic`/`cancel` calls via a mocktail-faked `Workmanager`),
   provider tests (`test/logic/providers/`, including
   `NearbyBeachesProvider`/`PlaceSearchProvider`/`FavoritesProvider`/
   `UnitPreferencesProvider`/`MarineProvider`/`WeatherProvider`/

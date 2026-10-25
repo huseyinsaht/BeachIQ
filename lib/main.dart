@@ -17,9 +17,9 @@ import 'data/services/geocoding_service.dart';
 import 'data/services/marine_batch_service.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
-import 'data/services/reverse_geocode_cache.dart';
 import 'data/services/reverse_geocoding_service.dart';
 import 'data/services/weather_api_service.dart';
+import 'logic/background_alert_task.dart';
 import 'logic/providers/condition_alert_dispatcher.dart';
 import 'logic/providers/depth_provider.dart';
 import 'logic/providers/marine_provider.dart';
@@ -52,10 +52,7 @@ void main() async {
   final deviceLocationService = DeviceLocationService(
     GeolocatorDeviceLocationSource(),
   );
-  final reverseGeocodingService = ReverseGeocodingService(
-    GeocodingPlacemarkLookup(),
-    ReverseGeocodeCache(prefs),
-  );
+  final reverseGeocodingService = buildReverseGeocodingService(prefs: prefs);
 
   // Built here (rather than left to MarineApp's own default) so the
   // condition-alert dispatcher below can listen to the exact same
@@ -66,10 +63,12 @@ void main() async {
   );
 
   // Issue #221: wires real foreground notification delivery onto #87's pure
-  // "conditions turned favorable" trigger decision. Out of scope here (see
-  // the issue): true background delivery while the app isn't open, and a
-  // settings screen for the alerts-enabled toggle (it's persisted and
-  // defaults to on, but nothing in the UI flips it yet).
+  // "conditions turned favorable" trigger decision. Issue #359 adds the
+  // background half (periodic check via `workmanager` while the app isn't
+  // open, Android only for now — see `background_alert_task.dart`). Still
+  // out of scope: a settings screen for the alerts-enabled toggle (it's
+  // persisted and defaults to on, but nothing in the UI flips it yet besides
+  // the map card's "Alerts" switch).
   // Not awaited: `NotificationService.show` already lazily calls `init()`
   // if it hasn't run yet, so blocking app startup on the permission prompt
   // (or letting a plugin exception there stop the app from launching) is
@@ -77,11 +76,12 @@ void main() async {
   // likely appears sooner rather than on the first alert.
   final notificationService = NotificationService();
   unawaited(notificationService.init());
-  final conditionAlertDispatcher = ConditionAlertDispatcher(
+  final conditionAlertDispatcher = SchedulingConditionAlertDispatcher(
     weatherProvider: weatherProvider,
     marineProvider: marineProvider,
     notificationService: notificationService,
     prefs: prefs,
+    scheduler: buildBackgroundScheduler(),
   )..start();
 
   runApp(

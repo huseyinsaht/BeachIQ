@@ -12,6 +12,7 @@ import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
 import '../../data/models/weather_condition.dart';
 import '../../data/repositories/weather_repository.dart';
+import '../../data/selected_location_prefs_keys.dart';
 import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
@@ -647,10 +648,6 @@ class _HomeScreenState extends State<HomeScreen> {
   static final _cesmeDefault = const LatLng(38.3220, 26.3260);
   static const _cesmeDefaultName = 'Çeşme, İzmir';
 
-  static const _prefsLatKey = 'home_selected_location_lat';
-  static const _prefsLonKey = 'home_selected_location_lon';
-  static const _prefsNameKey = 'home_selected_location_name';
-
   /// The location every fetch (weather, marine, nearby beaches) and the
   /// header/map-card place name are bound to. Starts at [_cesmeDefault] and
   /// is replaced either by a restored pick (see [_restoreSelectedLocation])
@@ -729,6 +726,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   static const double _sheetMinSize = 0.34;
   static const double _sheetMaxSize = 0.90;
+
+  /// Fixed footprint of the Sea section's loading/error placeholder (see
+  /// [_buildSectionLoading] and [_buildSectionError]), shared by both call
+  /// sites below so they can't drift apart and re-introduce the layout
+  /// jump between the loading and error states that this constant fixes.
+  static const double _seaSectionPlaceholderHeight = 40;
 
   /// The fractional size above which the sheet is considered "expanded"
   /// (see [_sheetExpanded]) — roughly the midpoint between
@@ -810,11 +813,13 @@ class _HomeScreenState extends State<HomeScreen> {
   /// case [_cesmeDefault] stays as-is.
   Future<_SavedLocation?> _restoreSelectedLocation() async {
     final prefs = await SharedPreferences.getInstance();
-    final lat = prefs.getDouble(_prefsLatKey);
-    final lon = prefs.getDouble(_prefsLonKey);
+    final lat = prefs.getDouble(selectedLocationLatPrefsKey);
+    final lon = prefs.getDouble(selectedLocationLonPrefsKey);
     if (lat == null || lon == null) return null;
     final point = LatLng(lat, lon);
-    final name = prefs.getString(_prefsNameKey) ?? formatCoordinates(point);
+    final name =
+        prefs.getString(selectedLocationNamePrefsKey) ??
+        formatCoordinates(point);
     return _SavedLocation(point, name);
   }
 
@@ -827,9 +832,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_prefsLatKey, point.latitude);
-      await prefs.setDouble(_prefsLonKey, point.longitude);
-      await prefs.setString(_prefsNameKey, displayName);
+      await prefs.setDouble(selectedLocationLatPrefsKey, point.latitude);
+      await prefs.setDouble(selectedLocationLonPrefsKey, point.longitude);
+      await prefs.setString(selectedLocationNamePrefsKey, displayName);
     } catch (_) {
       // Persisting the pick is a nice-to-have (the restart acceptance
       // criterion) — a failure here must never affect the live pick
@@ -907,8 +912,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final result = await service.getCurrentLocation();
     if (!context.mounted) return;
     if (!result.isSuccess) {
+      // DeviceLocationResult's own invariant (position xor failure) makes
+      // failure non-null here.
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_deviceLocationFailureMessage(result.failure))),
+        SnackBar(content: Text(_deviceLocationFailureMessage(result.failure!))),
       );
       return;
     }
@@ -919,14 +926,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// The short, non-blocking message [_handleUseMyLocation] shows for each
   /// [DeviceLocationFailure] reason — never a raw exception message.
-  String _deviceLocationFailureMessage(DeviceLocationFailure? failure) {
+  String _deviceLocationFailureMessage(DeviceLocationFailure failure) {
     switch (failure) {
       case DeviceLocationFailure.serviceDisabled:
         return 'Location services are turned off. Keeping your last location.';
       case DeviceLocationFailure.permissionDenied:
         return 'Location permission denied. Keeping your last location.';
       case DeviceLocationFailure.unavailable:
-      case null:
         return "Couldn't get your location right now. Keeping your last location.";
     }
   }
@@ -1557,10 +1563,13 @@ class _HomeScreenState extends State<HomeScreen> {
         // to show yet.
         if (marineLoading) ...[
           const SizedBox(height: 20),
-          _buildSectionLoading(height: 40),
+          _buildSectionLoading(height: _seaSectionPlaceholderHeight),
         ] else if (marineErrorMessage != null) ...[
           const SizedBox(height: 20),
-          _buildSectionError(marineErrorMessage),
+          _buildSectionError(
+            marineErrorMessage,
+            height: _seaSectionPlaceholderHeight,
+          ),
         ],
         const SizedBox(height: 20),
         StatTileGroup(
@@ -2203,6 +2212,17 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Text(
               'Unable to load marine data.\n$error',
               style: const TextStyle(color: _textPrimary, fontSize: 13),
+              // Bounded (rather than unbounded) only when [height] also
+              // bounds the box around this text, so a long error is
+              // truncated with an ellipsis rather than wrapping onto a
+              // third line. Known limitation: at 1.0 text scale this still
+              // fits the fixed height below; at a large system text scale
+              // two lines can themselves exceed it, and `Center` neither
+              // clips nor throws, so the text would paint past the box
+              // rather than being cut off — capping the line count narrows
+              // that gap but doesn't close it.
+              maxLines: height == null ? null : 2,
+              overflow: height == null ? null : TextOverflow.ellipsis,
             ),
           ),
         ],
