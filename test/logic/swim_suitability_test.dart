@@ -88,6 +88,34 @@ void main() {
       expect(verdict.level, SwimSuitabilityLevel.good);
     });
 
+    test('is unknown, never good, when wave height is missing', () {
+      final verdict = scoreSwimSuitability(
+        windSpeedKmh: 8,
+        rainChancePercent: 5,
+      );
+
+      expect(verdict.level, SwimSuitabilityLevel.unknown);
+      expect(
+        verdict.message,
+        'Sea conditions unavailable — check local flags before swimming.',
+      );
+    });
+
+    test('still warns about wind or rain when wave height is missing', () {
+      expect(
+        scoreSwimSuitability(windSpeedKmh: 45, rainChancePercent: 5).level,
+        SwimSuitabilityLevel.poor,
+      );
+      expect(
+        scoreSwimSuitability(windSpeedKmh: 25, rainChancePercent: 5).level,
+        SwimSuitabilityLevel.caution,
+      );
+      expect(
+        scoreSwimSuitability(windSpeedKmh: 8, rainChancePercent: 75).level,
+        SwimSuitabilityLevel.poor,
+      );
+    });
+
     test('boundary wave height counts as poor, not caution', () {
       final verdict = scoreSwimSuitability(waveHeightM: 1.2);
 
@@ -119,7 +147,10 @@ void main() {
     });
 
     test('just below the moderate wind speed boundary is still good', () {
-      final verdict = scoreSwimSuitability(windSpeedKmh: 19.9);
+      final verdict = scoreSwimSuitability(
+        waveHeightM: 0.2,
+        windSpeedKmh: 19.9,
+      );
 
       expect(verdict.level, SwimSuitabilityLevel.good);
     });
@@ -137,7 +168,10 @@ void main() {
     });
 
     test('just below the moderate rain chance boundary is still good', () {
-      final verdict = scoreSwimSuitability(rainChancePercent: 39);
+      final verdict = scoreSwimSuitability(
+        waveHeightM: 0.2,
+        rainChancePercent: 39,
+      );
 
       expect(verdict.level, SwimSuitabilityLevel.good);
     });

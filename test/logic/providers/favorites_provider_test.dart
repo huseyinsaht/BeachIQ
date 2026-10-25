@@ -4,13 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final _alacati = Beach(
-  name: 'Alaçatı Plajı',
+  name: 'Alaçatı Beach',
   city: 'İzmir',
   latitude: 38.2820,
   longitude: 26.3710,
 );
 final _patara = Beach(
-  name: 'Patara Plajı',
+  name: 'Patara Beach',
   city: 'Antalya',
   latitude: 36.2650,
   longitude: 29.3160,

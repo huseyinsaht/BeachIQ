@@ -386,6 +386,27 @@ as part of the same app:
      `shallowLimitMeters`/`deepLimitMeters`) is kept, now sitting below the cross-section as the exact
      numeric reading for anyone who wants it, rather than being replaced by it.
 
+   - **`MeasuredNearshoreDepthCard`** (issue #390, `lib/presentation/widgets/measured_nearshore_depth_card.dart`)
+     — "Near the shore" with a green **MEASURED** badge, directly under the verdict/caveat and above the
+     cross-section: real on-site depths (cm, or m from 1 m; ft for imperial) at 1-10 m from the water's
+     edge, "Measured on <date> by <who>. <method>.", what 0 m is, an optional note and the caveat "Depths
+     change with waves, the season and the water level on the day. A measurement is a guide for that day, not
+     a safety guarantee." Only for beaches with an entry in `assets/measured_depths.json` (matched by
+     coordinates within the entry's radius; format and measuring guide in `docs/measured-depth.md`); other
+     beaches show nothing here and keep the "approximate ~115 m" wording — the 0-10 m range is never
+     estimated. The data layer is `MeasuredDepthRepository` (`lib/data/services/`), which drops invalid
+     entries instead of showing a wrong depth.
+
+   - **Beach surface and `NearshoreEstimateCard`** (issue #392, `lib/presentation/widgets/nearshore_estimate_card.dart`,
+     logic in `lib/logic/beach_surface.dart` and `nearshore_depth_estimate.dart`, details and the validation plan in
+     `docs/nearshore-estimate.md`) — a "Beach surface: Sand (OpenStreetMap)" line whenever the OSM surface is known
+     (the same surface is a "Surface" info line on the beach card), and, for beaches **without** an on-site
+     measurement, an amber **ESTIMATE** block "First 10 m from the water": for sand, a conservative range from the
+     ~100 m depth ("probably about 0.3 m to 1.0 m"), or "may be waist-deep or more" when the upper end reaches 1.2 m;
+     for pebbles/gravel/rock only a warning that the bottom can drop away quickly (no numbers); nothing for an
+     unknown surface. Always with "Estimated ..., not measured. Steps, sandbars and drop-offs are not visible in that
+     data, so the water can be deeper than this." The factors (0.10 and 0.32) are provisional until validated.
+
    The explanation paragraph (below) also carries an EMODnet attribution line. The Min/Max/Now summary
    row is repurposed to the shallowest/deepest valid reading along the transect and the reading at the
    classification's own 100 m reference distance, since there is no literal "now" for a spatial reading.

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/models/beach.dart';
 import '../../data/models/depth_profile.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/beach_surface.dart';
 import '../../logic/shallow_entry.dart';
 import '../../logic/shallow_entry_status.dart';
 import '../../logic/shallow_entry_verdict.dart';
@@ -121,6 +122,7 @@ class BeachResultCard extends StatelessWidget {
     this.waveHeightMeters,
     this.waterTemperatureCelsius,
     this.shoeAdvice,
+    this.surface,
     this.hasParking,
     this.hasBeachResort,
     this.hasCafe,
@@ -165,6 +167,12 @@ class BeachResultCard extends StatelessWidget {
   /// [adviseOnShoes]. Null when no beach info is being shown at all (see
   /// the class docs).
   final ShoeAdvice? shoeAdvice;
+
+  /// The beach ground from OSM's `surface` tag (sand, pebbles, gravel,
+  /// rock), or null when unknown/unrecognised -- shown as "No data", never
+  /// guessed. Only shown once the info block itself is (see
+  /// [_hasBeachInfo]).
+  final BeachSurface? surface;
 
   /// Whether a car park ([Beach.hasParking]), beach club
   /// ([Beach.hasBeachResort]) or cafe ([Beach.hasCafe]) was found near the
@@ -253,6 +261,10 @@ class BeachResultCard extends StatelessWidget {
       _BeachInfoLine(
         'Water temp',
         _waterTemperatureText(waterTemperatureCelsius, unitSystem),
+      ),
+      _BeachInfoLine(
+        'Surface',
+        surface == null ? 'No data' : beachSurfaceLabel(surface!),
       ),
     ];
     final rightLines = <_BeachInfoLine>[

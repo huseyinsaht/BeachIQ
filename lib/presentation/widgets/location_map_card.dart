@@ -90,6 +90,15 @@ String formatCoordinates(LatLng point) {
   return '$latLabel, $lonLabel';
 }
 
+/// Top offset of the amenity legend chips on the full-screen Home map: clear
+/// of the floating search field above it (see `HomeScreen`'s `Positioned`
+/// search field).
+const double kEdgeToEdgeLegendTop = 76;
+
+/// Right inset of the legend on the full-screen Home map, leaving room for
+/// the floating zoom/location controls.
+const double kEdgeToEdgeLegendRight = 72;
+
 /// The light ("paper"), rounded map card with a coastline highlight and a
 /// docked location bar (pin icon + place name + overflow menu) at its
 /// bottom edge, per docs/design.md § "Screen: Home / location detail".
@@ -579,6 +588,12 @@ class _LocationMapCardState extends State<LocationMapCard> {
       for (final beach in overlayBeaches) ...beach.amenities,
     ];
     final presentKinds = {for (final a in allAmenities) a.kind};
+    // Full-screen Home floats its search field (top 16, ~52 tall) and the
+    // zoom/location controls (right 16, ~48 wide) over the map, so the
+    // legend chips sit below the former and clear of the latter; the card
+    // layout has neither overlay.
+    final legendTop = widget.edgeToEdge ? kEdgeToEdgeLegendTop : 8.0;
+    final legendRight = widget.edgeToEdge ? kEdgeToEdgeLegendRight : 48.0;
     final visibleAmenities = allAmenities
         .where((a) => !_hiddenAmenityKinds.contains(a.kind))
         .toList();
@@ -601,7 +616,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
           children: [
             TileLayer(
               urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-              userAgentPackageName: "io.beachiq.app",
+              userAgentPackageName: "io.beachiq.beachiq",
               tileProvider: widget.tileProvider ?? NetworkTileProvider(),
             ),
             CircleLayer(
@@ -645,9 +660,9 @@ class _LocationMapCardState extends State<LocationMapCard> {
         ),
         if (presentKinds.isNotEmpty)
           Positioned(
-            top: 8,
+            top: legendTop,
             left: 8,
-            right: 48,
+            right: legendRight,
             child: AmenityLegend(
               presentKinds: presentKinds,
               hiddenKinds: _hiddenAmenityKinds,
@@ -656,9 +671,9 @@ class _LocationMapCardState extends State<LocationMapCard> {
           ),
         if (selected != null)
           Positioned(
-            top: presentKinds.isEmpty ? 8 : 44,
+            top: presentKinds.isEmpty ? legendTop : legendTop + 36,
             left: 8,
-            right: 48,
+            right: legendRight,
             child: _SelectedAmenityCard(
               amenity: selected,
               distanceMeters: _distance(_pickedPoint, selected.position),

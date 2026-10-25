@@ -298,7 +298,7 @@ void main() {
           debounceDuration: _debounce,
         );
 
-        // Close to Konyaaltı Plajı in the static fallback list.
+        // Close to Konyaaltı Beach in the static fallback list.
         provider.pickLocation(const LatLng(36.90, 30.65));
         await Future.delayed(_settle);
 

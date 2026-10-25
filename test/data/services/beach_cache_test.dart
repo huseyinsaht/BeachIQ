@@ -9,7 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final _testBeach = Beach(
-  name: 'Test Plajı',
+  name: 'Test Beach',
   city: 'Test City',
   latitude: 36.90,
   longitude: 30.65,
@@ -19,7 +19,7 @@ final _testBeach = Beach(
 /// round-trip through [BeachCache] that silently dropped a field would be
 /// caught by [_expectSameBeaches].
 final _fullyPopulatedBeach = Beach(
-  name: 'Full Plajı',
+  name: 'Full Beach',
   city: 'Full City',
   latitude: 36.90,
   longitude: 30.65,
@@ -138,7 +138,7 @@ void main() {
       () async {
         final cache = BeachCache(await prefs(), now: DateTime.now);
 
-        // Close to Konyaaltı Plajı (36.8720, 30.6480) in staticBeaches.
+        // Close to Konyaaltı Beach (36.8720, 30.6480) in staticBeaches.
         final result = await cache.get(
           latitude: 36.90,
           longitude: 30.65,
@@ -148,7 +148,7 @@ void main() {
         expect(result.isFallback, isTrue);
         expect(result.beaches, isNotEmpty);
         expect(result.beaches.every((b) => staticBeaches.contains(b)), isTrue);
-        expect(result.beaches.any((b) => b.name == 'Konyaaltı Plajı'), isTrue);
+        expect(result.beaches.any((b) => b.name == 'Konyaaltı Beach'), isTrue);
       },
     );
 
@@ -239,7 +239,7 @@ void main() {
       await cache.put(36.90, 30.65, [_testBeach]);
 
       final refreshedBeach = Beach(
-        name: 'Refreshed Plajı',
+        name: 'Refreshed Beach',
         city: 'Test City',
         latitude: 36.90,
         longitude: 30.65,
@@ -367,7 +367,7 @@ void main() {
         'null, not a default', () async {
       final cache = BeachCache(await prefs());
       final beach = Beach(
-        name: 'No Extra Data Plajı',
+        name: 'No Extra Data Beach',
         city: 'Test City',
         latitude: 36.90,
         longitude: 30.65,
@@ -400,7 +400,7 @@ void main() {
           'fetchedAt': DateTime.now().toIso8601String(),
           'beaches': [
             {
-              'name': 'Old Schema Plajı',
+              'name': 'Old Schema Beach',
               'city': 'Test City',
               'latitude': 36.90,
               'longitude': 30.65,
@@ -426,7 +426,7 @@ void main() {
             fail('fetch should not be called; this entry is not stale'),
       );
 
-      expect(result.beaches.single.name, 'Old Schema Plajı');
+      expect(result.beaches.single.name, 'Old Schema Beach');
       expect(result.beaches.single.amenities, isEmpty);
     });
 
@@ -444,7 +444,7 @@ void main() {
           'fetchedAt': DateTime.now().toIso8601String(),
           'beaches': [
             {
-              'name': 'Stale Enum Plajı',
+              'name': 'Stale Enum Beach',
               'city': 'Test City',
               'latitude': 36.90,
               'longitude': 30.65,
@@ -470,7 +470,7 @@ void main() {
             fail('fetch should not be called; this entry is not stale'),
       );
 
-      expect(result.beaches.single.name, 'Stale Enum Plajı');
+      expect(result.beaches.single.name, 'Stale Enum Beach');
       expect(result.beaches.single.fee, BeachFee.unknown);
     });
   });

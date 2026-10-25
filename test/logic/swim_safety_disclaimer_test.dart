@@ -23,6 +23,18 @@ void main() {
     });
   });
 
+  group('ripCurrentSafetyTip', () {
+    test('given the tip, is general advice that never claims safety or '
+        'predicts a rip', () {
+      final tip = ripCurrentSafetyTip.toLowerCase();
+
+      expect(RegExp(r'safe').hasMatch(tip), isFalse);
+      expect(tip, contains('lifeguard'));
+      expect(tip, contains('parallel to the shore'));
+      expect(tip, isNot(contains('forecast')));
+    });
+  });
+
   group('swimSafetyDisclaimerTitle', () {
     test(
       'given the title, is non-empty and short enough for a sheet header',
