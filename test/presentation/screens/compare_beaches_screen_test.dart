@@ -426,5 +426,25 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('given two different beaches that share a name, shows a card '
+        'for each without any exception', (tester) async {
+      final first = aBeach(name: 'Unnamed beach', latitude: 1, longitude: 1);
+      final second = aBeach(name: 'Unnamed beach', latitude: 2, longitude: 2);
+      await pumpCompare(
+        tester,
+        beaches: [first, second],
+        sea: {
+          first: aSeaCondition(waveHeight: 0.2),
+          second: aSeaCondition(waveHeight: 0.9),
+        },
+        weather: {1: dry(), 2: dry()},
+      );
+
+      expect(find.text('Unnamed beach'), findsNWidgets(2));
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(find.text('A bit choppy — swim with care.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }

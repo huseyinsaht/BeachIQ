@@ -381,23 +381,29 @@ Future<List<Beach>?> _showCompareSelectionSheet(
                       shrinkWrap: true,
                       children: [
                         for (final beach in candidates)
-                          CheckboxListTile(
-                            key: Key('compare-select-${beach.name}'),
-                            value: selected.contains(beach),
-                            secondary: favoritesProvider.isFavorite(beach)
-                                ? const Icon(Icons.star, color: Colors.amber)
-                                : null,
-                            title: Text(beach.name),
-                            subtitle: Text(beach.city),
-                            onChanged: (checked) {
-                              setSheetState(() {
-                                if (checked == true && selected.length < 3) {
-                                  selected.add(beach);
-                                } else if (checked == false) {
-                                  selected.remove(beach);
-                                }
-                              });
-                            },
+                          // Unique per beach: two beaches may share a name
+                          // (e.g. "Unnamed beach"), and duplicate sibling
+                          // keys crash the list (found on a real device).
+                          KeyedSubtree(
+                            key: ValueKey(beachIdentityKey(beach)),
+                            child: CheckboxListTile(
+                              key: Key('compare-select-${beach.name}'),
+                              value: selected.contains(beach),
+                              secondary: favoritesProvider.isFavorite(beach)
+                                  ? const Icon(Icons.star, color: Colors.amber)
+                                  : null,
+                              title: Text(beach.name),
+                              subtitle: Text(beach.city),
+                              onChanged: (checked) {
+                                setSheetState(() {
+                                  if (checked == true && selected.length < 3) {
+                                    selected.add(beach);
+                                  } else if (checked == false) {
+                                    selected.remove(beach);
+                                  }
+                                });
+                              },
+                            ),
                           ),
                       ],
                     ),
