@@ -19,6 +19,7 @@ import '../../data/services/device_location_service.dart';
 import '../../data/services/measured_depth_repository.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/beach_surface.dart';
 import '../../logic/daily_outlook.dart';
 import '../../logic/forecast_alerts.dart';
 import '../../logic/providers/condition_alert_dispatcher.dart';
@@ -2169,6 +2170,7 @@ class _HomeScreenState extends State<HomeScreen> {
       waveHeightMeters: seaCondition?.waveHeight,
       waterTemperatureCelsius: seaCondition?.seaSurfaceTemperature,
       shoeAdvice: adviseOnShoes(liveBeach.surface),
+      surface: parseBeachSurface(liveBeach.surface),
       hasParking: liveBeach.hasParking,
       hasBeachResort: liveBeach.hasBeachResort,
       hasCafe: liveBeach.hasCafe,

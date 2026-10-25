@@ -76,7 +76,6 @@ water level on the day. A measurement is a guide for that day, not a safety guar
 
 ## Later
 
-Once a few beaches are measured, compare the measured 0-10 m values with a straight line from the water's edge
-to the EMODnet value at 100 m, grouped by the beach's OSM `surface` (sand / pebbles). Only if that estimate
-proves reliable would a clearly-labelled range for unmeasured beaches be considered. User-submitted
-measurements are a possible v2.
+Measuring cannot cover the world, so unmeasured beaches get a clearly labelled **estimate** instead (see
+[`nearshore-estimate.md`](nearshore-estimate.md)). A handful of measured sandy beaches is the validation sample for that
+estimate's factors. User-submitted measurements are a possible v2.

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../data/models/beach.dart';
 import '../../../data/models/depth_profile.dart';
 import '../../../data/models/measured_nearshore_depth.dart';
+import '../../../logic/beach_surface.dart';
+import '../../../logic/nearshore_depth_estimate.dart';
 import '../../../logic/shallow_entry.dart';
 import '../../../logic/shallow_entry_status.dart';
 import '../../../logic/shallow_entry_verdict.dart';
@@ -12,6 +14,7 @@ import '../../widgets/depth_cross_section.dart';
 import '../../widgets/depth_profile_chart.dart';
 import '../../widgets/measured_nearshore_depth_card.dart';
 import '../../widgets/metric_detail_scaffold.dart';
+import '../../widgets/nearshore_estimate_card.dart';
 // `driftOutWarningSpeedKmh` (issue #164's drift-out threshold) is defined
 // on `CurrentDetailScreen`, the screen it was first added for — reused
 // from there rather than duplicated, so this screen's drift-out warning
@@ -133,6 +136,14 @@ class DepthDetailScreen extends StatelessWidget {
         speed != null &&
         speed >= driftOutWarningSpeedKmh;
 
+    final beachSurface = parseBeachSurface(beach?.surface);
+    final nearshoreEstimate = measuredNearshoreDepth != null
+        ? null
+        : NearshoreDepthEstimate.from(
+            osmSurface: beach?.surface,
+            profile: effectiveProfile,
+          );
+
     final verdictLine = shallowEntryVerdictLine(classification.steepness);
     final verdictColor =
         shallowEntryStatusColor(classification.steepness) ?? _textSecondary;
@@ -176,10 +187,22 @@ class DepthDetailScreen extends StatelessWidget {
             key: Key('depth-verdict-caveat'),
             style: TextStyle(color: _textSecondary, fontSize: 12),
           ),
+          if (beachSurface != null) ...[
+            const SizedBox(height: 12),
+            BeachSurfaceRow(surface: beachSurface),
+          ],
+          // A real on-site measurement (#390) wins; otherwise a clearly
+          // labelled estimate (#392), when there is something honest to say.
           if (measuredNearshoreDepth != null) ...[
             const SizedBox(height: 16),
             MeasuredNearshoreDepthCard(
               data: measuredNearshoreDepth!,
+              unitSystem: unitSystem,
+            ),
+          ] else if (nearshoreEstimate != null) ...[
+            const SizedBox(height: 16),
+            NearshoreEstimateCard(
+              estimate: nearshoreEstimate,
               unitSystem: unitSystem,
             ),
           ],

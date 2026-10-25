@@ -1,6 +1,7 @@
 import 'package:beachiq/data/models/beach.dart';
 import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/logic/beach_gear_advisor.dart';
+import 'package:beachiq/logic/beach_surface.dart';
 import 'package:beachiq/logic/shallow_entry_verdict.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
@@ -63,6 +64,26 @@ void main() {
     },
   );
 
+  testWidgets('shows the beach surface from OSM when known (#392)', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        const BeachResultCard(
+          placeName: 'Ilica Beach',
+          areaSubtitle: 'Cesme, Izmir',
+          temperature: '27°',
+          fee: BeachFee.free,
+          surface: BeachSurface.pebbles,
+          hasParking: true,
+        ),
+      ),
+    );
+
+    expect(find.text('Surface: '), findsOneWidget);
+    expect(find.text('Pebbles'), findsOneWidget);
+  });
+
   testWidgets(
     'beach missing several fields renders "No data"/"Unknown" for each, '
     'never a placeholder or a crash',
@@ -93,8 +114,8 @@ void main() {
       expect(find.text('Unknown'), findsNWidgets(3));
       expect(
         find.text('No data'),
-        findsNWidgets(2),
-      ); // wave height + water temp
+        findsNWidgets(3),
+      ); // wave height + water temp + surface (no BeachSurface given)
 
       // The known fields still render their real values.
       expect(find.text('No'), findsOneWidget); // beach club: not found

@@ -7,6 +7,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added
 
+- Beach surface from OpenStreetMap (sand, pebbles, gravel, rock) is now shown on the beach info card and on the
+  Water depth screen. For beaches without an on-site measurement the Water depth screen shows a clearly labelled
+  ESTIMATE for the first 10 m: a conservative range for sandy beaches, a "may be waist-deep or more" warning, or,
+  for pebble/gravel/rock beaches, a warning that the bottom can drop away quickly (no numbers). Never shown for an
+  unknown surface; the factors are provisional until checked against measurements (#392)
 - Measured nearshore depth: beaches with an on-site measurement (`assets/measured_depths.json`, guide in
   `docs/measured-depth.md`) show real depths at 1-10 m from the water's edge on the Water depth screen, with a
   "MEASURED" badge, date, method and caveat. Beaches without one show nothing for 0-10 m; nothing is estimated (#390)

@@ -5,6 +5,7 @@ import '../../data/models/beach.dart';
 import '../../data/models/place.dart';
 import '../../data/static_beaches.dart';
 import '../../logic/beach_gear_advisor.dart';
+import '../../logic/beach_surface.dart';
 import '../../logic/providers/favorites_provider.dart';
 import '../../logic/providers/nearby_beaches_provider.dart';
 import '../../logic/providers/place_search_provider.dart';
@@ -507,6 +508,9 @@ class _SearchScreenState extends State<SearchScreen> {
           shoeAdvice: nearbyBeachesProvider == null
               ? null
               : adviseOnShoes(beach.surface),
+          surface: nearbyBeachesProvider == null
+              ? null
+              : parseBeachSurface(beach.surface),
           hasParking: nearbyBeachesProvider == null ? null : beach.hasParking,
           hasBeachResort: nearbyBeachesProvider == null
               ? null
