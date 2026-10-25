@@ -1,10 +1,27 @@
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/data/models/sea_condition.dart';
+import 'package:beachiq/data/models/beach.dart';
+import 'package:beachiq/data/models/weather_condition.dart';
+import 'package:beachiq/data/repositories/weather_repository.dart';
+import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/presentation/screens/compare_beaches_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../helpers/builders.dart';
 import '../../helpers/pump_app.dart';
+
+/// A weather repository that answers by latitude, so each beach can have
+/// its own conditions.
+class _PerBeachWeather extends WeatherRepository {
+  _PerBeachWeather(this._byLatitude) : super(WeatherApiService());
+
+  final Map<double, WeatherCondition> _byLatitude;
+
+  @override
+  Future<WeatherCondition> getWeatherData(double lat, double lon) async =>
+      _byLatitude[lat]!;
+}
 
 void main() {
   final beachA = aBeach(name: 'Alpha Beach', city: 'Alpha City');
@@ -79,7 +96,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('10 km/h'), findsNWidgets(2));
-      expect(find.text('Good'), findsNWidgets(2));
+      expect(find.text('Calm seas — good time for a swim.'), findsNWidgets(2));
+      // Two identical beaches: nobody is strictly ahead, so no "Best today".
+      expect(find.byKey(const Key('compare-best-badge')), findsNothing);
     },
   );
 
@@ -213,4 +232,199 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  group('card layout and "Best today"', () {
+    final calmBeach = aBeach(
+      name: 'Calm Beach',
+      city: 'Calm City',
+      latitude: 1,
+    );
+    final choppyBeach = aBeach(
+      name: 'Choppy Beach',
+      city: 'Choppy City',
+      latitude: 2,
+    );
+    final calmerBeach = aBeach(
+      name: 'Calmer Beach',
+      city: 'Calmer City',
+      latitude: 3,
+    );
+
+    WeatherCondition dry() =>
+        aWeatherCondition(windSpeed: 8, rainChancePercent: 5, weatherCode: 0);
+
+    Future<void> pumpCompare(
+      WidgetTester tester, {
+      required List<Beach> beaches,
+      required Map<Beach, SeaCondition?> sea,
+      required Map<double, WeatherCondition> weather,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompareBeachesScreen(
+            beaches: beaches,
+            seaConditions: sea,
+            weatherRepository: _PerBeachWeather(weather),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows a card per beach with its name, city and its own '
+        'verdict message', (tester) async {
+      await pumpCompare(
+        tester,
+        beaches: [calmBeach, choppyBeach],
+        sea: {
+          calmBeach: aSeaCondition(waveHeight: 0.2),
+          choppyBeach: aSeaCondition(waveHeight: 0.8),
+        },
+        weather: {1: dry(), 2: dry()},
+      );
+
+      expect(find.byKey(const Key('compare-card-Calm Beach')), findsOneWidget);
+      expect(
+        find.byKey(const Key('compare-card-Choppy Beach')),
+        findsOneWidget,
+      );
+      expect(find.text('Calm City'), findsOneWidget);
+      expect(find.text('Choppy City'), findsOneWidget);
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(find.text('A bit choppy — swim with care.'), findsOneWidget);
+    });
+
+    testWidgets(
+      'uses the app\'s dark navy theme instead of a plain white page',
+      (tester) async {
+        await pumpCompare(
+          tester,
+          beaches: [calmBeach, choppyBeach],
+          sea: {
+            calmBeach: aSeaCondition(waveHeight: 0.2),
+            choppyBeach: aSeaCondition(waveHeight: 0.8),
+          },
+          weather: {1: dry(), 2: dry()},
+        );
+
+        final scaffold = tester.widget<Scaffold>(find.byType(Scaffold));
+        expect(scaffold.backgroundColor, const Color(0xFF0D1220));
+      },
+    );
+
+    testWidgets('flags the strictly best beach "Best today" on its card only', (
+      tester,
+    ) async {
+      await pumpCompare(
+        tester,
+        beaches: [choppyBeach, calmBeach],
+        sea: {
+          calmBeach: aSeaCondition(waveHeight: 0.2),
+          choppyBeach: aSeaCondition(waveHeight: 0.8),
+        },
+        weather: {1: dry(), 2: dry()},
+      );
+
+      expect(find.byKey(const Key('compare-best-badge')), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('compare-card-Calm Beach')),
+          matching: find.byKey(const Key('compare-best-badge')),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('between two good beaches the calmer one is "Best today"', (
+      tester,
+    ) async {
+      await pumpCompare(
+        tester,
+        beaches: [calmBeach, calmerBeach],
+        sea: {
+          calmBeach: aSeaCondition(waveHeight: 0.3),
+          calmerBeach: aSeaCondition(waveHeight: 0.1),
+        },
+        weather: {1: dry(), 3: dry()},
+      );
+
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('compare-card-Calmer Beach')),
+          matching: find.byKey(const Key('compare-best-badge')),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('flags nobody when no beach has a good verdict', (
+      tester,
+    ) async {
+      await pumpCompare(
+        tester,
+        beaches: [calmBeach, choppyBeach],
+        sea: {
+          calmBeach: aSeaCondition(waveHeight: 0.7),
+          choppyBeach: aSeaCondition(waveHeight: 0.8),
+        },
+        weather: {1: dry(), 2: dry()},
+      );
+
+      expect(find.byKey(const Key('compare-best-badge')), findsNothing);
+    });
+
+    testWidgets('flags nobody when a beach has no weather data', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: CompareBeachesScreen(
+            beaches: [calmBeach, choppyBeach],
+            seaConditions: {
+              calmBeach: aSeaCondition(waveHeight: 0.2),
+              choppyBeach: aSeaCondition(waveHeight: 0.8),
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('compare-best-badge')), findsNothing);
+    });
+
+    testWidgets('an overcast, cool beach is not shown as a good swim', (
+      tester,
+    ) async {
+      await pumpCompare(
+        tester,
+        beaches: [calmBeach, choppyBeach],
+        sea: {
+          calmBeach: aSeaCondition(waveHeight: 0.2),
+          choppyBeach: aSeaCondition(waveHeight: 0.2),
+        },
+        weather: {
+          1: dry(),
+          2: aWeatherCondition(
+            windSpeed: 8,
+            rainChancePercent: 5,
+            weatherCode: 3,
+            temperature: 18,
+          ),
+        },
+      );
+
+      expect(
+        find.text('Overcast and cool — less pleasant for a swim.'),
+        findsOneWidget,
+      );
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('compare-card-Calm Beach')),
+          matching: find.byKey(const Key('compare-best-badge')),
+        ),
+        findsOneWidget,
+      );
+    });
+  });
 }
