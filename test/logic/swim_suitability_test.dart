@@ -95,10 +95,7 @@ void main() {
       );
 
       expect(verdict.level, SwimSuitabilityLevel.unknown);
-      expect(
-        verdict.message,
-        'Sea conditions unavailable — check local flags before swimming.',
-      );
+      expect(verdict.message, 'No sea data — check local flags.');
     });
 
     test('still warns about wind or rain when wave height is missing', () {

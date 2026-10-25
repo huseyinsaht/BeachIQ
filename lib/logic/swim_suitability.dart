@@ -89,7 +89,7 @@ SwimVerdict scoreSwimSuitability({
   if (waveHeightM == null && worst == SwimSuitabilityLevel.good) {
     return const SwimVerdict(
       SwimSuitabilityLevel.unknown,
-      'Sea conditions unavailable — check local flags before swimming.',
+      'No sea data — check local flags.',
     );
   }
 

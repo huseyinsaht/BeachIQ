@@ -5,6 +5,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Shortened the swim verdict shown when wave data is unavailable to "No sea data — check local flags." so it
+  is no longer cut off in the verdict pill
+
 ## [2026.10.14] - 2026-10-25
 
 ### Added
