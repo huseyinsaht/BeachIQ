@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed a crash in Compare beaches: when two nearby beaches had the same name (OpenStreetMap often gives
+  "Unnamed beach"), the selection list and the comparison cards used the name as their key, which broke Flutter's
+  list when the sheet closed (a blank sheet, then a red error screen). Rows are now keyed per beach (name plus
+  coordinates)
+
 
 ## [2026.10.15] - 2026-10-25
 

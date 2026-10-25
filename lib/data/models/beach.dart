@@ -73,6 +73,13 @@ class Beach {
 /// (e.g. #214's map highlight and selected-beach info row, which must
 /// still match after the pick's own re-fetch replaces the provider's
 /// `beaches` list with new instances). Always false when [b] is null.
+/// A value that tells beaches apart in a list even when several share a name
+/// ("Unnamed beach" is common in OSM data): name plus coordinates, the same
+/// notion as [isSameBeach]. Use it for list-item keys (a name alone is not
+/// unique and makes Flutter's sliver child-order assertion fail).
+String beachIdentityKey(Beach beach) =>
+    '${beach.name}|${beach.latitude}|${beach.longitude}';
+
 bool isSameBeach(Beach a, Beach? b) {
   if (b == null) return false;
   return a.name == b.name &&
