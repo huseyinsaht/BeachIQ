@@ -1,9 +1,26 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release signing (Play Store upload key). Values come from android/key.properties
+// (git-ignored; keys storeFile, storePassword, keyAlias, keyPassword) or, in CI, from the
+// BEACHIQ_KEYSTORE_PATH / BEACHIQ_KEYSTORE_PASSWORD / BEACHIQ_KEY_ALIAS / BEACHIQ_KEY_PASSWORD
+// environment variables. Without them release builds fall back to the debug key so
+// `flutter run --release` keeps working locally; such a build is NOT uploadable to Play.
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+
+fun signingValue(property: String, envVar: String): String? =
+    keystoreProperties.getProperty(property) ?: System.getenv(envVar)
+
+val releaseStoreFile = signingValue("storeFile", "BEACHIQ_KEYSTORE_PATH")
 
 android {
     namespace = "io.beachiq.beachiq"
@@ -36,11 +53,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = file(releaseStoreFile)
+                storePassword = signingValue("storePassword", "BEACHIQ_KEYSTORE_PASSWORD")
+                keyAlias = signingValue("keyAlias", "BEACHIQ_KEY_ALIAS")
+                keyPassword = signingValue("keyPassword", "BEACHIQ_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (releaseStoreFile != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }
