@@ -7,6 +7,7 @@ import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/depth_cross_section.dart';
 import 'package:beachiq/presentation/widgets/depth_profile_chart.dart';
 import 'package:beachiq/presentation/widgets/measured_nearshore_depth_card.dart';
+import 'package:beachiq/presentation/widgets/nearshore_estimate_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -515,6 +516,110 @@ void main() {
 
         expect(find.byType(MeasuredNearshoreDepthCard), findsNothing);
         expect(find.text('MEASURED'), findsNothing);
+      });
+    });
+
+    group('beach surface and first-10 m estimate (#392)', () {
+      // _gentleProfile has a valid 100 m sample, which the sand estimate needs.
+      testWidgets('given a sandy beach, shows the surface row and an '
+          'ESTIMATE card', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              beach: aBeach(surface: 'sand'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Beach surface: Sand (OpenStreetMap)'),
+          findsOneWidget,
+        );
+        expect(find.byType(NearshoreEstimateCard), findsOneWidget);
+        expect(find.text('ESTIMATE'), findsOneWidget);
+        expect(find.text('MEASURED'), findsNothing);
+      });
+
+      testWidgets('given a pebble beach, shows the surface row and a '
+          'warning with no depth numbers', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              beach: aBeach(surface: 'pebbles'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Beach surface: Pebbles (OpenStreetMap)'),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('usually steeper than sandy ones'),
+          findsOneWidget,
+        );
+        expect(find.textContaining('probably'), findsNothing);
+      });
+
+      testWidgets('given an unknown surface, shows neither the surface row '
+          'nor an estimate', (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              beach: aBeach(surface: null),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('beach-surface-row')), findsNothing);
+        expect(find.byType(NearshoreEstimateCard), findsNothing);
+      });
+
+      testWidgets('given no beach, shows neither the surface row nor an '
+          'estimate', (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _gentleProfile)),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byKey(const Key('beach-surface-row')), findsNothing);
+        expect(find.byType(NearshoreEstimateCard), findsNothing);
+      });
+
+      testWidgets('given an on-site measurement, shows only the measurement '
+          'and still the surface row, never the estimate', (tester) async {
+        final measured = MeasuredNearshoreDepth(
+          beachName: 'Ilica Beach',
+          latitude: 38.287,
+          longitude: 26.373,
+          radiusMeters: 150,
+          measuredOn: DateTime(2026, 10, 25),
+          measuredBy: 'Vaen',
+          method: 'Marked rope and depth pole',
+          reference: 'Water edge',
+          points: const [MeasuredDepthPoint(distanceMeters: 5, depthCm: 80)],
+        );
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              beach: aBeach(surface: 'sand'),
+              measuredNearshoreDepth: measured,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('MEASURED'), findsOneWidget);
+        expect(find.byType(NearshoreEstimateCard), findsNothing);
+        expect(find.text('ESTIMATE'), findsNothing);
+        expect(find.byKey(const Key('beach-surface-row')), findsOneWidget);
       });
     });
   });

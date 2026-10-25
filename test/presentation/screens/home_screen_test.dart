@@ -857,6 +857,8 @@ void main() {
         expect(find.byType(BeachResultCard), findsOneWidget);
         expect(find.text('Free'), findsOneWidget);
         expect(find.text('Yes'), findsNWidgets(3)); // parking, beach club, cafe
+        // #392: the OSM surface of the fixture beach ('sand') is shown too.
+        expect(find.text('Sand'), findsOneWidget);
 
         // Marine fields specifically: `_handleBeachPicked` also re-fetches
         // nearby beaches for the picked beach's own location (asserted
