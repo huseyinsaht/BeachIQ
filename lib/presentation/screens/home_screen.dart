@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/beach.dart';
 import '../../data/models/depth_profile.dart';
+import '../../data/models/measured_nearshore_depth.dart';
 import '../../data/models/place.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_code.dart';
@@ -15,6 +16,7 @@ import '../../data/repositories/weather_repository.dart';
 import '../../data/selected_location_prefs_keys.dart';
 import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
+import '../../data/services/measured_depth_repository.dart';
 import '../../data/services/reverse_geocoding_service.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/daily_outlook.dart';
@@ -531,6 +533,7 @@ class HomeScreen extends StatefulWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.measuredDepthRepository,
     this.deviceLocationService,
     this.reverseGeocodingService,
     this.conditionAlertDispatcher,
@@ -574,6 +577,10 @@ class HomeScreen extends StatefulWidget {
   /// doesn't pass one) renders the tile as "No data" and disables the
   /// underlying fetch, unchanged from any other optional provider here.
   final DepthProvider? depthProvider;
+
+  /// On-site nearshore depth measurements for the Water depth detail
+  /// screen (issue #390). Null (as in most tests) means none.
+  final MeasuredDepthRepository? measuredDepthRepository;
 
   /// Drives the map card overflow menu's "Use my location" action (issue
   /// #254). Null (the default for any existing call site that doesn't
@@ -1532,6 +1539,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 currentDirectionValue: seaCondition?.currentDirection,
                 seawardBearingDegrees: seawardBearingDegrees,
                 unitSystem: unitSystem,
+                measuredNearshoreDepth: _measuredDepthFor(depthBeach),
               ),
             ),
           ),
@@ -1627,6 +1635,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   currentDirectionValue: seaCondition?.currentDirection,
                   seawardBearingDegrees: seawardBearingDegrees,
                   unitSystem: unitSystem,
+                  measuredNearshoreDepth: _measuredDepthFor(depthBeach),
                 ),
               ),
             ),
@@ -1922,6 +1931,14 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
+  /// The on-site measurement (issue #390) for [beach], if one exists.
+  MeasuredNearshoreDepth? _measuredDepthFor(Beach? beach) => beach == null
+      ? null
+      : widget.measuredDepthRepository?.findFor(
+          beach.latitude,
+          beach.longitude,
+        );
 
   /// The always-visible floating search field (issue #284, replacing #158's
   /// former in-map-card search icon toggle): [SearchField] wired to
