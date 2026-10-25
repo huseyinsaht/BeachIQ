@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.14] - 2026-10-25
+
 ### Added
 
 - Beach surface from OpenStreetMap (sand, pebbles, gravel, rock) is now shown on the beach info card and on the
@@ -19,17 +21,6 @@ All notable changes to this project are documented here. Format loosely follows
   swim near a lifeguard and, if pulled out, swim parallel to the shore. It is standard guidance, not a
   prediction; the app has no rip-current data. The sheet text now scrolls on short screens or large text
   sizes while "Got it" stays visible (#275)
-
-### Fixed
-
-- Fixed the map's amenity filter chips (toilets, shower, cafe, ...) being hidden behind
-  the floating search field on the Home screen: they now sit below it and clear of the
-  zoom/location controls
-
-## [2026.10.14] - 2026-10-25
-
-### Added
-
 - Play Store release preparation: release builds sign with an upload key from
   `android/key.properties` or `BEACHIQ_*` environment variables (debug-key
   fallback for local runs), a new launcher icon (legacy + adaptive) with Play
@@ -39,11 +30,17 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Fixed
 
+- Fixed the map's amenity filter chips (toilets, shower, cafe, ...) being hidden behind
+  the floating search field on the Home screen: they now sit below it and clear of the
+  zoom/location controls
+
 - Fixed the swim verdict claiming "Calm seas — good time for a swim." (and the
   "conditions turned favorable" notification firing) when wave height was
   unavailable: calm wind and dry weather alone can no longer produce "good". Without
   wave data the best verdict is now "Sea conditions unavailable — check local flags
   before swimming."; wind or rain can still downgrade it to caution/poor
+- Fixed user-facing text that could still appear in Turkish: placeholder beach names ("... Plajı" is now "... Beach"), beach and amenity names from OpenStreetMap now prefer the English `name:en`, and place names from "Use my location"/map taps are requested in English whatever the phone language (#384)
+- The map tile requests now identify the app with its real application id (`io.beachiq.beachiq`) in the User-Agent, as OpenStreetMap's tile usage policy requires (#383)
 
 ## [2026.10.13] - 2026-10-19
 
