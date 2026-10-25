@@ -993,9 +993,13 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await marineProvider.fetchData(38.3, 26.3);
+      await tester.pumpAndSettle();
 
       // Fixture data (0.5m waves, 12 km/h wind, 10% rain chance) is all
-      // below the "caution" thresholds, so the real verdict is "good".
+      // below the "caution" thresholds, so the real verdict is "good". The
+      // marine fetch is awaited explicitly: without wave data the verdict
+      // can never be "good" (see scoreSwimSuitability).
       expect(find.byType(SwimSuggestionPill), findsOneWidget);
       expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
       expect(find.text('Good conditions for a swim right now'), findsNothing);

@@ -302,38 +302,35 @@ void main() {
       );
     });
 
-    test(
-      'given a null waveHeight and a null rainChancePercent from the '
-      'repositories (only windSpeed available), runBackgroundAlertCheck -> '
-      'still scores a verdict from windSpeed alone and persists it',
-      () async {
-        SharedPreferences.setMockInitialValues({
-          selectedLocationLatPrefsKey: 38.32,
-          selectedLocationLonPrefsKey: 26.32,
-          conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
-        });
-        final prefs = await SharedPreferences.getInstance();
-        // SeaCondition.waveHeight and WeatherCondition.rainChancePercent are
-        // both nullable (unlike windSpeed, which the model declares
-        // non-nullable); nulling them out exercises
-        // scoreSwimSuitability's "independently missing inputs are simply
-        // skipped" behavior from this call site, with windSpeed as the only
-        // available signal.
-        marineRepository.data = aSeaCondition(waveHeight: null);
-        weatherRepository.data = aWeatherCondition(
-          windSpeed: 10,
-          rainChancePercent: null,
-        );
+    test('given a null waveHeight and a null rainChancePercent from the '
+        'repositories (only windSpeed available), runBackgroundAlertCheck -> '
+        'persists "unknown" and sends no favorable alert, since calm wind alone '
+        'must not claim calm seas', () async {
+      SharedPreferences.setMockInitialValues({
+        selectedLocationLatPrefsKey: 38.32,
+        selectedLocationLonPrefsKey: 26.32,
+        conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
+      });
+      final prefs = await SharedPreferences.getInstance();
+      // SeaCondition.waveHeight and WeatherCondition.rainChancePercent are
+      // both nullable (unlike windSpeed, which the model declares
+      // non-nullable); nulling them out leaves windSpeed as the only
+      // available signal. Without wave height the best verdict is
+      // "unknown", so no "conditions turned favorable" notification fires.
+      marineRepository.data = aSeaCondition(waveHeight: null);
+      weatherRepository.data = aWeatherCondition(
+        windSpeed: 10,
+        rainChancePercent: null,
+      );
 
-        await expectLater(runCheck(prefs), completes);
+      await expectLater(runCheck(prefs), completes);
 
-        expect(notificationPlugin.calls, hasLength(1));
-        expect(
-          prefs.getString(conditionAlertPreviousVerdictPrefsKey),
-          SwimSuitabilityLevel.good.name,
-        );
-      },
-    );
+      expect(notificationPlugin.calls, isEmpty);
+      expect(
+        prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+        SwimSuitabilityLevel.unknown.name,
+      );
+    });
   });
 
   group('SchedulingConditionAlertDispatcher', () {

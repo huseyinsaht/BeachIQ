@@ -52,6 +52,11 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Fixed
 
+- Fixed the swim verdict claiming "Calm seas — good time for a swim." (and the
+  "conditions turned favorable" notification firing) when wave height was
+  unavailable: calm wind and dry weather alone can no longer produce "good". Without
+  wave data the best verdict is now "Sea conditions unavailable — check local flags
+  before swimming."; wind or rain can still downgrade it to caution/poor
 - Fixed the weather fetch being discarded into a generic error state whenever the
   API returned a non-numeric temperature, wind speed, or weather code: these three
   fields now fall back to the same default as a missing value instead of throwing,
