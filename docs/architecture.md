@@ -694,7 +694,8 @@ Reusable widgets built against `docs/design.md`:
   (`isSameBeach`-compared) is what `DepthProvider.fetchForBeach` is called with for the
   water-depth tile, and (via `_measuredDepthFor`, given a `MeasuredDepthRepository`,
   #390) what is looked up for that same beach's `measuredNearshoreDepth`, passed to
-  `DepthDetailScreen` alongside the `DepthProvider` profile. A beach picked from Search is rendered, once the sheet is
+  `DepthDetailScreen` alongside the `DepthProvider` profile. A beach picked from
+  Search is rendered, once the sheet is
   expanded, as a compact `BeachResultCard`-based info row below the condition row
   (`_buildSelectedBeachInfo`) — which now (issue #294) also opts into
   `BeachResultCard`'s `showDepthSummary`, rendering a one/two-line depth/non-swimmer
