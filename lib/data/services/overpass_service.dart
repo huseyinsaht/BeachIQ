@@ -7,10 +7,16 @@ import 'package:http/http.dart' as http;
 /// `overpass_query_builder.dart`) against the public Overpass API.
 ///
 /// Resilience features:
-///  * a fallback mirror is tried if the primary endpoint fails
-///  * HTTP 429 (rate limited) and 504 (gateway timeout) responses are
-///    retried with a bounded exponential backoff before giving up on an
-///    endpoint
+///  * several public mirrors are tried with **hedged** requests: the first
+///    endpoint starts immediately, the next one starts as soon as the
+///    previous one fails or has not answered after [hedgeDelay], and the
+///    first successful answer wins (the public servers are often overloaded
+///    or unreachable from some networks, so waiting for one at a time could
+///    take minutes)
+///  * the whole call gives up after [overallTimeout]
+///  * HTTP 429 (rate limited) and 504 (gateway timeout) responses, and
+///    request timeouts, are retried with a bounded exponential backoff
+///    before giving up on an endpoint
 ///  * concurrent calls for the exact same query string are de-duplicated:
 ///    a second caller awaits the in-flight request instead of firing a new
 ///    one
@@ -19,15 +25,22 @@ import 'package:http/http.dart' as http;
 /// `Map<String, dynamic>`. Mapping that structure into domain `Beach`
 /// models is out of scope here and is handled elsewhere.
 class OverpassService {
+  /// The public Overpass instances tried, in order of preference.
+  static const List<String> defaultEndpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.private.coffee/api/interpreter',
+    'https://overpass.openstreetmap.fr/api/interpreter',
+  ];
+
   OverpassService(
     this._client, {
-    this.endpoints = const [
-      'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-    ],
+    this.endpoints = defaultEndpoints,
     this.timeout = const Duration(seconds: 28),
-    this.maxAttemptsPerEndpoint = 3,
+    this.maxAttemptsPerEndpoint = 2,
     this.initialBackoff = const Duration(milliseconds: 500),
+    this.hedgeDelay = const Duration(seconds: 4),
+    this.overallTimeout = const Duration(seconds: 40),
   }) : assert(
          endpoints.isNotEmpty,
          'At least one Overpass endpoint is required',
@@ -35,9 +48,16 @@ class OverpassService {
 
   final http.Client _client;
 
-  /// Overpass endpoints to try, in order. The first is the primary; the
-  /// rest are fallback mirrors tried in sequence if an earlier one fails.
+  /// Overpass endpoints, in order of preference. The first starts
+  /// immediately; each next one starts when the previous failed or after
+  /// [hedgeDelay] without an answer.
   final List<String> endpoints;
+
+  /// How long to wait for an endpoint before also starting the next one.
+  final Duration hedgeDelay;
+
+  /// The whole [query] call fails after this long without any answer.
+  final Duration overallTimeout;
 
   /// Per-request timeout, matching the query's own `[timeout:25]` setting
   /// with a small margin for network overhead.
@@ -97,22 +117,62 @@ class OverpassService {
     }();
   }
 
-  Future<Map<String, dynamic>> _executeWithFallback(
-    String overpassQuery,
-  ) async {
+  Future<Map<String, dynamic>> _executeWithFallback(String overpassQuery) {
+    final completer = Completer<Map<String, dynamic>>();
     final failures = <String>[];
+    var started = 0;
+    Timer? hedgeTimer;
+    Timer? deadline;
 
-    for (final endpoint in endpoints) {
-      try {
-        return await _executeWithRetry(endpoint, overpassQuery);
-      } catch (e) {
-        failures.add('$endpoint failed: $e');
-      }
+    void finish() {
+      hedgeTimer?.cancel();
+      deadline?.cancel();
     }
 
-    throw Exception(
-      'Overpass request failed on all ${endpoints.length} endpoint(s): ${failures.join(' | ')}',
-    );
+    void startNext() {
+      if (completer.isCompleted || started >= endpoints.length) return;
+      final endpoint = endpoints[started++];
+      hedgeTimer?.cancel();
+      if (started < endpoints.length) {
+        hedgeTimer = Timer(hedgeDelay, startNext);
+      }
+      _executeWithRetry(endpoint, overpassQuery).then(
+        (result) {
+          if (completer.isCompleted) return;
+          completer.complete(result);
+          finish();
+        },
+        onError: (Object e) {
+          failures.add('$endpoint failed: $e');
+          if (completer.isCompleted) return;
+          if (failures.length == endpoints.length) {
+            completer.completeError(
+              Exception(
+                'Overpass request failed on all ${endpoints.length} '
+                'endpoint(s): ${failures.join(' | ')}',
+              ),
+            );
+            finish();
+          } else {
+            startNext();
+          }
+        },
+      );
+    }
+
+    deadline = Timer(overallTimeout, () {
+      if (completer.isCompleted) return;
+      completer.completeError(
+        Exception(
+          'Overpass request failed: no endpoint answered within '
+          '${overallTimeout.inSeconds}s'
+          '${failures.isEmpty ? '' : ' (${failures.join(' | ')})'}',
+        ),
+      );
+      finish();
+    });
+    startNext();
+    return completer.future;
   }
 
   Future<Map<String, dynamic>> _executeWithRetry(

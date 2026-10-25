@@ -738,4 +738,72 @@ void main() {
       expect(provider.beaches.single.name, 'Second Beach');
     });
   });
+
+  group('NearbyBeachesProvider.retry', () {
+    test(
+      'after a failed fetch (error state), retry re-fetches the same location '
+      'right away and resolves to loaded once Overpass answers',
+      () async {
+        final cache = await _emptyCache(fallbackRadiusKm: 0.001);
+        var overpassUp = false;
+        final overpassClient = _FakeClient((request) async {
+          if (!overpassUp) return http.Response('Server error', 500);
+          return http.Response(
+            _overpassFixture([
+              {'id': 1, 'lat': 0.001, 'lon': 0.001, 'name': 'Retry Beach'},
+            ]),
+            200,
+          );
+        });
+        final provider = NearbyBeachesProvider(
+          OverpassService(overpassClient, maxAttemptsPerEndpoint: 1),
+          cache,
+          MarineBatchService(
+            _FakeClient(
+              (request) async => http.Response(
+                _marineFixture([
+                  {'waveHeight': 0.3, 'seaSurfaceTemperature': 21.0},
+                ]),
+                200,
+              ),
+            ),
+          ),
+          debounceDuration: _debounce,
+        );
+
+        provider.pickLocation(const LatLng(0, 0));
+        await Future.delayed(_settle);
+        expect(provider.status, NearbyBeachesStatus.error);
+
+        overpassUp = true;
+        provider.retry();
+        await Future.delayed(_settle);
+
+        expect(provider.status, NearbyBeachesStatus.loaded);
+        expect(provider.error, isNull);
+        expect(provider.beaches.map((b) => b.name), ['Retry Beach']);
+      },
+    );
+
+    test('given no location was ever picked, retry does nothing', () async {
+      final cache = await _emptyCache();
+      final overpassClient = _FakeClient((request) async {
+        fail('retry must not fetch before any location was picked');
+      });
+      final provider = NearbyBeachesProvider(
+        OverpassService(overpassClient),
+        cache,
+        MarineBatchService(
+          _FakeClient((request) async => http.Response('[]', 200)),
+        ),
+        debounceDuration: _debounce,
+      );
+
+      provider.retry();
+      await Future.delayed(_settle);
+
+      expect(overpassClient.callCount, 0);
+      expect(provider.status, NearbyBeachesStatus.idle);
+    });
+  });
 }

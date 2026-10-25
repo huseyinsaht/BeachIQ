@@ -510,6 +510,68 @@ void main() {
     );
 
     testWidgets(
+      'a failed nearbyBeachesProvider shows the error with a "Try again" '
+      'button that fetches the same location again',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        var overpassCalls = 0;
+        final client = FakeHttpClient()
+          ..queueResponse(
+            matcher: (r) {
+              if (r.url.host == 'example.com') overpassCalls++;
+              return r.url.host == 'example.com';
+            },
+            body: 'Server error',
+            statusCode: 500,
+          );
+        final provider = NearbyBeachesProvider(
+          OverpassService(
+            client,
+            endpoints: const ['https://example.com/api'],
+            maxAttemptsPerEndpoint: 1,
+          ),
+          BeachCache(
+            await SharedPreferences.getInstance(),
+            fallbackRadiusKm: 0.001,
+          ),
+          MarineBatchService(client),
+          debounceDuration: const Duration(milliseconds: 1),
+        );
+        addTearDown(provider.dispose);
+        provider.pickLocation(const LatLng(0, 0));
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(provider.status, NearbyBeachesStatus.error);
+        expect(overpassCalls, 1);
+
+        await tester.pumpWidget(
+          wrap(SearchScreen(nearbyBeachesProvider: provider)),
+        );
+        await tester.pump();
+
+        expect(find.textContaining('Unable to load beaches'), findsOneWidget);
+        expect(find.byKey(const Key('search-retry')), findsOneWidget);
+        expect(find.text('Try again'), findsOneWidget);
+
+        await tester.tap(find.byKey(const Key('search-retry')));
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(overpassCalls, 2);
+      },
+    );
+
+    testWidgets(
+      'a SearchScreen error without a nearbyBeachesProvider shows no retry '
+      'button',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(const SearchScreen(error: 'Could not load nearby beaches.')),
+        );
+
+        expect(find.byKey(const Key('search-retry')), findsNothing);
+      },
+    );
+
+    testWidgets(
       'a nearbyBeachesProvider mid-fetch shows the loading indicator',
       (tester) async {
         SharedPreferences.setMockInitialValues({});

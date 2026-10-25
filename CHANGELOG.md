@@ -14,6 +14,10 @@ All notable changes to this project are documented here. Format loosely follows
   the background check) follows the same rule so it never disagrees with the screen
 - Shortened the verdict shown when wave data is unavailable to "No sea data — check local flags." so it is no longer
   cut off in the verdict pill
+- Loading nearby beaches and their facilities no longer waits minutes when the public Overpass servers are slow
+  or unreachable: four mirrors are now tried with hedged requests (the next one starts as soon as the previous
+  failed or after 4 s, the first answer wins) and the whole attempt gives up after 40 s. The "Unable to load
+  beaches" message in Search now has a "Try again" button that fetches the last picked location again
 
 ## [2026.10.14] - 2026-10-25
 

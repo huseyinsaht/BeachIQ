@@ -463,10 +463,24 @@ class _SearchScreenState extends State<SearchScreen> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
-          child: Text(
-            'Unable to load beaches.\n$error',
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: _textSecondary, fontSize: 14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Unable to load beaches.\n$error',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: _textSecondary, fontSize: 14),
+              ),
+              if (nearbyBeachesProvider != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  key: const Key('search-retry'),
+                  onPressed: nearbyBeachesProvider.retry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Try again'),
+                ),
+              ],
+            ],
           ),
         ),
       );
