@@ -254,12 +254,197 @@ void main() {
               ),
             ),
           );
-          expect(client.requests.map((r) => r.url.toString()).toSet(), {
-            _primary,
-            _mirror,
-          });
+          expect(
+            client.requests.map((r) => r.url.toString()).toSet(),
+            OverpassService.defaultEndpoints.toSet(),
+          );
         },
       );
+
+      group('hedged requests across mirrors', () {
+        const third = 'https://overpass.private.coffee/api/interpreter';
+
+        test(
+          'given a hung primary and a working mirror, query -> answers from the '
+          'mirror after the hedge delay, without waiting for the primary',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(
+                host: 'overpass-api.de',
+                body: 'too late',
+                delay: const Duration(seconds: 2),
+              )
+              ..queueResponse(host: 'overpass.kumi.systems', body: fixtureBody);
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(milliseconds: 30),
+              timeout: const Duration(seconds: 5),
+            );
+
+            final stopwatch = Stopwatch()..start();
+            final result = await service.query('[out:json];node(1);out;');
+            stopwatch.stop();
+
+            expect(result, fixtureJson);
+            expect(stopwatch.elapsed, lessThan(const Duration(seconds: 1)));
+            expect(client.requests.map((r) => r.url.toString()), [
+              _primary,
+              _mirror,
+            ]);
+          },
+        );
+
+        test(
+          'given the primary answers quickly, query -> never contacts the other '
+          'mirrors',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(host: 'overpass-api.de', body: fixtureBody);
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(milliseconds: 200),
+            );
+
+            await service.query('[out:json];node(1);out;');
+            await Future<void>.delayed(const Duration(milliseconds: 300));
+
+            expect(client.requests.map((r) => r.url.toString()), [_primary]);
+          },
+        );
+
+        test(
+          'given the primary fails right away, query -> starts the next mirror '
+          'immediately instead of waiting for the hedge delay',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(
+                host: 'overpass-api.de',
+                body: 'Internal Server Error',
+                statusCode: 500,
+              )
+              ..queueResponse(host: 'overpass.kumi.systems', body: fixtureBody);
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(seconds: 30),
+            );
+
+            final stopwatch = Stopwatch()..start();
+            final result = await service.query('[out:json];node(1);out;');
+            stopwatch.stop();
+
+            expect(result, fixtureJson);
+            expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+          },
+        );
+
+        test(
+          'given the first two mirrors fail, query -> the third one answers',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(
+                host: 'overpass-api.de',
+                body: 'down',
+                statusCode: 503,
+              )
+              ..queueResponse(
+                host: 'overpass.kumi.systems',
+                body: 'down',
+                statusCode: 503,
+              )
+              ..queueResponse(
+                host: 'overpass.private.coffee',
+                body: fixtureBody,
+              );
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(seconds: 30),
+            );
+
+            final result = await service.query('[out:json];node(1);out;');
+
+            expect(result, fixtureJson);
+            expect(client.requests.last.url.toString(), third);
+          },
+        );
+
+        test(
+          'given no endpoint answers before the overall timeout, query -> throws '
+          'a descriptive exception without waiting for each request',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(
+                matcher: (r) => true,
+                body: fixtureBody,
+                delay: const Duration(seconds: 3),
+              );
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(milliseconds: 10),
+              timeout: const Duration(seconds: 10),
+              overallTimeout: const Duration(milliseconds: 150),
+            );
+
+            final stopwatch = Stopwatch()..start();
+            await expectLater(
+              () => service.query('[out:json];node(1);out;'),
+              throwsA(
+                isA<Exception>().having(
+                  (e) => e.toString(),
+                  'message',
+                  contains('no endpoint answered within'),
+                ),
+              ),
+            );
+            stopwatch.stop();
+
+            expect(stopwatch.elapsed, lessThan(const Duration(seconds: 2)));
+          },
+        );
+
+        test(
+          'given every endpoint fails, query -> the message lists each one',
+          () async {
+            final client = FakeHttpClient()
+              ..queueResponse(
+                matcher: (r) => true,
+                body: 'down',
+                statusCode: 503,
+              );
+            final service = OverpassService(
+              client,
+              hedgeDelay: const Duration(milliseconds: 5),
+            );
+
+            await expectLater(
+              () => service.query('[out:json];node(1);out;'),
+              throwsA(
+                isA<Exception>().having(
+                  (e) => e.toString(),
+                  'message',
+                  allOf([
+                    contains(
+                      'failed on all ${OverpassService.defaultEndpoints.length}',
+                    ),
+                    for (final endpoint in OverpassService.defaultEndpoints)
+                      contains(endpoint),
+                  ]),
+                ),
+              ),
+            );
+          },
+        );
+
+        test('defaultEndpoints has several distinct mirrors', () {
+          expect(
+            OverpassService.defaultEndpoints.length,
+            greaterThanOrEqualTo(3),
+          );
+          expect(
+            OverpassService.defaultEndpoints.toSet(),
+            hasLength(OverpassService.defaultEndpoints.length),
+          );
+        });
+      });
     });
   });
 }
