@@ -5,14 +5,15 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+
+## [2026.10.15] - 2026-10-25
+
 ### Changed
 
 - Compare beaches is redesigned to match the rest of the app: the dark navy background, one card per beach with
   its name and city, the beach's own swim verdict message in the verdict colour (so a grey, cool or rough beach no
   longer reads like a good one), wave height, wind, water temperature and depth in tiles, and a "Best today"
   badge on the one beach that is strictly best (only when its verdict is good and every beach's weather loaded)
-
-## [2026.10.15] - 2026-10-25
 
 ### Fixed
 
@@ -27,6 +28,9 @@ All notable changes to this project are documented here. Format loosely follows
   or unreachable: four mirrors are now tried with hedged requests (the next one starts as soon as the previous
   failed or after 4 s, the first answer wins) and the whole attempt gives up after 40 s. The "Unable to load
   beaches" message in Search now has a "Try again" button that fetches the last picked location again
+- A place far from the coast (nothing found within the nearby-beaches radius, e.g. inland or far out at sea) no
+  longer shows a swim verdict or sea values: the verdict pill says "Far from the coast — pick a beach." and the
+  Sea tiles read "No data", while the weather stays
 
 ## [2026.10.14] - 2026-10-25
 

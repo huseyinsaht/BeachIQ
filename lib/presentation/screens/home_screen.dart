@@ -1291,13 +1291,25 @@ class _HomeScreenState extends State<HomeScreen> {
         : null;
     final unitSystem =
         widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
-    final swimVerdict = scoreSwimSuitability(
-      waveHeightM: marineProvider?.currentData?.waveHeight,
-      windSpeedKmh: weatherData?.windSpeed,
-      rainChancePercent: weatherData?.rainChancePercent?.round(),
-      weatherCode: weatherData?.weatherCode,
-      airTemperatureC: weatherData?.temperature,
-    );
+    // The nearby-beaches search answered with no beach within its radius
+    // (`kNearbyBeachesRadiusMeters`): this point is inland or far out at sea,
+    // so BeachIQ shows no swim verdict and no sea values for it (weather is
+    // still real, so the header and forecast stay). Not set while the search
+    // is loading or failed -- only a definite "no beaches here".
+    final farFromCoast =
+        widget.nearbyBeachesProvider?.status == NearbyBeachesStatus.empty;
+    final swimVerdict = farFromCoast
+        ? const SwimVerdict(
+            SwimSuitabilityLevel.unknown,
+            'Far from the coast — pick a beach.',
+          )
+        : scoreSwimSuitability(
+            waveHeightM: marineProvider?.currentData?.waveHeight,
+            windSpeedKmh: weatherData?.windSpeed,
+            rainChancePercent: weatherData?.rainChancePercent?.round(),
+            weatherCode: weatherData?.weatherCode,
+            airTemperatureC: weatherData?.temperature,
+          );
     final effectiveNow = (widget.now ?? DateTime.now)();
     final hourly = _upcomingHourly(
       weatherData?.hourly ?? const [],
@@ -1338,7 +1350,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // load) or a fetch failed with nothing to fall back to, in which case
     // every tile below falls back to its own "No data" via its null-safe
     // formatter, exactly like every other field in this grid.
-    final seaCondition = marineProvider?.currentData;
+    final seaCondition = farFromCoast ? null : marineProvider?.currentData;
     // Issue #273: the 7-14 day outlook, built from the weather/marine
     // repositories' already-fetched `daily` arrays (no extra request) —
     // `buildDailyOutlook` reuses `scoreSwimSuitability`'s exact thresholds

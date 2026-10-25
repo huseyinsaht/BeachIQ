@@ -161,6 +161,73 @@ void main() {
       );
     });
 
+    testWidgets('far from the coast (no beach within the search radius): no '
+        'swim verdict and no sea values, even if marine data came back', (
+      tester,
+    ) async {
+      final client = FakeHttpClient()
+        ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]});
+      final nearby = await fakeNearbyBeachesProvider(client: client);
+      addTearDown(nearby.dispose);
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(waveHeight: 0.2, seaSurfaceTemperature: 24),
+      );
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(windSpeed: 8, rainChancePercent: 5),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          nearbyBeachesProvider: nearby,
+          marineProvider: marineProvider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pumpAndSettle();
+
+      expect(nearby.status, NearbyBeachesStatus.empty);
+      expect(find.text('Far from the coast — pick a beach.'), findsOneWidget);
+      expect(find.text('Calm seas — good time for a swim.'), findsNothing);
+      expect(find.text('0.2 m'), findsNothing);
+    });
+
+    testWidgets('while nearby beaches are still loading, the normal verdict '
+        'is shown (not "far from the coast")', (tester) async {
+      final client = FakeHttpClient()
+        ..queueJson(
+          host: 'overpass-api.de',
+          json: {'elements': <Object?>[]},
+          delay: const Duration(seconds: 5),
+        );
+      final nearby = await fakeNearbyBeachesProvider(client: client);
+      addTearDown(nearby.dispose);
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(waveHeight: 0.2),
+      );
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(windSpeed: 8, rainChancePercent: 5),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          nearbyBeachesProvider: nearby,
+          marineProvider: marineProvider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+
+      expect(nearby.status, NearbyBeachesStatus.loading);
+      expect(find.text('Far from the coast — pick a beach.'), findsNothing);
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('renders a CloudBackdrop behind the header', (tester) async {
       await pumpApp(tester, const HomeScreen());
 
