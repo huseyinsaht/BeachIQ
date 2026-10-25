@@ -31,7 +31,7 @@ void main() {
                   date: DateTime(2026, 7, 2),
                   verdict: const SwimVerdict(
                     SwimSuitabilityLevel.poor,
-                    'Rough conditions — best to skip swimming today.',
+                    'Rough conditions — skip swimming.',
                   ),
                   highTemperature: 27.0,
                   lowTemperature: 19.0,
@@ -47,10 +47,7 @@ void main() {
         expect(find.text('Today'), findsOneWidget);
         expect(find.text('Thu'), findsOneWidget); // 2026-07-02
         expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
-        expect(
-          find.text('Rough conditions — best to skip swimming today.'),
-          findsOneWidget,
-        );
+        expect(find.text('Rough conditions — skip swimming.'), findsOneWidget);
         expect(find.text('28°C'), findsOneWidget);
         expect(find.text('20°C'), findsOneWidget);
       },
@@ -105,7 +102,7 @@ void main() {
                   date: DateTime(2026, 7, 2),
                   verdict: const SwimVerdict(
                     SwimSuitabilityLevel.poor,
-                    'Rough conditions — best to skip swimming today.',
+                    'Rough conditions — skip swimming.',
                   ),
                 ),
               ],
@@ -149,7 +146,7 @@ void main() {
                   date: DateTime(2026, 7, 1),
                   verdict: const SwimVerdict(
                     SwimSuitabilityLevel.unknown,
-                    'Not enough data to judge swim conditions right now.',
+                    'Not enough data to judge conditions.',
                   ),
                 ),
               ],

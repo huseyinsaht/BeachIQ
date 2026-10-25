@@ -12,11 +12,11 @@ const _caution = SwimVerdict(
 );
 const _poor = SwimVerdict(
   SwimSuitabilityLevel.poor,
-  'Rough conditions — best to skip swimming today.',
+  'Rough conditions — skip swimming.',
 );
 const _unknown = SwimVerdict(
   SwimSuitabilityLevel.unknown,
-  'Not enough data to judge swim conditions right now.',
+  'Not enough data to judge conditions.',
 );
 
 void main() {

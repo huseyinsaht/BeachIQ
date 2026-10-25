@@ -112,26 +112,20 @@ SwimVerdict scoreSwimSuitability({
         'Thunderstorms — stay out of the water.',
       );
     } else if (_snowOrFreezingCodes.contains(weatherCode)) {
-      consider(
-        SwimSuitabilityLevel.poor,
-        'Snow or freezing rain — not a day for swimming.',
-      );
+      consider(SwimSuitabilityLevel.poor, 'Snow or freezing rain — stay out.');
     } else if (_rainCodes.contains(weatherCode)) {
       consider(
         SwimSuitabilityLevel.caution,
         'Rain right now — swim with care.',
       );
     } else if (_fogCodes.contains(weatherCode)) {
-      consider(
-        SwimSuitabilityLevel.caution,
-        'Foggy, poor visibility — swim with care.',
-      );
+      consider(SwimSuitabilityLevel.caution, 'Foggy — swim with care.');
     } else if (weatherCode == 3 &&
         airTemperatureC != null &&
         airTemperatureC < overcastCoolAirTemperatureC) {
       consider(
         SwimSuitabilityLevel.caution,
-        'Overcast and cool — less pleasant for a swim.',
+        'Overcast and cool — less pleasant.',
       );
     }
   }
@@ -159,8 +153,8 @@ String _messageFor(SwimSuitabilityLevel level) {
     case SwimSuitabilityLevel.caution:
       return 'A bit choppy — swim with care.';
     case SwimSuitabilityLevel.poor:
-      return 'Rough conditions — best to skip swimming today.';
+      return 'Rough conditions — skip swimming.';
     case SwimSuitabilityLevel.unknown:
-      return 'Not enough data to judge swim conditions right now.';
+      return 'Not enough data to judge conditions.';
   }
 }

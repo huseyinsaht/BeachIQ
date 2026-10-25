@@ -1032,10 +1032,7 @@ void main() {
     await marineProvider.fetchData(38.3, 26.3);
     await tester.pump();
 
-    expect(
-      find.text('Rough conditions — best to skip swimming today.'),
-      findsOneWidget,
-    );
+    expect(find.text('Rough conditions — skip swimming.'), findsOneWidget);
   });
 
   testWidgets(

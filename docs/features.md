@@ -92,14 +92,23 @@ screen, with the location's details living in a sheet dragged up from the bottom
   and direction alongside the swim thresholds; Water temperature's four comfort bands
   and hint; Ocean current's per-hour direction strip and a drift-out warning banner
   when the current is heading out to sea. Water depth's detail screen has no hourly
-  chart — instead, a bold plain-language verdict for non-swimmers (e.g. "Gets deep
-  fairly quickly. Non-swimmers should stay close to shore."), a human-scale side-view
-  cross-section graphic (water tinted by depth band, a dashed seabed line, and a
-  couple of standing-person silhouettes for scale), a distance-vs-depth profile chart
-  showing roughly how far out the water stays comfortably shallow before the seabed
-  drops away (gentle/moderate/steep), plus lifeguard presence, current wave height
-  and a drift-out warning as context — an approximate, non-swimmer indication from a
-  coarse offshore depth dataset, never a safety guarantee.
+  chart — instead, the beach's ground surface when known (sand/pebbles/gravel/rock,
+  from OpenStreetMap), then either a real on-site "MEASURED" reading of the first ~10 m
+  from the water's edge for the handful of beaches someone has actually measured, or,
+  failing that, a clearly labelled "ESTIMATE" for sandy beaches derived from that
+  surface and the offshore depth data (a conservative range, or a "may be waist-deep or
+  more" warning when the range reaches that depth; pebble/gravel/rock beaches get a
+  qualitative "usually steeper" warning instead, no numbers) — never shown together,
+  never invented for an unknown surface, and always paired with a caveat that it isn't
+  a safety guarantee. Below that: a bold plain-language verdict for non-swimmers (e.g.
+  "Gets deep fairly quickly. Non-swimmers should stay close to shore."), a human-scale
+  side-view cross-section graphic (water tinted by depth band, a dashed seabed line,
+  and a couple of standing-person silhouettes for scale), a distance-vs-depth profile
+  chart showing roughly how far out the water stays comfortably shallow before the
+  seabed drops away (gentle/moderate/steep), plus lifeguard presence, current wave
+  height and a drift-out warning as context — all from a coarse, approximate offshore
+  depth dataset, never a safety guarantee beyond the first ~10 m measured/estimated
+  block above.
 - When a beach picked from Search is shown in the expanded sheet, its info row also
   includes a one-line depth/non-swimmer summary (the same plain-language verdict as
   the water depth detail screen, e.g. "Gets deep fairly quickly. Non-swimmers should
@@ -115,9 +124,9 @@ screen, with the location's details living in a sheet dragged up from the bottom
 
 - Beaches near the picked location (from OpenStreetMap via the Overpass API), each
   shown as a result card with name, area, wave height, water temperature, entry fee
-  (free/paid/unknown), shoes/slippers advice, and nearby car park/beach club/café —
-  any field the data source has no answer for is shown as "No data"/"Unknown" rather
-  than invented.
+  (free/paid/unknown), ground surface (sand/pebbles/gravel/rock, from OpenStreetMap),
+  shoes/slippers advice, and nearby car park/beach club/café — any field the data
+  source has no answer for is shown as "No data"/"Unknown" rather than invented.
 - A "Places" section: typing searches real places by name anywhere (via Open-Meteo's
   geocoding API), not just the current results; picking one re-centers the map and
   beach list on it.

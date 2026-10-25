@@ -32,6 +32,7 @@ import 'package:beachiq/logic/shallow_entry_status.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
+import 'package:beachiq/presentation/screens/compare_beaches_screen.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -126,10 +127,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Overcast and cool — less pleasant for a swim.'),
-        findsOneWidget,
-      );
+      expect(find.text('Overcast and cool — less pleasant.'), findsOneWidget);
       expect(find.text('Calm seas — good time for a swim.'), findsNothing);
     });
 
@@ -2891,6 +2889,71 @@ void main() {
       await tester.pump(const Duration(milliseconds: 10));
       await tester.pump(const Duration(milliseconds: 10));
     }
+
+    testWidgets(
+      'given two nearby beaches with the same name (OSM "Unnamed beach"), '
+      'selecting both, comparing and going back works without any '
+      'exception (regression: duplicate list keys crashed the sheet)',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: 'overpass-api.de',
+            json: {
+              'elements': [
+                for (var i = 1; i <= 3; i++)
+                  {
+                    'type': 'way',
+                    'id': i,
+                    'tags': {'natural': 'beach'},
+                    'geometry': [
+                      {'lat': 38.4 + i * 0.1, 'lon': 26.4},
+                      {'lat': 38.41 + i * 0.1, 'lon': 26.4},
+                    ],
+                  },
+              ],
+            },
+          )
+          ..queueJson(
+            host: 'marine-api.open-meteo.com',
+            json: [
+              for (var i = 0; i < 3; i++)
+                {
+                  'current': {
+                    'wave_height': 0.3 + i,
+                    'sea_surface_temperature': 22.0,
+                  },
+                },
+            ],
+          );
+        final provider = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        await tester.tap(find.byTooltip('More'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Compare beaches'));
+        await tester.pumpAndSettle();
+
+        // Three rows, all named "Unnamed beach".
+        expect(find.text('Unnamed beach'), findsNWidgets(3));
+        final checkboxes = find.byType(CheckboxListTile);
+        await tester.tap(checkboxes.at(0));
+        await tester.pump();
+        await tester.tap(checkboxes.at(1));
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('compare-select-confirm')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CompareBeachesScreen), findsOneWidget);
+        expect(find.text('Unnamed beach'), findsNWidgets(2));
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(CompareBeachesScreen), findsNothing);
+      },
+    );
 
     testWidgets('the map overflow menu always has a "Compare beaches" entry', (
       tester,

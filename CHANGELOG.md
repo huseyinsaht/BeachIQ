@@ -5,6 +5,18 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.16] - 2026-10-25
+
+### Fixed
+
+- The longer swim verdict messages are shortened so the one-line verdict pill no longer cuts them off
+  ("Rough conditions — skip swimming.", "Overcast and cool — less pleasant.", "Snow or freezing rain — stay out.",
+  "Foggy — swim with care.", "Not enough data to judge conditions."); a test keeps every verdict message under 41
+  characters
+- Fixed a crash in Compare beaches: when two nearby beaches had the same name (OpenStreetMap often gives
+  "Unnamed beach"), the selection list and the comparison cards used the name as their key, which broke Flutter's
+  list when the sheet closed (a blank sheet, then a red error screen). Rows are now keyed per beach (name plus
+  coordinates)
 
 ## [2026.10.15] - 2026-10-25
 

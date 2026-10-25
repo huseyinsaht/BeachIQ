@@ -58,6 +58,15 @@ Plain Dart data classes:
   coarse). `DepthProfile.unavailable()` is the single "nothing to show" result every
   failure path in `BathymetryService`/`DepthCache` returns. Built for the water-depth
   tile (#217) from the data layer `BathymetryService` fetches (#216).
+- `MeasuredNearshoreDepth`/`MeasuredDepthPoint`
+  (`lib/data/models/measured_nearshore_depth.dart`) — issue #390's real, on-site depth
+  readings for the first ~10 m from the water's edge, the only *certain* source of
+  nearshore depth the app has (EMODnet's grid is too coarse for that range). One entry
+  per measured beach: `latitude`/`longitude` + `radiusMeters` for matching, `measuredOn`/
+  `measuredBy`/`method`/`reference`/an optional `note`, and an ordered list of
+  `MeasuredDepthPoint`s (`distanceMeters` + `depthCm`). `tryParse` drops (returns `null`
+  for) any entry with a missing field, an out-of-range number, or unordered/empty
+  readings rather than showing a wrong depth.
 
 ### `lib/data/mappers`
 
@@ -153,6 +162,12 @@ persisted location without duplicating the string literals.
   GeoServer plain-text response body and never throws — any failure (no geometry/
   bearing to build a transect from, network error, timeout, non-200, an unparseable
   body, or every point landing on land/NoData) resolves to `DepthProfile.unavailable()`.
+- `MeasuredDepthRepository` (`lib/data/services/measured_depth_repository.dart`) —
+  issue #390: loads and parses the bundled `assets/measured_depths.json` (format and
+  measuring guide: `docs/measured-depth.md`) into `MeasuredNearshoreDepth` entries via
+  `MeasuredNearshoreDepth.tryParse`. `load()` never throws — a missing, unreadable or
+  malformed file yields `MeasuredDepthRepository.empty()`. `findFor(lat, lon)` returns
+  the closest entry whose own `radiusMeters` contains that position, or `null`.
 
 ### `lib/data/repositories`
 
@@ -286,6 +301,26 @@ Pure, platform-agnostic logic with no I/O:
   distance; `standUpDistanceLabel`/`deepFromDistanceLabel` describe where the
   stand-up-shallow/deep zones begin or end, in whichever unit `UnitSystem` wants.
   Never uses the word "safe". Used by `DepthDetailScreen` below.
+- `BeachSurface`/`parseBeachSurface`/`beachSurfaceLabel`/`beachSurfaceLabelFor`
+  (`lib/logic/beach_surface.dart`) — issue #392: parses a `Beach.surface` OSM value
+  into `sand`/`pebbles`/`gravel`/`rock` (`null` for a missing or unrecognised value,
+  e.g. grass, dirt, concrete) with an English label for each, shown on the beach info
+  card ("Surface") and the Water depth screen ("Beach surface: ... (OpenStreetMap)").
+  Never guessed.
+- `NearshoreDepthEstimate` (`lib/logic/nearshore_depth_estimate.dart`) — issue #392's
+  conservative estimate of the first-10 m depth for beaches with no on-site
+  measurement, since no open dataset resolves that range (EMODnet's grid is ~115 m).
+  `from(osmSurface, profile)` returns `null` unless the surface is recognised; a
+  non-sand surface (pebbles/gravel/rock) yields `steepBeachType` (a qualitative "no
+  depth estimate" warning, no numbers); sand uses the EMODnet depth at the 100m
+  reference distance (`d`) to bound the 10m depth between a straight-line estimate
+  (`linearFactor` 0.10 × `d`) and a `depth ~ distance^0.5` curve (`steepFactor` 0.32 ×
+  `d`) — `range` when the upper bound stays under `deepWarningMeters` (1.2m), else
+  `mayBeDeep` (a "may be waist-deep or more" warning, no numbers). `rangeText` rounds
+  the low end down and the high end up to 0.1 so the shown range always contains the
+  model's. These factors are provisional (documented in `docs/nearshore-estimate.md`)
+  until checked against real measurements. Superseded by a real `MeasuredNearshoreDepth`
+  when one exists for the beach (#390).
 - `adviseOnShoes` (`lib/logic/beach_gear_advisor.dart`) — advises `advised`/
   `notNeeded`/`unknown` on bringing shoes/slippers, from a beach's OSM `surface` tag.
   Framed as advice, never as a fact.
@@ -528,6 +563,23 @@ Reusable widgets built against `docs/design.md`:
   that reference height. A `null` depth (land/NoData) is a gap, exactly like
   `DepthProfileChart`. `CustomPaint`-based; the painter is public so widget tests can
   inspect its fields directly instead of asserting on pixels.
+- `MeasuredNearshoreDepthCard`/`measuredDepthCaveat`/`formatMeasuredDate`/
+  `formatMeasuredDepth` (`measured_nearshore_depth_card.dart`) — issue #390: the
+  Water depth detail screen's "Near the shore" block for a beach with a
+  `MeasuredNearshoreDepth` entry — a green "MEASURED" badge, the measurement date/
+  measurer/method, one chip per reading (distance from the water, depth — whole
+  centimeters under 1m, meters with two decimals from 1m, or feet for imperial), what
+  the distances are measured from, an optional note, and a fixed caveat that depths
+  change with waves/season/water level and are a guide for that day, not a safety
+  guarantee.
+- `BeachSurfaceRow`/`NearshoreEstimateCard`/`nearshoreEstimateText`/
+  `nearshoreEstimateCaveat` (`nearshore_estimate_card.dart`) — issue #392:
+  `BeachSurfaceRow` renders the beach's OSM surface ("Beach surface: Sand
+  (OpenStreetMap)") on the Water depth screen; `NearshoreEstimateCard` renders the
+  "First 10 m from the water" block for a beach with no on-site measurement — an amber
+  "ESTIMATE" badge, the estimate sentence from `NearshoreDepthEstimate`, and a fixed
+  caveat that it is derived from the surface and the ~115m depth data, not measured,
+  and the water can be deeper than it says.
 - `ForecastAlertList` (`forecast_alert_list.dart`) — a list of upcoming
   `ForecastAlert`s (from `buildForecastAlerts`): one row per alert (a type icon colored
   by severity, the alert's message — itself day-prefixed per #252, see
@@ -640,7 +692,10 @@ Reusable widgets built against `docs/design.md`:
   `SearchScreen`'s `Navigator.pop<Beach>`) in preference to it — that beach's seaward
   bearing feeds the "Current" group's shore-relation labels, and the same beach
   (`isSameBeach`-compared) is what `DepthProvider.fetchForBeach` is called with for the
-  water-depth tile. A beach picked from Search is rendered, once the sheet is
+  water-depth tile, and (via `_measuredDepthFor`, given a `MeasuredDepthRepository`,
+  #390) what is looked up for that same beach's `measuredNearshoreDepth`, passed to
+  `DepthDetailScreen` alongside the `DepthProvider` profile. A beach picked from
+  Search is rendered, once the sheet is
   expanded, as a compact `BeachResultCard`-based info row below the condition row
   (`_buildSelectedBeachInfo`) — which now (issue #294) also opts into
   `BeachResultCard`'s `showDepthSummary`, rendering a one/two-line depth/non-swimmer
@@ -710,7 +765,12 @@ Reusable widgets built against `docs/design.md`:
   `formatShallowEntrySummary`, a status chip from
   `shallowEntryStatusLabel`/`shallowEntryStatusColor`, then (issue #256) one bold
   plain-language non-swimmer verdict line (`shallowEntryVerdictLine`) always paired
-  with a fixed approximation caveat, the `DepthCrossSection` human-scale side-view
+  with a fixed approximation caveat, a `BeachSurfaceRow` when the beach's OSM surface
+  is known (#392), then — a real measurement wins over an estimate — either a
+  `MeasuredNearshoreDepthCard` for a beach with a `MeasuredNearshoreDepth` entry (#390)
+  or a `NearshoreEstimateCard` for the conservative first-10 m `NearshoreDepthEstimate`
+  (#392, sand only; shown only when there is no measurement and the estimate model has
+  something honest to say), the `DepthCrossSection` human-scale side-view
   graphic, a stand-up/deep-from distance label pair (or a "no shallow zone" message
   when the data starts deep, `shallow_entry_verdict.dart`), the #217 context list
   (lifeguard presence, current wave height, and the Ocean Current screen's drift-out
@@ -765,9 +825,10 @@ Every screen above shares `MetricDetailScaffold`/`HourlyMetricChart` (see
   `BeachCache` + `MarineBatchService`), a `UnitPreferencesProvider`, a
   `PlaceSearchProvider` (`GeocodingService`), a `DepthProvider` (#217:
   `BathymetryService` + `DepthCache`), a `DeviceLocationService` (#254:
-  `GeolocatorDeviceLocationSource`) and a `ReverseGeocodingService` via
+  `GeolocatorDeviceLocationSource`), a `ReverseGeocodingService` via
   `buildReverseGeocodingService` (#254: `GeocodingPlacemarkLookup` + `ReverseGeocodeCache`,
-  or `null` on web — #354); also builds the
+  or `null` on web — #354) and a `MeasuredDepthRepository` via `MeasuredDepthRepository.load()`
+  (#390, reading the bundled `assets/measured_depths.json`); also builds the
   `MarineProvider`/`WeatherProvider` instances here (rather than leaving it to
   `MarineApp`'s default) so it can start a `NotificationService` and a
   `SchedulingConditionAlertDispatcher` (#359, wired with `buildBackgroundScheduler()`)
@@ -881,14 +942,21 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
 ## Tests
 
 - `flutter test` — unit tests for models (`test/data/models/`, including
-  `depth_profile_test.dart`/`beach_amenity_test.dart`), mappers, services
+  `depth_profile_test.dart`/`beach_amenity_test.dart`/`measured_nearshore_depth_test.dart`
+  (#390, `MeasuredNearshoreDepth.tryParse`'s valid/invalid cases)), mappers, services
   (`test/data/services/`, including `bathymetry_service_test.dart`/
   `depth_cache_test.dart`/`device_location_service_test.dart`/
-  `reverse_geocode_cache_test.dart`/`reverse_geocoding_service_test.dart`, #254 —
+  `reverse_geocode_cache_test.dart`/`reverse_geocoding_service_test.dart`, #254,
+  `measured_depth_repository_test.dart` (#390, `load`/`findFor`'s radius matching and
+  malformed-asset fallback) —
   faked via `test/helpers/fake_location.dart`'s `FakeDeviceLocationSource`/
   `FakePlacemarkLookup`, never touching real GPS hardware or a real platform
   geocoder channel), repositories (`test/data/`, including
-  `notification_service_test.dart`'s fake `LocalNotificationsPlugin`), pure logic
+  `notification_service_test.dart`'s fake `LocalNotificationsPlugin`),
+  `measured_depths_asset_test.dart` (#390, guards the shipped
+  `assets/measured_depths.json` itself: every entry parses via
+  `MeasuredNearshoreDepth.tryParse` and no two entries describe the same spot twice —
+  an invalid entry would otherwise be silently dropped at runtime), pure logic
   (`test/logic/`, including `swim_suitability_test.dart`,
   `condition_alert_service_test.dart`, `forecast_alerts_test.dart` (covering
   `buildForecastAlerts`'s daylight filter, `buildNextHourNote`, #229, and the #252
@@ -898,7 +966,9 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
   `rain_windows_test.dart`, `transect_test.dart`, `shallow_entry_test.dart`,
   `shallow_entry_status_test.dart`, `shallow_entry_verdict_test.dart` (#256),
   `wind_status_test.dart`, `rain_status_test.dart`, `chart_axis_test.dart`,
-  `daily_outlook_test.dart` (#273), `swim_safety_disclaimer_test.dart` (#271)),
+  `daily_outlook_test.dart` (#273), `swim_safety_disclaimer_test.dart` (#271),
+  `nearshore_depth_estimate_test.dart` (#392, every `NearshoreDepthEstimate.from`
+  branch and `rangeText`'s rounding)),
   `background_alert_task_test.dart` (#359, covering `runBackgroundAlertCheck`'s
   alert/no-op/failure paths and `WorkmanagerBackgroundScheduler`'s
   `registerPeriodic`/`cancel` calls via a mocktail-faked `Workmanager`),
@@ -911,7 +981,9 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
   flight (#296, mirroring `MarineProvider`'s own)),
   widget tests for every presentational widget (including
   `depth_profile_chart_test.dart`, `depth_cross_section_test.dart` (#256),
-  `stat_tile_group_test.dart` (#251) and `daily_outlook_list_test.dart` (#273)) and
+  `stat_tile_group_test.dart` (#251), `daily_outlook_list_test.dart` (#273),
+  `measured_nearshore_depth_card_test.dart` and `nearshore_estimate_card_test.dart`
+  (#390/#392)) and
   for `SearchScreen`, `CompareBeachesScreen` (#274) and all eight metric detail
   screens (`test/presentation/`, including `test/presentation/screens/detail/`, e.g.
   `depth_detail_screen_test.dart`), plus `test/widget_test.dart` rendering

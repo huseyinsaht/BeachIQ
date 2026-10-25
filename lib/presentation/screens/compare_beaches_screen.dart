@@ -188,13 +188,18 @@ class _CompareBeachesScreenState extends State<CompareBeachesScreen> {
             padding: const EdgeInsets.fromLTRB(16, 56, 16, 24),
             children: [
               for (final beach in widget.beaches) ...[
-                _BeachCompareCard(
-                  key: Key('compare-card-${beach.name}'),
-                  beach: beach,
-                  isBest: identical(beach, best),
-                  verdict: _verdictFor(beach),
-                  verdictLoading: _loadingWeather.contains(beach),
-                  metrics: _metricsFor(beach),
+                // Unique per beach: two beaches may share a name ("Unnamed
+                // beach"), and duplicate sibling keys crash the list.
+                KeyedSubtree(
+                  key: ValueKey(beachIdentityKey(beach)),
+                  child: _BeachCompareCard(
+                    key: Key('compare-card-${beach.name}'),
+                    beach: beach,
+                    isBest: identical(beach, best),
+                    verdict: _verdictFor(beach),
+                    verdictLoading: _loadingWeather.contains(beach),
+                    metrics: _metricsFor(beach),
+                  ),
                 ),
                 const SizedBox(height: 14),
               ],
