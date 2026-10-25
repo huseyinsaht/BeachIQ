@@ -270,5 +270,113 @@ void main() {
         expect(beaches, isEmpty);
       },
     );
+
+    // The next four tests pin the exact boundary of the two distance
+    // thresholds (`_adjoiningBeachThresholdMeters` = 30m,
+    // `_amenityAttachRadiusMeters` = 150m), per docs/testing.md's "values at
+    // a threshold boundary" mandatory edge case. The coordinates are
+    // `latlong2`'s own `Distance().offset(origin, metres, 90)` due east of
+    // (36.0, 27.0), so the measured distance the mapper computes is exactly
+    // 30/31/150/151 meters, not an approximation.
+    test(
+      'merges two beach nodes exactly at the adjoining threshold (30m apart)',
+      () {
+        final beaches = mapOverpassToBeaches({
+          'elements': [
+            {
+              'type': 'node',
+              'id': 1,
+              'lat': 36.0,
+              'lon': 27.0,
+              'tags': {'natural': 'beach', 'name': 'Beach A'},
+            },
+            {
+              'type': 'node',
+              'id': 2,
+              'lat': 35.999999999538566,
+              'lon': 27.000332728182823,
+              'tags': {'natural': 'beach', 'name': 'Beach B'},
+            },
+          ],
+        });
+
+        expect(beaches, hasLength(1));
+      },
+    );
+
+    test(
+      'does not merge two beach nodes just over the adjoining threshold (31m apart)',
+      () {
+        final beaches = mapOverpassToBeaches({
+          'elements': [
+            {
+              'type': 'node',
+              'id': 1,
+              'lat': 36.0,
+              'lon': 27.0,
+              'tags': {'natural': 'beach', 'name': 'Beach A'},
+            },
+            {
+              'type': 'node',
+              'id': 2,
+              'lat': 35.99999999950729,
+              'lon': 27.00034381912225,
+              'tags': {'natural': 'beach', 'name': 'Beach B'},
+            },
+          ],
+        });
+
+        expect(beaches, hasLength(2));
+      },
+    );
+
+    test('attaches an amenity exactly at the attach radius (150m away)', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'node',
+            'id': 1,
+            'lat': 36.0,
+            'lon': 27.0,
+            'tags': {'natural': 'beach', 'name': 'Beach A'},
+          },
+          {
+            'type': 'node',
+            'id': 101,
+            'lat': 35.99999998846403,
+            'lon': 27.00166364091396,
+            'tags': {'amenity': 'shower'},
+          },
+        ],
+      });
+
+      expect(beaches.single.hasShower, isTrue);
+    });
+
+    test(
+      'does not attach an amenity just over the attach radius (151m away)',
+      () {
+        final beaches = mapOverpassToBeaches({
+          'elements': [
+            {
+              'type': 'node',
+              'id': 1,
+              'lat': 36.0,
+              'lon': 27.0,
+              'tags': {'natural': 'beach', 'name': 'Beach A'},
+            },
+            {
+              'type': 'node',
+              'id': 101,
+              'lat': 35.999999988309696,
+              'lon': 27.001674731853385,
+              'tags': {'amenity': 'shower'},
+            },
+          ],
+        });
+
+        expect(beaches.single.hasShower, isFalse);
+      },
+    );
   });
 }
