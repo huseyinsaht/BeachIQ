@@ -38,6 +38,11 @@ const moderateRainChancePercent = 40;
 /// input is missing the result is [SwimSuitabilityLevel.unknown] rather
 /// than a guessed calm/rough verdict. Otherwise the verdict is the worst
 /// level triggered by any single available input.
+///
+/// "Good" additionally requires wave height: without it the sea state is
+/// unknown, so calm wind and dry weather alone must not claim "calm seas".
+/// A caution/poor verdict from wind or rain still stands, but the best a
+/// wave-less reading can return is [SwimSuitabilityLevel.unknown].
 SwimVerdict scoreSwimSuitability({
   double? waveHeightM,
   double? windSpeedKmh,
@@ -79,6 +84,13 @@ SwimVerdict scoreSwimSuitability({
     } else if (rainChancePercent >= moderateRainChancePercent) {
       consider(SwimSuitabilityLevel.caution);
     }
+  }
+
+  if (waveHeightM == null && worst == SwimSuitabilityLevel.good) {
+    return const SwimVerdict(
+      SwimSuitabilityLevel.unknown,
+      'Sea conditions unavailable — check local flags before swimming.',
+    );
   }
 
   return SwimVerdict(worst, _messageFor(worst));
