@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.16] - 2026-10-25
+
 ### Fixed
 
 - The longer swim verdict messages are shortened so the one-line verdict pill no longer cuts them off
@@ -15,7 +17,6 @@ All notable changes to this project are documented here. Format loosely follows
   "Unnamed beach"), the selection list and the comparison cards used the name as their key, which broke Flutter's
   list when the sheet closed (a blank sheet, then a red error screen). Rows are now keyed per beach (name plus
   coordinates)
-
 
 ## [2026.10.15] - 2026-10-25
 
