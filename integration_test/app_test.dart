@@ -1856,10 +1856,7 @@ void main() {
       // Day 1: calm wave + wind -> "good"; day 2's 45 km/h wind crosses the
       // high threshold -> "poor", proving each day scores independently.
       expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
-      expect(
-        find.text('Rough conditions — best to skip swimming today.'),
-        findsOneWidget,
-      );
+      expect(find.text('Rough conditions — skip swimming.'), findsOneWidget);
     },
   );
 }

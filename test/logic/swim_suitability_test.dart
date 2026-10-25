@@ -306,7 +306,7 @@ void main() {
         ),
       ];
 
-      expect(verdicts.map((v) => v.message).toSet().length, greaterThan(8));
+      expect(verdicts.map((v) => v.message).toSet(), hasLength(10));
       for (final verdict in verdicts) {
         expect(
           verdict.message.length,
