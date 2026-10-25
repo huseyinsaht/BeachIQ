@@ -30,6 +30,7 @@ import 'package:beachiq/logic/shallow_entry_status.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
+import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -861,6 +862,35 @@ void main() {
         // they regress to "No data" once that re-fetch resolves.
         expect(find.text('0.5 m'), findsOneWidget);
         expect(find.text('24°'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'the amenity legend chips sit below the floating search field and clear '
+      'of the map controls, not hidden behind them',
+      (tester) async {
+        final client = fixtureClient();
+        final provider = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(provider.dispose);
+        await pumpLoadedHome(tester, provider);
+
+        final legend = find.byType(AmenityLegend);
+        expect(legend, findsOneWidget);
+
+        final searchBottom = tester
+            .getBottomLeft(find.byKey(const Key('home-search-field')))
+            .dy;
+        expect(
+          tester.getTopLeft(legend).dy,
+          greaterThanOrEqualTo(searchBottom),
+        );
+
+        final screenWidth =
+            tester.view.physicalSize.width / tester.view.devicePixelRatio;
+        expect(
+          tester.getTopRight(legend).dx,
+          lessThanOrEqualTo(screenWidth - kEdgeToEdgeLegendRight),
+        );
       },
     );
 

@@ -5,6 +5,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Fixed the map's amenity filter chips (toilets, shower, cafe, ...) being hidden behind
+  the floating search field on the Home screen: they now sit below it and clear of the
+  zoom/location controls
+
 ## [2026.10.14] - 2026-10-25
 
 ### Added
