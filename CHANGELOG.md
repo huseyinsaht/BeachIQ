@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.10.15] - 2026-10-25
+
 ### Fixed
 
 - The swim verdict now takes the current weather into account: a thunderstorm or snow/freezing rain is "poor",
