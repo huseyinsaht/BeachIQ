@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/widgets.dart' show Locale;
 import 'package:geocoding/geocoding.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,7 +27,14 @@ class GeocodingPlacemarkLookup implements PlacemarkLookup {
 
   @override
   Future<List<Placemark>> lookup(double latitude, double longitude) =>
-      _geocoding.placemarkFromCoordinates(latitude, longitude);
+      // English names regardless of the phone's language: the app UI is
+      // English-only. (Set per call: geocoding 5.0.0's constructor ignores
+      // its `locale` argument.)
+      _geocoding.placemarkFromCoordinates(
+        latitude,
+        longitude,
+        locale: const Locale('en'),
+      );
 }
 
 /// Builds a short display name ("locality / sub-administrative area, plus

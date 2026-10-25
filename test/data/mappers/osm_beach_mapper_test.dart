@@ -207,6 +207,58 @@ void main() {
       },
     );
 
+    test('prefers the English OSM name (name:en) over the local name', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'way',
+            'id': 1,
+            'tags': {
+              'natural': 'beach',
+              'name': 'Ilıca Plajı',
+              'name:en': 'Ilica Beach',
+            },
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+          {
+            'type': 'node',
+            'id': 2,
+            'lat': 10.00001,
+            'lon': 20.0,
+            'tags': {
+              'amenity': 'cafe',
+              'name': 'Plaj Kafe',
+              'name:en': 'Beach Cafe',
+            },
+          },
+        ],
+      });
+
+      expect(beaches.single.name, 'Ilica Beach');
+      expect(beaches.single.amenities.single.name, 'Beach Cafe');
+    });
+
+    test('falls back to the local name when there is no name:en', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'way',
+            'id': 1,
+            'tags': {'natural': 'beach', 'name': 'Local Name Beach'},
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+        ],
+      });
+
+      expect(beaches.single.name, 'Local Name Beach');
+    });
+
     test('a beach with no attached amenities has an empty amenities list', () {
       final beaches = mapOverpassToBeaches({
         'elements': [
