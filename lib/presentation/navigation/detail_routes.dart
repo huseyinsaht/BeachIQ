@@ -4,6 +4,7 @@ import '../../data/models/beach.dart';
 import '../../data/models/depth_profile.dart';
 import '../../data/models/sea_condition.dart';
 import '../../data/models/weather_condition.dart';
+import '../../data/services/seabed_map_repository.dart';
 import '../../logic/unit_preferences.dart';
 import '../screens/detail/current_detail_screen.dart';
 import '../screens/detail/depth_detail_screen.dart';
@@ -82,6 +83,7 @@ Route<void> buildDetailRoute(
   double? currentWaveHeightMeters,
   UnitSystem unitSystem = UnitSystem.metric,
   DateTime Function()? now,
+  SeabedMapRepository? seabedMapRepository,
 }) {
   switch (metric) {
     case DetailMetric.pressure:
@@ -164,6 +166,7 @@ Route<void> buildDetailRoute(
           currentDirectionDegrees: currentDirectionValue,
           seawardBearingDegrees: seawardBearingDegrees,
           unitSystem: unitSystem,
+          seabedMapRepository: seabedMapRepository,
         ),
       );
   }

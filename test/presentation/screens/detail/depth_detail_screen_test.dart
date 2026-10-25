@@ -1,12 +1,20 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:beachiq/data/models/depth_profile.dart';
+import 'package:beachiq/data/services/seabed_map_repository.dart';
 import 'package:beachiq/logic/shallow_entry.dart';
 import 'package:beachiq/logic/shallow_entry_verdict.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/widgets/depth_cross_section.dart';
 import 'package:beachiq/presentation/widgets/depth_profile_chart.dart';
+import 'package:beachiq/presentation/widgets/seabed_map_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../helpers/builders.dart';
 
@@ -459,6 +467,79 @@ void main() {
 
       expect(find.byType(DepthDetailScreen), findsNothing);
       expect(find.text('open'), findsOneWidget);
+    });
+
+    group('seabed map (#293)', () {
+      final png = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY'
+        '42YAAAAASUVORK5CYII=',
+      );
+
+      Future<SeabedMapRepository> repo(List<Uri> log) async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        return SeabedMapRepository(
+          MockClient((request) async {
+            log.add(request.url);
+            return http.Response.bytes(Uint8List.fromList(png), 200);
+          }),
+          prefs,
+        );
+      }
+
+      testWidgets('given a repository and a beach, shows the seabed map '
+          'section for that beach', (tester) async {
+        final log = <Uri>[];
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              beach: aBeach(),
+              seabedMapRepository: await repo(log),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.scrollUntilVisible(
+          find.byKey(const Key('seabed-map-card')),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+
+        expect(find.byType(SeabedMapCard), findsOneWidget);
+        expect(find.byKey(const Key('seabed-map-image')), findsOneWidget);
+        final getMap = log.where(
+          (u) => u.queryParameters['request'] == 'GetMap',
+        );
+        expect(getMap, hasLength(1));
+      });
+
+      testWidgets('given no repository, omits the seabed map and makes no '
+          'request', (tester) async {
+        await tester.pumpWidget(
+          wrap(DepthDetailScreen(profile: _gentleProfile, beach: aBeach())),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SeabedMapCard), findsNothing);
+      });
+
+      testWidgets('given a repository but no beach, omits the seabed map '
+          'and makes no request', (tester) async {
+        final log = <Uri>[];
+        await tester.pumpWidget(
+          wrap(
+            DepthDetailScreen(
+              profile: _gentleProfile,
+              seabedMapRepository: await repo(log),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SeabedMapCard), findsNothing);
+        expect(log, isEmpty);
+      });
     });
   });
 }

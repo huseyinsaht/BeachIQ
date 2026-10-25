@@ -16,6 +16,7 @@ import '../../data/selected_location_prefs_keys.dart';
 import '../../data/services/bathymetry_service.dart';
 import '../../data/services/device_location_service.dart';
 import '../../data/services/reverse_geocoding_service.dart';
+import '../../data/services/seabed_map_repository.dart';
 import '../../logic/beach_gear_advisor.dart';
 import '../../logic/daily_outlook.dart';
 import '../../logic/forecast_alerts.dart';
@@ -531,6 +532,7 @@ class HomeScreen extends StatefulWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.seabedMapRepository,
     this.deviceLocationService,
     this.reverseGeocodingService,
     this.conditionAlertDispatcher,
@@ -574,6 +576,10 @@ class HomeScreen extends StatefulWidget {
   /// doesn't pass one) renders the tile as "No data" and disables the
   /// underlying fetch, unchanged from any other optional provider here.
   final DepthProvider? depthProvider;
+
+  /// Supplies the Water depth detail screen's seabed map (issue #293).
+  /// Null omits the map (as in most tests).
+  final SeabedMapRepository? seabedMapRepository;
 
   /// Drives the map card overflow menu's "Use my location" action (issue
   /// #254). Null (the default for any existing call site that doesn't
@@ -1532,6 +1538,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 currentDirectionValue: seaCondition?.currentDirection,
                 seawardBearingDegrees: seawardBearingDegrees,
                 unitSystem: unitSystem,
+                seabedMapRepository: widget.seabedMapRepository,
               ),
             ),
           ),
@@ -1627,6 +1634,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   currentDirectionValue: seaCondition?.currentDirection,
                   seawardBearingDegrees: seawardBearingDegrees,
                   unitSystem: unitSystem,
+                  seabedMapRepository: widget.seabedMapRepository,
                 ),
               ),
             ),

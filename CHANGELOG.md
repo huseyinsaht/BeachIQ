@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Seabed map on the Water depth detail screen: a shaded-relief image with labelled depth contours
+  (EMODnet Bathymetry WMS, ~4 km window centred on the beach), scale bar, depth legend and attribution,
+  clearly labelled as approximate (~115 m resolution, not for navigation). It is requested only when
+  that screen opens and cached for 90 days; "No seabed data" is shown when the request fails (#293)
+
 ### Fixed
 
 - Fixed the map's amenity filter chips (toilets, shower, cafe, ...) being hidden behind

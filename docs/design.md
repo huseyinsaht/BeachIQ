@@ -386,6 +386,19 @@ as part of the same app:
      `shallowLimitMeters`/`deepLimitMeters`) is kept, now sitting below the cross-section as the exact
      numeric reading for anyone who wants it, rather than being replaced by it.
 
+   - **`SeabedMapCard`** (issue #293, `lib/presentation/widgets/seabed_map_card.dart`) — "Seabed around
+     the beach", between the context row and `DepthProfileChart`: one EMODnet WMS `GetMap` image
+     (`emodnet:mean_atlas_land` shaded relief + labelled `emodnet:contours`, ~4 km square, 512 px, beach
+     marker at the centre) fetched by `SeabedMapRepository` (`lib/data/services/seabed_map_repository.dart`),
+     with a scale bar (1 km / 0.5 mi), the official `GetLegendGraphic` depth legend beside it, attribution
+     drawn on the image and the caveat "Approximate seabed, ~115 m resolution. Sandbars, drop-offs and
+     details close to shore are not shown. Not for navigation." States: same-size loading placeholder,
+     the map, or "No seabed data" (request failed / non-PNG reply) — never a blank or guessed picture.
+     Requested only when this detail screen is built (never on Home, Search or Compare), cached 90 days in
+     `SharedPreferences` (map keyed by coordinates rounded to ~110 m, legend shared); omitted when no
+     repository or no beach is available. Near the shore the dataset is coarse, so most of the image can
+     look like one pale blue tone; the contour lines are the most readable part.
+
    The explanation paragraph (below) also carries an EMODnet attribution line. The Min/Max/Now summary
    row is repurposed to the shallowest/deepest valid reading along the transect and the reading at the
    classification's own 100 m reference distance, since there is no literal "now" for a spatial reading.

@@ -16,6 +16,7 @@ import 'package:beachiq/data/services/notification_service.dart';
 import 'package:beachiq/data/services/overpass_service.dart';
 import 'package:beachiq/data/services/reverse_geocode_cache.dart';
 import 'package:beachiq/data/services/reverse_geocoding_service.dart';
+import 'package:beachiq/data/services/seabed_map_repository.dart';
 import 'package:beachiq/data/services/weather_api_service.dart';
 import 'package:beachiq/logic/providers/condition_alert_dispatcher.dart';
 import 'package:beachiq/logic/providers/depth_provider.dart';
@@ -56,6 +57,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -97,6 +99,24 @@ void main() {
   group('HomeScreen cloud backdrop (issue #162)', () {
     setUp(() {
       SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets('never requests the seabed map from Home (only the Water depth '
+        'detail screen does, #293)', (tester) async {
+      final prefs = await SharedPreferences.getInstance();
+      final requests = <Uri>[];
+      final repository = SeabedMapRepository(
+        MockClient((request) async {
+          requests.add(request.url);
+          return http.Response('', 500);
+        }),
+        prefs,
+      );
+
+      await pumpApp(tester, HomeScreen(seabedMapRepository: repository));
+      await tester.pumpAndSettle();
+
+      expect(requests, isEmpty);
     });
 
     testWidgets('renders a CloudBackdrop behind the header', (tester) async {

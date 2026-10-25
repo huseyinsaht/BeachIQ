@@ -31,7 +31,7 @@ with any internet request. BeachIQ does not control or receive copies of these r
 |---|---|---|
 | Open-Meteo (open-meteo.com) | weather, marine forecast, place search | coordinates; search text |
 | Overpass API / OpenStreetMap (overpass-api.de and a mirror) | nearby beaches and facilities | coordinates |
-| EMODnet Bathymetry (ows.emodnet-bathymetry.eu) | water depth | coordinates |
+| EMODnet Bathymetry (ows.emodnet-bathymetry.eu) | water depth and the seabed map | coordinates, or the map area around the beach you open |
 | OpenStreetMap tile servers (tile.openstreetmap.org) | map images | map tile positions you view |
 
 ## Notifications

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/beach.dart';
 import '../../../data/models/depth_profile.dart';
+import '../../../data/services/seabed_map_repository.dart';
 import '../../../logic/shallow_entry.dart';
 import '../../../logic/shallow_entry_status.dart';
 import '../../../logic/shallow_entry_verdict.dart';
@@ -10,6 +11,7 @@ import '../../../logic/wave_shore_relation.dart';
 import '../../widgets/depth_cross_section.dart';
 import '../../widgets/depth_profile_chart.dart';
 import '../../widgets/metric_detail_scaffold.dart';
+import '../../widgets/seabed_map_card.dart';
 // `driftOutWarningSpeedKmh` (issue #164's drift-out threshold) is defined
 // on `CurrentDetailScreen`, the screen it was first added for — reused
 // from there rather than duplicated, so this screen's drift-out warning
@@ -50,6 +52,7 @@ class DepthDetailScreen extends StatelessWidget {
     this.currentDirectionDegrees,
     this.seawardBearingDegrees,
     this.unitSystem = UnitSystem.metric,
+    this.seabedMapRepository,
   });
 
   /// The fetched nearshore depth profile. `null` (not yet fetched, or no
@@ -85,6 +88,11 @@ class DepthDetailScreen extends StatelessWidget {
   /// The user's display-unit preference (m or ft). Defaults to metric,
   /// matching every other detail screen's default.
   final UnitSystem unitSystem;
+
+  /// Source of the seabed map (issue #293). Null (no repository supplied,
+  /// as in most tests) omits the map section entirely; it is also omitted
+  /// when no [beach] is known, since the map is centred on the beach.
+  final SeabedMapRepository? seabedMapRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -215,6 +223,15 @@ class DepthDetailScreen extends StatelessWidget {
                 ? null
                 : formatWindSpeed(speed, unitSystem),
           ),
+          if (seabedMapRepository != null && beach != null) ...[
+            const SizedBox(height: 20),
+            SeabedMapCard(
+              latitude: beach!.latitude,
+              longitude: beach!.longitude,
+              repository: seabedMapRepository!,
+              unitSystem: unitSystem,
+            ),
+          ],
           const SizedBox(height: 20),
           DepthProfileChart(
             samples: effectiveProfile.samples,

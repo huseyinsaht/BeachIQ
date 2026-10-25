@@ -18,6 +18,7 @@ import 'data/services/marine_batch_service.dart';
 import 'data/services/notification_service.dart';
 import 'data/services/overpass_service.dart';
 import 'data/services/reverse_geocoding_service.dart';
+import 'data/services/seabed_map_repository.dart';
 import 'data/services/weather_api_service.dart';
 import 'logic/background_alert_task.dart';
 import 'logic/providers/condition_alert_dispatcher.dart';
@@ -92,6 +93,7 @@ void main() async {
       nearbyBeachesProvider: nearbyBeachesProvider,
       placeSearchProvider: PlaceSearchProvider(GeocodingService(httpClient)),
       depthProvider: depthProvider,
+      seabedMapRepository: SeabedMapRepository(httpClient, prefs),
       deviceLocationService: deviceLocationService,
       reverseGeocodingService: reverseGeocodingService,
       conditionAlertDispatcher: conditionAlertDispatcher,
@@ -116,6 +118,7 @@ class MarineApp extends StatelessWidget {
     this.nearbyBeachesProvider,
     this.placeSearchProvider,
     this.depthProvider,
+    this.seabedMapRepository,
     this.deviceLocationService,
     this.reverseGeocodingService,
     this.conditionAlertDispatcher,
@@ -161,6 +164,10 @@ class MarineApp extends StatelessWidget {
   /// pass one, e.g. most widget/integration tests) renders that tile as
   /// "No data", unchanged from before.
   final DepthProvider? depthProvider;
+
+  /// Forwarded to `HomeScreen` for the Water depth screen's seabed map
+  /// (issue #293).
+  final SeabedMapRepository? seabedMapRepository;
 
   /// Drives `HomeScreen`'s map card overflow "Use my location" action
   /// (issue #254). Null (the default for any existing call site that
@@ -224,6 +231,7 @@ class MarineApp extends StatelessWidget {
             nearbyBeachesProvider: nearbyBeachesProvider,
             placeSearchProvider: placeSearchProvider,
             depthProvider: depthProvider,
+            seabedMapRepository: seabedMapRepository,
             deviceLocationService: deviceLocationService,
             reverseGeocodingService: reverseGeocodingService,
             conditionAlertDispatcher: conditionAlertDispatcher,
