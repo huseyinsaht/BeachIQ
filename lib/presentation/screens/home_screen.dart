@@ -1377,7 +1377,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // =14` now makes the raw `hourly` list span up to 14 days, and
     // ForecastAlertList/the next-hour note are near-term-only features.
     final upcomingSeaHourly = _upcomingEntries<SeaHourly>(
-      marineProvider?.currentData?.hourly ?? const [],
+      seaCondition?.hourly ?? const [],
       effectiveNow,
       (h) => h.time,
     );

@@ -161,10 +161,9 @@ void main() {
       );
     });
 
-    testWidgets('far from the coast (no beach within the search radius): no '
-        'swim verdict and no sea values, even if marine data came back', (
-      tester,
-    ) async {
+    testWidgets('given no beach within the search radius (far from the coast), '
+        'build -> shows no swim verdict and no sea values even though marine '
+        'data came back', (tester) async {
       final client = FakeHttpClient()
         ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]});
       final nearby = await fakeNearbyBeachesProvider(client: client);
@@ -191,6 +190,37 @@ void main() {
       expect(find.text('Far from the coast — pick a beach.'), findsOneWidget);
       expect(find.text('Calm seas — good time for a swim.'), findsNothing);
       expect(find.text('0.2 m'), findsNothing);
+      expect(find.text('24°C'), findsNothing);
+      expect(find.text('No data'), findsWidgets);
+    });
+
+    testWidgets('given the beach search failed on every server, build -> '
+        'shows the normal verdict, never "far from the coast"', (tester) async {
+      final client = FakeHttpClient()
+        ..queueResponse(matcher: (r) => true, body: 'down', statusCode: 503);
+      final nearby = await fakeNearbyBeachesProvider(client: client);
+      addTearDown(nearby.dispose);
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(waveHeight: 0.2),
+      );
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(windSpeed: 8, rainChancePercent: 5),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          nearbyBeachesProvider: nearby,
+          marineProvider: marineProvider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pumpAndSettle();
+
+      expect(nearby.status, isNot(NearbyBeachesStatus.empty));
+      expect(find.text('Far from the coast — pick a beach.'), findsNothing);
+      expect(find.text('Calm seas — good time for a swim.'), findsOneWidget);
     });
 
     testWidgets('while nearby beaches are still loading, the normal verdict '
@@ -1529,6 +1559,72 @@ void main() {
       expect(find.byType(ForecastAlertList), findsOneWidget);
       expect(find.textContaining('Wind crosses 40 km/h'), findsOneWidget);
     });
+
+    testWidgets(
+      'given marine hourly data crossing the wave limit next hour, build -> '
+      'shows the wave note as the next-hour note',
+      (tester) async {
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: [aWeatherHourly(time: h(21))]),
+        );
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            hourly: [
+              aSeaHourly(time: h(21), waveHeight: 0.4),
+              aSeaHourly(time: h(22), waveHeight: 1.3),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => h(21),
+          ),
+        );
+
+        expect(find.textContaining('Waves cross'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'given the same marine hourly data but no beach within the search '
+      'radius, build -> shows no wave note (no sea data far from the coast)',
+      (tester) async {
+        final client = FakeHttpClient()
+          ..queueJson(host: 'overpass-api.de', json: {'elements': <Object?>[]});
+        final nearby = await fakeNearbyBeachesProvider(client: client);
+        addTearDown(nearby.dispose);
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(hourly: [aWeatherHourly(time: h(21))]),
+        );
+        final marineProvider = await aLoadedMarineProvider(
+          aSeaCondition(
+            hourly: [
+              aSeaHourly(time: h(21), waveHeight: 0.4),
+              aSeaHourly(time: h(22), waveHeight: 1.3),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            nearbyBeachesProvider: nearby,
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            now: () => h(21),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 20));
+        await tester.pumpAndSettle();
+
+        expect(nearby.status, NearbyBeachesStatus.empty);
+        expect(find.textContaining('Waves cross'), findsNothing);
+      },
+    );
 
     testWidgets(
       'given a change in the next hour after the location\'s sunset, build '
