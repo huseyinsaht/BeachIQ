@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Changed
+
+- Compare beaches is redesigned to match the rest of the app: the dark navy background, one card per beach with
+  its name and city, the beach's own swim verdict message in the verdict colour (so a grey, cool or rough beach no
+  longer reads like a good one), wave height, wind, water temperature and depth in tiles, and a "Best today"
+  badge on the one beach that is strictly best (only when its verdict is good and every beach's weather loaded)
+
 ## [2026.10.15] - 2026-10-25
 
 ### Fixed
