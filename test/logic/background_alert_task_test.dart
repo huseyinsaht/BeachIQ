@@ -302,6 +302,34 @@ void main() {
       );
     });
 
+    test(
+      'given calm seas but an overcast, cool day, runBackgroundAlertCheck -> '
+      'persists caution and sends no "conditions turned favorable" alert',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          selectedLocationLatPrefsKey: 38.32,
+          selectedLocationLonPrefsKey: 26.32,
+          conditionAlertPreviousVerdictPrefsKey: SwimSuitabilityLevel.poor.name,
+        });
+        final prefs = await SharedPreferences.getInstance();
+        marineRepository.data = aSeaCondition(waveHeight: 0.2);
+        weatherRepository.data = aWeatherCondition(
+          weatherCode: 3,
+          temperature: 18,
+          windSpeed: 8,
+          rainChancePercent: 5,
+        );
+
+        await expectLater(runCheck(prefs), completes);
+
+        expect(notificationPlugin.calls, isEmpty);
+        expect(
+          prefs.getString(conditionAlertPreviousVerdictPrefsKey),
+          SwimSuitabilityLevel.caution.name,
+        );
+      },
+    );
+
     test('given a null waveHeight and a null rainChancePercent from the '
         'repositories (only windSpeed available), runBackgroundAlertCheck -> '
         'persists "unknown" and sends no favorable alert, since calm wind alone '

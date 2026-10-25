@@ -101,6 +101,66 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
+    testWidgets('an overcast, cool day is not recommended for a swim: the '
+        'pill is caution with the overcast message (not "Calm seas")', (
+      tester,
+    ) async {
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(waveHeight: 0.2),
+      );
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(
+          weatherCode: 3,
+          temperature: 18,
+          windSpeed: 8,
+          rainChancePercent: 5,
+        ),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          marineProvider: marineProvider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Overcast and cool — less pleasant for a swim.'),
+        findsOneWidget,
+      );
+      expect(find.text('Calm seas — good time for a swim.'), findsNothing);
+    });
+
+    testWidgets('a thunderstorm is poor even with calm seas', (tester) async {
+      final marineProvider = await aLoadedMarineProvider(
+        aSeaCondition(waveHeight: 0.2),
+      );
+      final weatherProvider = await aLoadedWeatherProvider(
+        aWeatherCondition(
+          weatherCode: 95,
+          temperature: 27,
+          windSpeed: 8,
+          rainChancePercent: 5,
+        ),
+      );
+
+      await pumpApp(
+        tester,
+        HomeScreen(
+          marineProvider: marineProvider,
+          weatherProvider: weatherProvider,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Thunderstorms — stay out of the water.'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('renders a CloudBackdrop behind the header', (tester) async {
       await pumpApp(tester, const HomeScreen());
 

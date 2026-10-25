@@ -73,12 +73,16 @@ Future<void> runBackgroundAlertCheck({
   double? waveHeightM;
   double? windSpeedKmh;
   int? rainChancePercent;
+  int? weatherCode;
+  double? airTemperatureC;
   try {
     final marine = await marineRepository.getMarineData(lat, lon);
     final weather = await weatherRepository.getWeatherData(lat, lon);
     waveHeightM = marine.waveHeight;
     windSpeedKmh = weather.windSpeed;
     rainChancePercent = weather.rainChancePercent?.round();
+    weatherCode = weather.weatherCode;
+    airTemperatureC = weather.temperature;
   } catch (_) {
     return;
   }
@@ -87,6 +91,8 @@ Future<void> runBackgroundAlertCheck({
     waveHeightM: waveHeightM,
     windSpeedKmh: windSpeedKmh,
     rainChancePercent: rainChancePercent,
+    weatherCode: weatherCode,
+    airTemperatureC: airTemperatureC,
   );
 
   final previousLevel = _readPersistedLevel(prefs);
