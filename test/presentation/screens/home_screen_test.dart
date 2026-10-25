@@ -30,7 +30,6 @@ import 'package:beachiq/logic/shallow_entry_status.dart';
 import 'package:beachiq/logic/unit_preferences.dart';
 import 'package:beachiq/logic/uv_band.dart';
 import 'package:beachiq/logic/wind_status.dart';
-import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/screens/detail/current_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/depth_detail_screen.dart';
 import 'package:beachiq/presentation/screens/detail/uv_index_detail_screen.dart';
@@ -39,6 +38,7 @@ import 'package:beachiq/presentation/screens/detail/wave_height_detail_screen.da
 import 'package:beachiq/presentation/screens/forecast_screen.dart';
 import 'package:beachiq/presentation/screens/home_screen.dart';
 import 'package:beachiq/presentation/screens/search_screen.dart';
+import 'package:beachiq/presentation/widgets/amenity_legend.dart';
 import 'package:beachiq/presentation/widgets/beach_result_card.dart';
 import 'package:beachiq/presentation/widgets/cloud_backdrop.dart';
 import 'package:beachiq/presentation/widgets/daily_outlook_list.dart';
