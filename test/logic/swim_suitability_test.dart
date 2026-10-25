@@ -76,10 +76,7 @@ void main() {
       final verdict = scoreSwimSuitability();
 
       expect(verdict.level, SwimSuitabilityLevel.unknown);
-      expect(
-        verdict.message,
-        'Not enough data to judge swim conditions right now.',
-      );
+      expect(verdict.message, 'Not enough data to judge conditions.');
     });
 
     test('scores from a single available input without crashing', () {
@@ -206,10 +203,7 @@ void main() {
           final verdict = score(code: code);
 
           expect(verdict.level, SwimSuitabilityLevel.poor, reason: '$code');
-          expect(
-            verdict.message,
-            'Snow or freezing rain — not a day for swimming.',
-          );
+          expect(verdict.message, 'Snow or freezing rain — stay out.');
         }
       });
 
@@ -227,7 +221,7 @@ void main() {
           final verdict = score(code: code, temp: 20);
 
           expect(verdict.level, SwimSuitabilityLevel.caution);
-          expect(verdict.message, 'Foggy, poor visibility — swim with care.');
+          expect(verdict.message, 'Foggy — swim with care.');
         }
       });
 
@@ -235,10 +229,7 @@ void main() {
         final verdict = score(code: 3, temp: 18);
 
         expect(verdict.level, SwimSuitabilityLevel.caution);
-        expect(
-          verdict.message,
-          'Overcast and cool — less pleasant for a swim.',
-        );
+        expect(verdict.message, 'Overcast and cool — less pleasant.');
       });
 
       test(
@@ -280,10 +271,7 @@ void main() {
         final verdict = score(code: 95, wave: 1.5);
 
         expect(verdict.level, SwimSuitabilityLevel.poor);
-        expect(
-          verdict.message,
-          'Rough conditions — best to skip swimming today.',
-        );
+        expect(verdict.message, 'Rough conditions — skip swimming.');
       });
 
       test('given only a weather code, scores from it (a thunderstorm alone '
@@ -299,6 +287,33 @@ void main() {
 
         expect(verdict.level, SwimSuitabilityLevel.unknown);
       });
+    });
+
+    test('every verdict message fits the one-line pill (at most 40 '
+        'characters), so none is cut off', () {
+      final verdicts = <SwimVerdict>[
+        scoreSwimSuitability(waveHeightM: 0.2, windSpeedKmh: 5),
+        scoreSwimSuitability(waveHeightM: 0.8),
+        scoreSwimSuitability(waveHeightM: 1.5),
+        scoreSwimSuitability(),
+        scoreSwimSuitability(windSpeedKmh: 5),
+        for (final code in [95, 71, 61, 45])
+          scoreSwimSuitability(waveHeightM: 0.2, weatherCode: code),
+        scoreSwimSuitability(
+          waveHeightM: 0.2,
+          weatherCode: 3,
+          airTemperatureC: 15,
+        ),
+      ];
+
+      expect(verdicts.map((v) => v.message).toSet(), hasLength(10));
+      for (final verdict in verdicts) {
+        expect(
+          verdict.message.length,
+          lessThanOrEqualTo(40),
+          reason: '"${verdict.message}"',
+        );
+      }
     });
   });
 }

@@ -127,10 +127,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Overcast and cool — less pleasant for a swim.'),
-        findsOneWidget,
-      );
+      expect(find.text('Overcast and cool — less pleasant.'), findsOneWidget);
       expect(find.text('Calm seas — good time for a swim.'), findsNothing);
     });
 
