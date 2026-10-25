@@ -15,20 +15,12 @@ import '../theme/verdict_palette.dart';
 
 const String _noData = 'No data';
 
-/// A short word for [SwimSuitabilityLevel], compact enough for a
-/// comparison column (unlike [SwimVerdict.message]'s full sentence).
-String _swimLevelLabel(SwimSuitabilityLevel level) {
-  switch (level) {
-    case SwimSuitabilityLevel.good:
-      return 'Good';
-    case SwimSuitabilityLevel.caution:
-      return 'Caution';
-    case SwimSuitabilityLevel.poor:
-      return 'Poor';
-    case SwimSuitabilityLevel.unknown:
-      return _noData;
-  }
-}
+// Same navy as Home's background (home_screen.dart's _bgBase/_bgGradientBottom).
+const Color _bgBase = Color(0xFF0D1220);
+const Color _bgBottom = Color(0xFF2A3145);
+const Color _cardFill = Color(0xFF1E2434);
+const Color _textSecondary = Color(0xFF8B93A6);
+const Color _bestBorder = Color(0xFF66BB6A);
 
 /// Compares 2-3 beaches side by side (issue #274): wave height, wind,
 /// water temperature, a plain-language depth/non-swimmer verdict (reusing
@@ -125,137 +117,383 @@ class _CompareBeachesScreenState extends State<CompareBeachesScreen> {
   UnitSystem get _unitSystem =>
       widget.unitPreferencesProvider?.unitSystem ?? UnitSystem.metric;
 
+  SwimVerdict _verdictFor(Beach beach) {
+    final weather = _weather[beach];
+    return scoreSwimSuitability(
+      waveHeightM: widget.seaConditions[beach]?.waveHeight,
+      windSpeedKmh: weather?.windSpeed,
+      rainChancePercent: weather?.rainChancePercent?.round(),
+      weatherCode: weather?.weatherCode,
+      airTemperatureC: weather?.temperature,
+    );
+  }
+
+  /// The beach to flag "Best today": only when the weather has loaded for
+  /// every beach (a beach whose weather failed is never crowned), the top verdict is [SwimSuitabilityLevel.good], and one
+  /// beach is strictly ahead of the rest (verdict level, then the lower wave
+  /// height, then the lower wind). A tie, or a day with no good beach,
+  /// flags nothing -- never an arbitrary pick.
+  Beach? _bestBeach() {
+    if (widget.beaches.length < 2 || _loadingWeather.isNotEmpty) return null;
+    // Crowning a beach needs the weather of every beach, not just the waves.
+    if (widget.beaches.any((b) => _weather[b] == null)) return null;
+    final keyed = <Beach, List<double>>{};
+    for (final beach in widget.beaches) {
+      final verdict = _verdictFor(beach);
+      keyed[beach] = [
+        verdict.level.index.toDouble(),
+        widget.seaConditions[beach]?.waveHeight ?? double.infinity,
+        _weather[beach]?.windSpeed ?? double.infinity,
+      ];
+    }
+    int compare(List<double> a, List<double> b) {
+      for (var i = 0; i < a.length; i++) {
+        final c = a[i].compareTo(b[i]);
+        if (c != 0) return c;
+      }
+      return 0;
+    }
+
+    final ordered = keyed.entries.toList()
+      ..sort((a, b) => compare(a.value, b.value));
+    final best = ordered.first;
+    if (best.value[0] != SwimSuitabilityLevel.good.index) return null;
+    if (compare(best.value, ordered[1].value) == 0) return null;
+    return best.key;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final best = _bestBeach();
     return Scaffold(
-      appBar: AppBar(title: const Text('Compare beaches')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Table(
-          columnWidths: {
-            0: const FixedColumnWidth(84),
-            for (var i = 0; i < widget.beaches.length; i++)
-              i + 1: const FlexColumnWidth(),
-          },
-          defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-          children: [
-            _headerRow(),
-            _row('Wave height', (beach) => _waveHeightCell(beach)),
-            _row('Wind', (beach) => _windCell(beach)),
-            _row('Water temp', (beach) => _waterTempCell(beach)),
-            _row('Depth', (beach) => _depthCell(beach)),
-            _row('Swim score', (beach) => _swimScoreCell(beach)),
-          ],
+      backgroundColor: _bgBase,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text('Compare beaches'),
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+      ),
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_bgBase, _bgBottom],
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 56, 16, 24),
+            children: [
+              for (final beach in widget.beaches) ...[
+                _BeachCompareCard(
+                  key: Key('compare-card-${beach.name}'),
+                  beach: beach,
+                  isBest: identical(beach, best),
+                  verdict: _verdictFor(beach),
+                  verdictLoading: _loadingWeather.contains(beach),
+                  metrics: _metricsFor(beach),
+                ),
+                const SizedBox(height: 14),
+              ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  TableRow _headerRow() {
-    return TableRow(
-      children: [
-        const SizedBox.shrink(),
-        for (final beach in widget.beaches)
-          Padding(
-            key: Key('compare-beach-header-${beach.name}'),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-            child: Text(
-              beach.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+  List<_Metric> _metricsFor(Beach beach) {
+    final sea = widget.seaConditions[beach];
+    final weather = _weather[beach];
+
+    String? depthLabel;
+    Color? depthColor;
+    final profile = _depth[beach];
+    if (profile != null) {
+      final steepness = classifyShallowEntry(profile).steepness;
+      depthLabel = shallowEntryStatusLabel(steepness);
+      depthColor = shallowEntryStatusColor(steepness);
+    }
+
+    return [
+      _Metric(
+        icon: Icons.waves,
+        label: 'Wave height',
+        value: sea?.waveHeight == null
+            ? null
+            : formatWaveHeight(sea!.waveHeight!, _unitSystem),
+      ),
+      _Metric(
+        icon: Icons.air,
+        label: 'Wind',
+        loading: _loadingWeather.contains(beach),
+        value: weather?.windSpeed == null
+            ? null
+            : formatWindSpeed(weather!.windSpeed, _unitSystem),
+      ),
+      _Metric(
+        icon: Icons.thermostat,
+        label: 'Water temp',
+        value: sea?.seaSurfaceTemperature == null
+            ? null
+            : formatTemperature(sea!.seaSurfaceTemperature!, _unitSystem),
+      ),
+      _Metric(
+        icon: Icons.straighten,
+        label: 'Depth',
+        loading: _loadingDepth.contains(beach),
+        value: depthLabel,
+        color: depthColor,
+      ),
+    ];
+  }
+}
+
+/// One comparison row of a [_BeachCompareCard]: a value, "No data" when
+/// [value] is null, or a spinner while [loading].
+class _Metric {
+  const _Metric({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.loading = false,
+    this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? value;
+  final bool loading;
+  final Color? color;
+}
+
+class _BeachCompareCard extends StatelessWidget {
+  const _BeachCompareCard({
+    super.key,
+    required this.beach,
+    required this.isBest,
+    required this.verdict,
+    required this.verdictLoading,
+    required this.metrics,
+  });
+
+  final Beach beach;
+  final bool isBest;
+  final SwimVerdict verdict;
+  final bool verdictLoading;
+  final List<_Metric> metrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = paletteForVerdict(verdict.level);
+    final summary = [
+      beach.name,
+      if (!verdictLoading) verdict.message,
+      for (final m in metrics)
+        if (!m.loading) '${m.label}: ${m.value ?? _noData}',
+    ].join('. ');
+
+    return Semantics(
+      container: true,
+      label: summary,
+      child: ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _cardFill,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isBest ? _bestBorder : Colors.white12,
+              width: isBest ? 1.5 : 1,
             ),
           ),
-      ],
-    );
-  }
-
-  TableRow _row(String label, Widget Function(Beach beach) cellBuilder) {
-    return TableRow(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Text(label, style: const TextStyle(fontSize: 12)),
-        ),
-        for (final beach in widget.beaches)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-            child: Center(child: cellBuilder(beach)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          beach.name,
+                          key: Key('compare-beach-header-${beach.name}'),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        if (beach.city.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              beach.city,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: _textSecondary,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (isBest) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      key: const Key('compare-best-badge'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _bestBorder.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: _bestBorder),
+                      ),
+                      child: const Text(
+                        'Best today',
+                        style: TextStyle(
+                          color: _bestBorder,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                key: Key('compare-verdict-${beach.name}'),
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 11,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [palette.gradientStart, palette.gradientEnd],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: verdictLoading
+                    ? const Align(
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Icon(
+                            palette.icon,
+                            size: 18,
+                            color: palette.foreground,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              verdict.message,
+                              style: TextStyle(
+                                color: palette.foreground,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
+              const SizedBox(height: 14),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  const gap = 10.0;
+                  final tileWidth = (constraints.maxWidth - gap) / 2;
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: [
+                      for (final metric in metrics)
+                        SizedBox(
+                          width: tileWidth,
+                          child: _MetricTile(metric: metric),
+                        ),
+                    ],
+                  );
+                },
+              ),
+            ],
           ),
-      ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _cellText(String text, {Color? color}) {
-    return Text(
-      text,
-      textAlign: TextAlign.center,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 13, color: color),
-    );
-  }
+class _MetricTile extends StatelessWidget {
+  const _MetricTile({required this.metric});
 
-  Widget _waveHeightCell(Beach beach) {
-    final meters = widget.seaConditions[beach]?.waveHeight;
-    return _cellText(
-      meters == null ? _noData : formatWaveHeight(meters, _unitSystem),
-    );
-  }
+  final _Metric metric;
 
-  Widget _windCell(Beach beach) {
-    if (_loadingWeather.contains(beach)) {
-      return const SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-    final kmh = _weather[beach]?.windSpeed;
-    return _cellText(kmh == null ? _noData : formatWindSpeed(kmh, _unitSystem));
-  }
-
-  Widget _waterTempCell(Beach beach) {
-    final celsius = widget.seaConditions[beach]?.seaSurfaceTemperature;
-    return _cellText(
-      celsius == null ? _noData : formatTemperature(celsius, _unitSystem),
-    );
-  }
-
-  Widget _depthCell(Beach beach) {
-    if (_loadingDepth.contains(beach)) {
-      return const SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-    final profile = _depth[beach];
-    if (profile == null) return _cellText(_noData);
-    final steepness = classifyShallowEntry(profile).steepness;
-    final label = shallowEntryStatusLabel(steepness);
-    if (label == null) return _cellText(_noData);
-    return _cellText(label, color: shallowEntryStatusColor(steepness));
-  }
-
-  Widget _swimScoreCell(Beach beach) {
-    if (_loadingWeather.contains(beach)) {
-      return const SizedBox(
-        width: 16,
-        height: 16,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-    final weather = _weather[beach];
-    final verdict = scoreSwimSuitability(
-      waveHeightM: widget.seaConditions[beach]?.waveHeight,
-      windSpeedKmh: weather?.windSpeed,
-      rainChancePercent: weather?.rainChancePercent?.round(),
-    );
-    return _cellText(
-      _swimLevelLabel(verdict.level),
-      color: paletteForVerdict(verdict.level).gradientStart,
+  @override
+  Widget build(BuildContext context) {
+    final hasValue = metric.value != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(metric.icon, size: 15, color: _textSecondary),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  metric.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: _textSecondary, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (metric.loading)
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Text(
+              metric.value ?? _noData,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: hasValue
+                    ? (metric.color ?? Colors.white)
+                    : _textSecondary,
+                fontSize: hasValue ? 16 : 14,
+                fontWeight: hasValue ? FontWeight.w700 : FontWeight.w400,
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

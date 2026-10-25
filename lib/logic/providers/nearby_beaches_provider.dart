@@ -34,6 +34,7 @@ class NearbyBeachesProvider extends ChangeNotifier {
   final Duration _debounceDuration;
 
   Timer? _debounceTimer;
+  LatLng? _lastPoint;
   int _requestId = 0;
   bool _disposed = false;
 
@@ -59,7 +60,17 @@ class NearbyBeachesProvider extends ChangeNotifier {
     _debounceTimer = Timer(_debounceDuration, () => _fetchFor(point));
   }
 
+  /// Fetches again for the last picked location, right away (no debounce):
+  /// the "Try again" action after an error. Does nothing before any pick.
+  void retry() {
+    final point = _lastPoint;
+    if (point == null) return;
+    _debounceTimer?.cancel();
+    unawaited(_fetchFor(point));
+  }
+
   Future<void> _fetchFor(LatLng point) async {
+    _lastPoint = point;
     final requestId = ++_requestId;
 
     _isLoading = true;
