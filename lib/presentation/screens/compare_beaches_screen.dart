@@ -252,6 +252,8 @@ class _CompareBeachesScreenState extends State<CompareBeachesScreen> {
       waveHeightM: widget.seaConditions[beach]?.waveHeight,
       windSpeedKmh: weather?.windSpeed,
       rainChancePercent: weather?.rainChancePercent?.round(),
+      weatherCode: weather?.weatherCode,
+      airTemperatureC: weather?.temperature,
     );
     return _cellText(
       _swimLevelLabel(verdict.level),

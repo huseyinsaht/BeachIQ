@@ -95,10 +95,7 @@ void main() {
       );
 
       expect(verdict.level, SwimSuitabilityLevel.unknown);
-      expect(
-        verdict.message,
-        'Sea conditions unavailable — check local flags before swimming.',
-      );
+      expect(verdict.message, 'No sea data — check local flags.');
     });
 
     test('still warns about wind or rain when wave height is missing', () {
@@ -174,6 +171,134 @@ void main() {
       );
 
       expect(verdict.level, SwimSuitabilityLevel.good);
+    });
+
+    group('current weather (weatherCode / airTemperatureC)', () {
+      SwimVerdict score({int? code, double? temp, double wave = 0.2}) =>
+          scoreSwimSuitability(
+            waveHeightM: wave,
+            windSpeedKmh: 8,
+            rainChancePercent: 5,
+            weatherCode: code,
+            airTemperatureC: temp,
+          );
+
+      test('given clear to partly cloudy weather, stays good', () {
+        for (final code in [0, 1, 2]) {
+          expect(score(code: code, temp: 25).level, SwimSuitabilityLevel.good);
+        }
+      });
+
+      test(
+        'given a thunderstorm code, is poor with a thunderstorm message',
+        () {
+          for (final code in [95, 96, 99]) {
+            final verdict = score(code: code, temp: 28);
+
+            expect(verdict.level, SwimSuitabilityLevel.poor, reason: '$code');
+            expect(verdict.message, 'Thunderstorms — stay out of the water.');
+          }
+        },
+      );
+
+      test('given snow or freezing precipitation, is poor', () {
+        for (final code in [56, 57, 66, 67, 71, 73, 75, 77, 85, 86]) {
+          final verdict = score(code: code);
+
+          expect(verdict.level, SwimSuitabilityLevel.poor, reason: '$code');
+          expect(
+            verdict.message,
+            'Snow or freezing rain — not a day for swimming.',
+          );
+        }
+      });
+
+      test('given drizzle, rain or showers right now, is caution', () {
+        for (final code in [51, 53, 55, 61, 63, 65, 80, 81, 82]) {
+          final verdict = score(code: code, temp: 24);
+
+          expect(verdict.level, SwimSuitabilityLevel.caution, reason: '$code');
+          expect(verdict.message, 'Rain right now — swim with care.');
+        }
+      });
+
+      test('given fog, is caution', () {
+        for (final code in [45, 48]) {
+          final verdict = score(code: code, temp: 20);
+
+          expect(verdict.level, SwimSuitabilityLevel.caution);
+          expect(verdict.message, 'Foggy, poor visibility — swim with care.');
+        }
+      });
+
+      test('given overcast and cool air, is caution (the reported bug)', () {
+        final verdict = score(code: 3, temp: 18);
+
+        expect(verdict.level, SwimSuitabilityLevel.caution);
+        expect(
+          verdict.message,
+          'Overcast and cool — less pleasant for a swim.',
+        );
+      });
+
+      test(
+        'given overcast at exactly the cool limit or warmer, stays good',
+        () {
+          expect(score(code: 3, temp: 22).level, SwimSuitabilityLevel.good);
+          expect(score(code: 3, temp: 31).level, SwimSuitabilityLevel.good);
+        },
+      );
+
+      test('given overcast just below the cool limit, is caution', () {
+        expect(score(code: 3, temp: 21.9).level, SwimSuitabilityLevel.caution);
+      });
+
+      test('given overcast but no air temperature, is not downgraded', () {
+        expect(score(code: 3).level, SwimSuitabilityLevel.good);
+      });
+
+      test('given a thunderstorm and rough waves, poor wins with the '
+          'thunderstorm message from the later, strictly worse input only '
+          'when the earlier one was only caution', () {
+        // Waves 0.8 m = caution (no custom message), thunderstorm = poor.
+        final verdict = score(code: 95, wave: 0.8);
+
+        expect(verdict.level, SwimSuitabilityLevel.poor);
+        expect(verdict.message, 'Thunderstorms — stay out of the water.');
+      });
+
+      test('given caution from waves and caution from rain, keeps the wave '
+          'message (first factor to set the level)', () {
+        final verdict = score(code: 61, wave: 0.8);
+
+        expect(verdict.level, SwimSuitabilityLevel.caution);
+        expect(verdict.message, 'A bit choppy — swim with care.');
+      });
+
+      test('given rough waves and a thunderstorm, both poor: keeps the '
+          'generic rough message', () {
+        final verdict = score(code: 95, wave: 1.5);
+
+        expect(verdict.level, SwimSuitabilityLevel.poor);
+        expect(
+          verdict.message,
+          'Rough conditions — best to skip swimming today.',
+        );
+      });
+
+      test('given only a weather code, scores from it (a thunderstorm alone '
+          'is poor even with no sea data)', () {
+        final verdict = scoreSwimSuitability(weatherCode: 95);
+
+        expect(verdict.level, SwimSuitabilityLevel.poor);
+      });
+
+      test('given only clear weather and nothing else, is unknown (no '
+          'wave data)', () {
+        final verdict = scoreSwimSuitability(weatherCode: 0);
+
+        expect(verdict.level, SwimSuitabilityLevel.unknown);
+      });
     });
   });
 }

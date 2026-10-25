@@ -145,6 +145,8 @@ class ConditionAlertDispatcher {
       windSpeedKmh: _weatherProvider.currentData?.windSpeed,
       rainChancePercent: _weatherProvider.currentData?.rainChancePercent
           ?.round(),
+      weatherCode: _weatherProvider.currentData?.weatherCode,
+      airTemperatureC: _weatherProvider.currentData?.temperature,
     );
 
     final previousLevel = _previousLevel;

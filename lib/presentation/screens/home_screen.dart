@@ -1295,6 +1295,8 @@ class _HomeScreenState extends State<HomeScreen> {
       waveHeightM: marineProvider?.currentData?.waveHeight,
       windSpeedKmh: weatherData?.windSpeed,
       rainChancePercent: weatherData?.rainChancePercent?.round(),
+      weatherCode: weatherData?.weatherCode,
+      airTemperatureC: weatherData?.temperature,
     );
     final effectiveNow = (widget.now ?? DateTime.now)();
     final hourly = _upcomingHourly(

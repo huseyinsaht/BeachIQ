@@ -5,6 +5,16 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+
+- The swim verdict now takes the current weather into account: a thunderstorm or snow/freezing rain is "poor",
+  rain/drizzle/showers and fog are "caution", and an overcast sky is "caution" when the air is below 22 °C. Before,
+  only waves, wind and the rain chance counted, so a grey, cool or stormy day with calm seas still read "Calm seas
+  — good time for a swim". Each case has its own message, and the "conditions turned favorable" notification (also
+  the background check) follows the same rule so it never disagrees with the screen
+- Shortened the verdict shown when wave data is unavailable to "No sea data — check local flags." so it is no longer
+  cut off in the verdict pill
+
 ## [2026.10.14] - 2026-10-25
 
 ### Added
