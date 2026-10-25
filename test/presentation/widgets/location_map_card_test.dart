@@ -55,6 +55,32 @@ void main() {
     expect(find.byType(FlutterMap), findsOneWidget);
   });
 
+  testWidgets(
+    'identifies itself to the OSM tile servers with the real application id',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LocationMapCard(
+              center: const LatLng(38.3, 26.3),
+              placeName: 'Cesme, Izmir',
+              tileProvider: _FakeTileProvider(),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // OSM's tile usage policy requires a valid identifying user agent; it
+      // must match android/app/build.gradle.kts' applicationId.
+      final layer = tester.widget<TileLayer>(find.byType(TileLayer));
+      expect(
+        layer.tileProvider.headers['User-Agent'],
+        'flutter_map (io.beachiq.beachiq)',
+      );
+    },
+  );
+
   testWidgets('shows the place name and pin icon in the docked bar', (
     tester,
   ) async {

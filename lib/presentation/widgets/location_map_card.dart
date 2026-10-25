@@ -601,7 +601,7 @@ class _LocationMapCardState extends State<LocationMapCard> {
           children: [
             TileLayer(
               urlTemplate: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-              userAgentPackageName: "io.beachiq.app",
+              userAgentPackageName: "io.beachiq.beachiq",
               tileProvider: widget.tileProvider ?? NetworkTileProvider(),
             ),
             CircleLayer(
