@@ -5,6 +5,13 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- General rip-current safety advice in the swim verdict's info sheet ("A guide, not a guarantee"):
+  swim near a lifeguard and, if pulled out, swim parallel to the shore. It is standard guidance, not a
+  prediction; the app has no rip-current data. The sheet text now scrolls on short screens or large text
+  sizes while "Got it" stays visible (#275)
+
 ### Fixed
 
 - Fixed the map's amenity filter chips (toilets, shower, cafe, ...) being hidden behind

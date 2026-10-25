@@ -19,3 +19,12 @@ const String swimSafetyDisclaimer =
     'safety guarantee. Conditions can change quickly and the model can be '
     'wrong. Always follow local flags and lifeguard instructions -- they '
     'take precedence over this app.';
+
+/// General rip-current advice shown under [swimSafetyDisclaimer] (issue
+/// #275). Standard public-safety guidance, not a prediction: BeachIQ has no
+/// rip-current data (they form within ~50-100 m of shore, below the
+/// resolution of any open dataset it uses) and never shows a rip score.
+const String ripCurrentSafetyTip =
+    'Rip currents can form on any beach, most often in rough water. Swim '
+    'near a lifeguard. If you are pulled out, stay calm, do not fight the '
+    'current, swim parallel to the shore until free, then head back in.';

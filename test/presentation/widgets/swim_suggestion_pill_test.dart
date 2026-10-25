@@ -119,6 +119,8 @@ void main() {
 
         expect(find.text(swimSafetyDisclaimerTitle), findsOneWidget);
         expect(find.text(swimSafetyDisclaimer), findsOneWidget);
+        // Issue #275: general rip-current advice sits under the disclaimer.
+        expect(find.text(ripCurrentSafetyTip), findsOneWidget);
       },
     );
 
@@ -137,6 +139,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text(swimSafetyDisclaimer), findsNothing);
+        expect(find.text(ripCurrentSafetyTip), findsNothing);
       },
     );
   });

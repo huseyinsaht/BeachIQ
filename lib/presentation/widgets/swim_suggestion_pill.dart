@@ -94,7 +94,23 @@ class SwimSuggestionPill extends StatelessWidget {
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
-                const Text(swimSafetyDisclaimer),
+                // The text scrolls (short screens, large text scales) while
+                // the title and "Got it" stay put.
+                const Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(swimSafetyDisclaimer),
+                        SizedBox(height: 12),
+                        Text(
+                          ripCurrentSafetyTip,
+                          key: Key('swim-rip-current-tip'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 const SizedBox(height: 16),
                 Align(
                   alignment: Alignment.centerRight,
