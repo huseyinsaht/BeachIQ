@@ -8,12 +8,49 @@ import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'helpers/builders.dart';
 import 'helpers/fake_http_client.dart';
 import 'helpers/pump_app.dart';
 
 void main() {
   group('MarineApp', () {
     group('build', () {
+      testWidgets('given marineProvider and weatherProvider are passed, '
+          'build -> wires them via ChangeNotifierProvider.value (the exact '
+          'same instances), not newly-constructed ones', (tester) async {
+        // Issue #221 relies on main() being able to hand MarineApp the same
+        // MarineProvider/WeatherProvider instances its ConditionAlertDispatcher
+        // listens to (see lib/main.dart) -- the `.value()` branch of the
+        // ternaries in MarineApp.build() is what preserves that identity.
+        // The fallback ("no providers passed") branch already has a test
+        // above; this is the only other branch and was never exercised by
+        // any widget/unit test (only by integration_test/app_test.dart,
+        // which flutter test --coverage doesn't run).
+        final marineProvider = await aLoadedMarineProvider(aSeaCondition());
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(),
+        );
+
+        await tester.pumpWidget(
+          MarineApp(
+            tileProvider: FakeTileProvider(),
+            marineProvider: marineProvider,
+            weatherProvider: weatherProvider,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final context = tester.element(find.byType(HomeScreen));
+        expect(
+          Provider.of<MarineProvider>(context, listen: false),
+          same(marineProvider),
+        );
+        expect(
+          Provider.of<WeatherProvider>(context, listen: false),
+          same(weatherProvider),
+        );
+      });
+
       testWidgets('given no providers are passed, build -> falls back to '
           'default-constructed MarineProvider/WeatherProvider wired to the '
           'real repository/API-service stack', (tester) async {
