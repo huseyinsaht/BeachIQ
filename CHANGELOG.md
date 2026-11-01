@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.11.1] - 2026-11-01
+
 ### Added
 
 - Additional test coverage for the Workmanager background-alert callback's inline
