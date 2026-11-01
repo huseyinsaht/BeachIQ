@@ -45,12 +45,18 @@ screen, with the location's details living in a sheet dragged up from the bottom
   tap with no resolved name yet; a coordinates line underneath only appears when it
   adds information the title doesn't already show.
 - A "smart suggestion" pill giving a one-line swim verdict (good/caution/poor), colored
-  green/orange/red-orange to match, from wave height, wind speed and rain chance —
-  though the wave-height input is only filled in after a pull-to-refresh or a fresh
-  location pick (see `docs/architecture.md` § State flow). An info icon on the pill
-  opens a short disclaimer ("A guide, not a guarantee") making clear the suggestion is
-  a model estimate from forecast data, not a safety guarantee, and that local flags
-  and lifeguard instructions always take precedence.
+  green/orange/red-orange to match, from wave height, wind speed, rain chance and the
+  current weather (a thunderstorm or snow/freezing rain is "poor"; rain, drizzle, fog
+  is "caution"; an overcast sky is "caution" when the air is also cool) — though the
+  wave-height input is only filled in after a pull-to-refresh or a fresh location pick
+  (see `docs/architecture.md` § State flow), and without it "good" is never shown
+  ("No sea data — check local flags." instead, even with calm wind and dry weather).
+  An info icon on the pill opens a short disclaimer ("A guide, not a guarantee")
+  making clear the suggestion is a model estimate from forecast data, not a safety
+  guarantee, and that local flags and lifeguard instructions always take precedence.
+  Picking a point with no beach nearby (inland or far out at sea) shows "Far from the
+  coast — pick a beach." instead, and the Sea tiles read "No data", while the weather
+  stays.
 - At most one heads-up note shown on Home itself: a "Next hour" note flagging an
   imminent change (wind, waves, incoming current, clouds, rain) in the next hour,
   shown even after sunset. Tapping it — or the sheet's "Forecast and 7-14 day outlook"
@@ -139,10 +145,13 @@ screen, with the location's details living in a sheet dragged up from the bottom
   offline with nothing cached.
 
 **Compare beaches** — from Home's overflow menu, pick 2-3 of the currently
-fetched nearby beaches (favorites marked with a star) to compare side by side: wave
-height, wind, water temperature, a plain-language depth/non-swimmer verdict and the
-same swim score as Home's suggestion pill, one column per beach. A candidate Pro
-feature, built ungated for now (no entitlement system exists yet).
+fetched nearby beaches (favorites marked with a star) to compare: one card per beach,
+matching the app's dark theme, with its name and city, its own swim verdict message
+in the verdict's color (so a grey, cool or rough beach no longer reads like a good
+one), and wave height, wind, water temperature and depth in a tile grid. A "Best
+today" badge marks the one beach that is strictly best — only shown when its verdict
+is good and every beach's weather has loaded. A candidate Pro feature, built ungated
+for now (no entitlement system exists yet).
 
 **Cross-cutting**
 
