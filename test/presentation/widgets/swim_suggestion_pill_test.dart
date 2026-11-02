@@ -53,9 +53,7 @@ void main() {
         (tester) async {
           final verdict = SwimVerdict(level, 'a verdict message');
 
-          await tester.pumpWidget(
-            wrap(SwimSuggestionPill(verdict: verdict)),
-          );
+          await tester.pumpWidget(wrap(SwimSuggestionPill(verdict: verdict)));
 
           expect(
             find.bySemanticsLabel('Swim suitability: a verdict message'),
