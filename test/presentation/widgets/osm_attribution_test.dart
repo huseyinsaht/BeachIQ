@@ -35,4 +35,18 @@ void main() {
     expect(launchedUri, osmCopyrightUri);
     expect(launchedUri.toString(), 'https://www.openstreetmap.org/copyright');
   });
+
+  testWidgets('exposes a single semantics button node for screen readers', (
+    tester,
+  ) async {
+    await tester.pumpWidget(wrap(const OsmAttribution()));
+
+    expect(
+      find.bySemanticsLabel('OpenStreetMap attribution, opens copyright page'),
+      findsOneWidget,
+    );
+
+    final node = tester.getSemantics(find.byType(OsmAttribution));
+    expect(node.flagsCollection.isButton, isTrue);
+  });
 }
