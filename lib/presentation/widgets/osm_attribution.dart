@@ -32,6 +32,7 @@ class OsmAttribution extends StatelessWidget {
       button: true,
       label: 'OpenStreetMap attribution, opens copyright page',
       excludeSemantics: true,
+      onTap: () => (onLaunch ?? launchUrl)(osmCopyrightUri),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
