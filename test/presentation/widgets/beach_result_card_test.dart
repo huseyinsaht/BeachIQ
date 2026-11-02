@@ -61,6 +61,10 @@ void main() {
         find.ancestor(of: find.text('Free'), matching: find.byType(Container)),
         findsOneWidget, // the outer card container only
       );
+
+      // Issue #418: each info line is reachable as one combined semantics
+      // node, matching StatTile's existing "label, value" grouping pattern.
+      expect(find.bySemanticsLabel('Entry: Free'), findsOneWidget);
     },
   );
 

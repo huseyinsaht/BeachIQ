@@ -44,14 +44,24 @@ class SwimSuggestionPill extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(palette.icon, size: 20, color: palette.foreground),
-          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              verdict.message,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: palette.foreground, fontSize: 14),
+            child: Semantics(
+              label: 'Swim suitability: ${verdict.message}',
+              excludeSemantics: true,
+              child: Row(
+                children: [
+                  Icon(palette.icon, size: 20, color: palette.foreground),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      verdict.message,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: palette.foreground, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           // A plain tappable icon, not `IconButton` (whose minimum tap
@@ -60,16 +70,20 @@ class SwimSuggestionPill extends StatelessWidget {
           // own leading icon -- a taller pill shifts every tile below it
           // down the Home screen (see the 3x3 stat grid's
           // tap-position-sensitive tests).
-          Tooltip(
-            message: swimSafetyDisclaimerTitle,
-            child: GestureDetector(
-              key: const Key('swim-suggestion-pill-info'),
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _showDisclaimerSheet(context),
-              child: Icon(
-                Icons.info_outline,
-                size: 20,
-                color: palette.foreground,
+          Semantics(
+            button: true,
+            label: swimSafetyDisclaimerTitle,
+            child: Tooltip(
+              message: swimSafetyDisclaimerTitle,
+              child: GestureDetector(
+                key: const Key('swim-suggestion-pill-info'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _showDisclaimerSheet(context),
+                child: Icon(
+                  Icons.info_outline,
+                  size: 20,
+                  color: palette.foreground,
+                ),
               ),
             ),
           ),
