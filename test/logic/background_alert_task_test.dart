@@ -604,4 +604,20 @@ void main() {
       expect(backgroundAlertCallbackDispatcher, returnsNormally);
     });
   });
+
+  group('handleBackgroundAlertTask', () {
+    TestWidgetsFlutterBinding.ensureInitialized();
+
+    test('given no persisted location, resolves to true without throwing '
+        'or touching the network', () async {
+      SharedPreferences.setMockInitialValues({});
+
+      final result = await handleBackgroundAlertTask(
+        backgroundAlertTaskName,
+        null,
+      );
+
+      expect(result, isTrue);
+    });
+  });
 }

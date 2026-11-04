@@ -28,23 +28,29 @@ class OsmAttribution extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(4),
-        onTap: () => (onLaunch ?? launchUrl)(osmCopyrightUri),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: _background,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: const Text(
-            '© OpenStreetMap contributors',
-            style: TextStyle(
-              color: _textColor,
-              fontSize: 10,
-              decoration: TextDecoration.underline,
+    return Semantics(
+      button: true,
+      label: 'OpenStreetMap attribution, opens copyright page',
+      excludeSemantics: true,
+      onTap: () => (onLaunch ?? launchUrl)(osmCopyrightUri),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(4),
+          onTap: () => (onLaunch ?? launchUrl)(osmCopyrightUri),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: _background,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              '© OpenStreetMap contributors',
+              style: TextStyle(
+                color: _textColor,
+                fontSize: 10,
+                decoration: TextDecoration.underline,
+              ),
             ),
           ),
         ),

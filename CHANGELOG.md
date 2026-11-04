@@ -5,6 +5,29 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.11.1] - 2026-11-01
+
+### Added
+
+- Additional test coverage for the Workmanager background-alert callback's inline
+  production-wiring closure, extracted into a directly-testable
+  `handleBackgroundAlertTask` function (#410)
+- Additional unit test coverage for `beach_surface.dart`'s OSM surface-value parsing
+  and display labels (#411)
+- Additional test coverage for `MarineApp`'s default (fallback) provider wiring,
+  exercising a real `MarineProvider.fetchData()` call against a queued fixture to
+  confirm it is wired to the real repository/API stack (#412)
+- Additional test coverage for `MarineApp`'s `ChangeNotifierProvider.value` wiring
+  when `main()` passes in explicit marine/weather provider instances (#413)
+- Additional test coverage for `AmenityMarker`'s semantics label in both the named
+  and unnamed cases (#414)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up newer transitive `geolocator_apple`, `posix`,
+  `shared_preferences_android` and `web` dependency versions already allowed by
+  `pubspec.yaml`; no application code changed (#409)
+
 ## [2026.10.16] - 2026-10-25
 
 ### Fixed

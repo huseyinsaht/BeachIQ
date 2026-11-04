@@ -45,6 +45,32 @@ void main() {
     expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
   });
 
+  group('semantics (#418)', () {
+    for (final level in SwimSuitabilityLevel.values) {
+      testWidgets(
+        'the $level verdict exposes a single "Swim suitability" semantics '
+        'node distinct from the info-icon button',
+        (tester) async {
+          final verdict = SwimVerdict(level, 'a verdict message');
+
+          await tester.pumpWidget(wrap(SwimSuggestionPill(verdict: verdict)));
+
+          expect(
+            find.bySemanticsLabel('Swim suitability: a verdict message'),
+            findsOneWidget,
+          );
+
+          final infoButtonFinder = find.bySemanticsLabel(
+            swimSafetyDisclaimerTitle,
+          );
+          expect(infoButtonFinder, findsOneWidget);
+          final infoSemantics = tester.getSemantics(infoButtonFinder);
+          expect(infoSemantics.flagsCollection.isButton, isTrue);
+        },
+      );
+    }
+  });
+
   for (final level in SwimSuitabilityLevel.values) {
     testWidgets(
       'renders the $level palette\'s gradient, icon and foreground color',

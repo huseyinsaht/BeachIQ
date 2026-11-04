@@ -124,5 +124,26 @@ void main() {
         expect(find.text('Parking'), findsOneWidget);
       },
     );
+
+    testWidgets('given no name, the semantics label is just the kind label', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(const AmenityMarker(kind: AmenityKind.lifeguard)),
+      );
+
+      expect(find.bySemanticsLabel('Lifeguard'), findsOneWidget);
+    });
+
+    testWidgets(
+      'given a name, the semantics label combines the kind label and the name',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(const AmenityMarker(kind: AmenityKind.cafe, name: 'Beach Cafe')),
+        );
+
+        expect(find.bySemanticsLabel('Cafe, Beach Cafe'), findsOneWidget);
+      },
+    );
   });
 }

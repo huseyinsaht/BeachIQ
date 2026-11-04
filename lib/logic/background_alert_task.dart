@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
@@ -146,16 +146,28 @@ Future<void> _persistLevel(
 /// repositories rather than reusing the app's.
 @pragma('vm:entry-point')
 void backgroundAlertCallbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    final prefs = await SharedPreferences.getInstance();
-    await runBackgroundAlertCheck(
-      prefs: prefs,
-      weatherRepository: WeatherRepository(WeatherApiService()),
-      marineRepository: MarineRepository(MarineApiService()),
-      notificationService: NotificationService(),
-    );
-    return true;
-  });
+  Workmanager().executeTask(handleBackgroundAlertTask);
+}
+
+/// The body Workmanager invokes for every background task run. Pulled out
+/// of [backgroundAlertCallbackDispatcher] as a named top-level function
+/// (rather than staying an inline closure) so a test can invoke it
+/// directly, without going through Workmanager's native platform channel —
+/// [backgroundAlertCallbackDispatcher] itself only has to be checked for
+/// not throwing when it registers this with Workmanager.
+@visibleForTesting
+Future<bool> handleBackgroundAlertTask(
+  String task,
+  Map<String, dynamic>? inputData,
+) async {
+  final prefs = await SharedPreferences.getInstance();
+  await runBackgroundAlertCheck(
+    prefs: prefs,
+    weatherRepository: WeatherRepository(WeatherApiService()),
+    marineRepository: MarineRepository(MarineApiService()),
+    notificationService: NotificationService(),
+  );
+  return true;
 }
 
 /// Thin injectable wrapper around the real OS scheduler, so

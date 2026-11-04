@@ -116,9 +116,15 @@ persisted location without duplicating the string literals.
   function building the Overpass QL query for beaches (`natural=beach`, full geometry)
   and nearby amenities within `radiusMeters` (default 20000) of a point.
 - `OverpassService` (`lib/data/services/overpass_service.dart`) — executes an Overpass
-  QL query against the public Overpass API. Tries a primary endpoint then a fallback
-  mirror; retries HTTP 429/504 with bounded exponential backoff; de-duplicates
-  concurrent calls for the same query string so only one HTTP request is made.
+  QL query against the public Overpass API. Four public mirrors (`defaultEndpoints`)
+  are tried with **hedged** requests: the first starts immediately, each next one
+  starts as soon as the previous fails or after a 4s `hedgeDelay`, and the first
+  successful answer wins (the public servers are often overloaded or unreachable from
+  some networks, so waiting for one at a time could take minutes); the whole call
+  gives up after a 40s `overallTimeout`. HTTP 429/504 responses and request timeouts
+  are retried per-endpoint with a bounded exponential backoff before moving to the
+  next mirror; concurrent calls for the exact same query string are de-duplicated so
+  only one HTTP request is made.
 - `NotificationService`/`LocalNotificationsPlugin` (`lib/data/services/notification_service.dart`)
   — initializes `flutter_local_notifications`, requests the platform's runtime
   notification permission once, and shows a single foreground "conditions turned
@@ -215,12 +221,17 @@ name is cached, so a failed lookup is retried on the next call rather than remem
 Pure, platform-agnostic logic with no I/O:
 
 - `scoreSwimSuitability` (`lib/logic/swim_suitability.dart`) — scores wave height, wind
-  speed and rain chance (each optional) into a `SwimVerdict` (`good`/`caution`/`poor`/
-  `unknown`) with a one-line message, used by the Home screen's suggestion pill.
-  `unknown` only when every input is missing. Also defines the moderate/high
-  thresholds (`moderateWindSpeedKmh`, `highWaveHeightM`, etc.) that
-  `forecast_alerts.dart` reuses so the two never disagree about what "windy" or
-  "rough" means.
+  speed, rain chance and the current weather code/air temperature (each optional) into
+  a `SwimVerdict` (`good`/`caution`/`poor`/`unknown`) with a one-line message, used by
+  the Home screen's suggestion pill. `unknown` only when every input is missing.
+  Thunderstorms/snow/freezing rain score `poor`; rain/drizzle/showers and fog score
+  `caution`; an overcast sky (WMO code 3) scores `caution` only when the air is below
+  `overcastCoolAirTemperatureC` (22°C). `good` additionally requires a known wave
+  height — calm wind and dry weather alone can't claim "good" when the sea state is
+  unknown, capping at `unknown` ("No sea data — check local flags.") instead. Also
+  defines the moderate/high thresholds (`moderateWindSpeedKmh`, `highWaveHeightM`,
+  etc.) that `forecast_alerts.dart` reuses so the two never disagree about what
+  "windy" or "rough" means.
 - `windStatusFor`/`windStatusLabel`/`windStatusColor` (`lib/logic/wind_status.dart`) and
   `rainChanceStatusFor`/`rainChanceStatusLabel`/`rainChanceStatusColor`
   (`lib/logic/rain_status.dart`) — classify a wind speed or rain chance into a
@@ -661,6 +672,13 @@ Reusable widgets built against `docs/design.md`:
   (only the detail screens do), each tappable to its own detail screen except wave
   direction.
 
+  When `NearbyBeachesProvider`'s search answers with no beach within its radius (the
+  selected point is inland or far out at sea), the suggestion pill and the "Sea"
+  tiles are suppressed instead of showing a guessed verdict: the pill reads "Far from
+  the coast — pick a beach." and the Sea tiles show "No data", while the weather
+  header and forecast keep updating normally. Not shown while the nearby-beaches
+  search is still loading or has failed — only on a definite "no beaches here".
+
   Tapping the next-hour note or the "Forecast and 7-14 day outlook" row pushes
   `ForecastScreen` (see below) with a snapshot of the already-computed
   `forecastAlerts`/`dailyOutlook` — issue #289's decision to show at most one note on
@@ -732,16 +750,24 @@ Reusable widgets built against `docs/design.md`:
   always reflects whichever location was selected on Home at that moment, rather than
   holding a live provider reference of its own.
 - `CompareBeachesScreen` (`lib/presentation/screens/compare_beaches_screen.dart`) —
-  issue #274: a table comparing 2-3 beaches side by side, one column per beach —
-  wave height and water temperature from the already-fetched `SeaCondition`s the
-  caller passes in (`NearbyBeachesProvider.seaConditionFor`'s single batched marine
-  request), plus wind (an injected `WeatherRepository`), a depth/non-swimmer status
-  word (an injected `BathymetryService`, via `classifyShallowEntry`/
-  `shallowEntryStatusLabel`) and the Home screen's own swim score
-  (`scoreSwimSuitability`) — fetched per beach only for the two inputs the batch call
-  doesn't cover. Either repository/service may be omitted (e.g. in a test), leaving
-  those rows as "No data" instead of loading forever. Pushed from `HomeScreen`'s
-  overflow menu's "Compare beaches" entry.
+  issue #274, redesigned in #401 to match the rest of the app: a dark navy gradient
+  background and one `_BeachCompareCard` per beach (2-3, in display order) rather than
+  a side-by-side table — the beach's name/city, its own swim verdict message in a
+  gradient colored per `verdict_palette.dart` (so a grey/cool/rough beach no longer
+  reads like a good one), and wave height/wind/water temperature/depth as a 2x2 grid
+  of metric tiles. Wave height and water temperature come from the already-fetched
+  `SeaCondition`s the caller passes in (`NearbyBeachesProvider.seaConditionFor`'s
+  single batched marine request); wind (an injected `WeatherRepository`) and the
+  depth/non-swimmer status word (an injected `BathymetryService`, via
+  `classifyShallowEntry`/`shallowEntryStatusLabel`) are fetched per beach — the two
+  inputs the batch call doesn't cover. Either repository/service may be omitted (e.g.
+  in a test), leaving those tiles as "No data" instead of loading forever. A "Best
+  today" badge marks the one beach that is strictly best (`_bestBeach`: verdict level,
+  then lower wave height, then lower wind), only once every beach's weather has
+  loaded and the top verdict is `good` — a tie or an all-caution/poor day flags
+  nothing. Beaches are keyed by name+coordinates (`beachIdentityKey`), not name alone,
+  since OSM often gives several beaches the same "Unnamed beach" name. Pushed from
+  `HomeScreen`'s overflow menu's "Compare beaches" entry.
 - `SearchScreen` (`lib/presentation/screens/search_screen.dart`) — composed from
   `SearchField` + a `BeachResultCard` list. Backed by `NearbyBeachesProvider.beaches`
   when supplied, else `staticBeaches`. Tapping a beach card pops the screen with that
@@ -918,9 +944,9 @@ ever calling the real `geocoding` plugin, so picking the same area again is free
   features cap back to the next ~24 hours themselves (see `HomeScreen` above).
 - **Open-Meteo Geocoding API** (`geocoding-api.open-meteo.com/v1/search`) — free,
   keyless place-name search, used by `GeocodingService`.
-- **Overpass API** (OpenStreetMap data, with a fallback mirror) — queried by
-  `OverpassService` with `buildNearbyBeachesQuery`'s query, for beaches and nearby
-  amenities around a picked point.
+- **Overpass API** (OpenStreetMap data, across four public mirrors tried with hedged
+  requests) — queried by `OverpassService` with `buildNearbyBeachesQuery`'s query, for
+  beaches and nearby amenities around a picked point.
 - **OpenStreetMap tiles** (`tile.openstreetmap.org`) — used by `flutter_map` in
   `HomeScreen`'s `LocationMapCard`; credited via the `OsmAttribution` widget as
   required by OSM's ODbL license.
