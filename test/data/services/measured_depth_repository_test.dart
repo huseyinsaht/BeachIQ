@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:beachiq/data/services/measured_depth_repository.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
 Map<String, Object?> _entry(
   String name,
@@ -66,6 +67,45 @@ void main() {
       // ~1.1 km away.
       expect(repo.findFor(38.2970, 26.3730), isNull);
     });
+
+    test('given a position exactly at the entry radius boundary, returns that '
+        'entry', () {
+      const origin = LatLng(38.2870, 26.3730);
+      const point = LatLng(38.2874, 26.3730);
+      final meters = const Distance()(origin, point).round();
+      final repo = MeasuredDepthRepository.fromJsonString(
+        jsonEncode({
+          'beaches': [
+            _entry('A', origin.latitude, origin.longitude, radius: meters),
+          ],
+        }),
+      );
+
+      expect(repo.findFor(point.latitude, point.longitude)?.beachName, 'A');
+    });
+
+    test(
+      'given a position just past the entry radius boundary, returns null',
+      () {
+        const origin = LatLng(38.2870, 26.3730);
+        const point = LatLng(38.2874, 26.3730);
+        final meters = const Distance()(origin, point).round();
+        final repo = MeasuredDepthRepository.fromJsonString(
+          jsonEncode({
+            'beaches': [
+              _entry(
+                'A',
+                origin.latitude,
+                origin.longitude,
+                radius: meters - 1,
+              ),
+            ],
+          }),
+        );
+
+        expect(repo.findFor(point.latitude, point.longitude), isNull);
+      },
+    );
 
     test('given two overlapping entries, returns the closest one', () {
       final repo = MeasuredDepthRepository.fromJsonString(
