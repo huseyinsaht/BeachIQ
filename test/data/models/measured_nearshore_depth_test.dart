@@ -183,5 +183,57 @@ void main() {
         isNull,
       );
     });
+
+    test('given coordinates exactly at the ±90/±180 boundary, parses '
+        'successfully (inclusive boundary)', () {
+      expect(
+        MeasuredNearshoreDepth.tryParse(_valid()..['latitude'] = 90),
+        isNotNull,
+      );
+      expect(
+        MeasuredNearshoreDepth.tryParse(_valid()..['latitude'] = -90),
+        isNotNull,
+      );
+      expect(
+        MeasuredNearshoreDepth.tryParse(_valid()..['longitude'] = 180),
+        isNotNull,
+      );
+      expect(
+        MeasuredNearshoreDepth.tryParse(_valid()..['longitude'] = -180),
+        isNotNull,
+      );
+    });
+
+    test('given a radius exactly at the 25-1000 m boundary, parses '
+        'successfully (inclusive boundary)', () {
+      final atLow = MeasuredNearshoreDepth.tryParse(
+        _valid()..['radiusMeters'] = 25,
+      );
+      final atHigh = MeasuredNearshoreDepth.tryParse(
+        _valid()..['radiusMeters'] = 1000,
+      );
+
+      expect(atLow?.radiusMeters, 25);
+      expect(atHigh?.radiusMeters, 1000);
+    });
+
+    test('given a depth exactly at the 0-2000 cm boundary, parses successfully '
+        '(inclusive boundary)', () {
+      final atLow = MeasuredNearshoreDepth.tryParse(
+        _valid()
+          ..['points'] = [
+            {'distanceMeters': 3, 'depthCm': 0},
+          ],
+      );
+      final atHigh = MeasuredNearshoreDepth.tryParse(
+        _valid()
+          ..['points'] = [
+            {'distanceMeters': 3, 'depthCm': 2000},
+          ],
+      );
+
+      expect(atLow?.points.single.depthCm, 0);
+      expect(atHigh?.points.single.depthCm, 2000);
+    });
   });
 }
