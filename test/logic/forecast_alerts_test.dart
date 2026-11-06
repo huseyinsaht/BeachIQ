@@ -280,6 +280,99 @@ void main() {
 
         expect(alerts, isEmpty);
       });
+
+      test('given the weather code moving from clear to exactly the rain '
+          "range's bounds (51 or 67), buildForecastAlerts -> one clouds "
+          'alert each time', () {
+        final atLowerBound = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(13), weatherCode: 1),
+            aWeatherHourly(time: h(14), weatherCode: 51), // light rain
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atLowerBound, hasLength(1));
+        expect(atLowerBound.single.type, ForecastAlertType.clouds);
+
+        final atUpperBound = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(13), weatherCode: 1),
+            aWeatherHourly(time: h(14), weatherCode: 67), // heavy freezing rain
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atUpperBound, hasLength(1));
+        expect(atUpperBound.single.type, ForecastAlertType.clouds);
+      });
+
+      test('given the weather code moving from clear to just outside the '
+          'rain range (50 or 68), buildForecastAlerts -> no clouds alert', () {
+        final justBelow = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(13), weatherCode: 1),
+            aWeatherHourly(time: h(14), weatherCode: 50), // light drizzle
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(justBelow, isEmpty);
+
+        final justAbove = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(13), weatherCode: 1),
+            aWeatherHourly(time: h(14), weatherCode: 68), // not WMO-defined
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(justAbove, isEmpty);
+      });
+
+      test(
+        'given the weather code moving from clear to exactly the showers '
+        "range's upper bound (82), buildForecastAlerts -> one clouds alert",
+        () {
+          final alerts = buildForecastAlerts(
+            weather: [
+              aWeatherHourly(time: h(13), weatherCode: 1),
+              aWeatherHourly(time: h(14), weatherCode: 82), // violent showers
+            ],
+            sea: const [],
+            now: now,
+          );
+
+          expect(alerts, hasLength(1));
+          expect(alerts.single.type, ForecastAlertType.clouds);
+        },
+      );
+
+      test(
+        'given the weather code moving from clear to just outside the '
+        'showers range (79 or 83), buildForecastAlerts -> no clouds alert',
+        () {
+          final justBelow = buildForecastAlerts(
+            weather: [
+              aWeatherHourly(time: h(13), weatherCode: 1),
+              aWeatherHourly(time: h(14), weatherCode: 79), // not WMO-defined
+            ],
+            sea: const [],
+            now: now,
+          );
+          expect(justBelow, isEmpty);
+
+          final justAbove = buildForecastAlerts(
+            weather: [
+              aWeatherHourly(time: h(13), weatherCode: 1),
+              aWeatherHourly(time: h(14), weatherCode: 83), // not WMO-defined
+            ],
+            sea: const [],
+            now: now,
+          );
+          expect(justAbove, isEmpty);
+        },
+      );
     });
 
     group('rain rule', () {
