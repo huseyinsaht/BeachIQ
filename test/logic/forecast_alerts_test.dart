@@ -74,6 +74,59 @@ void main() {
         );
       });
 
+      test('given wind reaching exactly the moderate or high threshold, '
+          'buildForecastAlerts -> a wind alert fires at the threshold value '
+          'itself', () {
+        final atModerateBoundary = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: moderateWindSpeedKmh - 1),
+            aWeatherHourly(time: h(10), windSpeed: moderateWindSpeedKmh),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atModerateBoundary, hasLength(1));
+        expect(
+          atModerateBoundary.single.severity,
+          ForecastAlertSeverity.moderate,
+        );
+
+        final atHighBoundary = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: highWindSpeedKmh - 1),
+            aWeatherHourly(time: h(10), windSpeed: highWindSpeedKmh),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atHighBoundary, hasLength(1));
+        expect(atHighBoundary.single.severity, ForecastAlertSeverity.high);
+      });
+
+      test('given wind already at or above the moderate or high threshold '
+          'the previous hour, buildForecastAlerts -> no wind alert for '
+          'staying there', () {
+        final alreadyAtModerate = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: moderateWindSpeedKmh),
+            aWeatherHourly(time: h(10), windSpeed: moderateWindSpeedKmh + 3),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(alreadyAtModerate, isEmpty);
+
+        final alreadyAtHigh = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: highWindSpeedKmh),
+            aWeatherHourly(time: h(10), windSpeed: highWindSpeedKmh + 3),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(alreadyAtHigh, isEmpty);
+      });
+
       test('given wind that neither rises enough nor crosses a threshold, '
           'buildForecastAlerts -> no wind alert', () {
         final alerts = buildForecastAlerts(
@@ -159,6 +212,59 @@ void main() {
         );
         expect(highCrossing, hasLength(1));
         expect(highCrossing.single.severity, ForecastAlertSeverity.high);
+      });
+
+      test('given waves reaching exactly the moderate or high threshold, '
+          'buildForecastAlerts -> a waves alert fires at the threshold '
+          'value itself', () {
+        final atModerateBoundary = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), waveHeight: moderateWaveHeightM - 0.1),
+            aSeaHourly(time: h(10), waveHeight: moderateWaveHeightM),
+          ],
+          now: now,
+        );
+        expect(atModerateBoundary, hasLength(1));
+        expect(
+          atModerateBoundary.single.severity,
+          ForecastAlertSeverity.moderate,
+        );
+
+        final atHighBoundary = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), waveHeight: highWaveHeightM - 0.1),
+            aSeaHourly(time: h(10), waveHeight: highWaveHeightM),
+          ],
+          now: now,
+        );
+        expect(atHighBoundary, hasLength(1));
+        expect(atHighBoundary.single.severity, ForecastAlertSeverity.high);
+      });
+
+      test('given waves already at or above the moderate or high threshold '
+          'the previous hour, buildForecastAlerts -> no waves alert for '
+          'staying there', () {
+        final alreadyAtModerate = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), waveHeight: moderateWaveHeightM),
+            aSeaHourly(time: h(10), waveHeight: moderateWaveHeightM + 0.2),
+          ],
+          now: now,
+        );
+        expect(alreadyAtModerate, isEmpty);
+
+        final alreadyAtHigh = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), waveHeight: highWaveHeightM),
+            aSeaHourly(time: h(10), waveHeight: highWaveHeightM + 0.2),
+          ],
+          now: now,
+        );
+        expect(alreadyAtHigh, isEmpty);
       });
     });
 
@@ -420,6 +526,83 @@ void main() {
         expect(highCrossing, hasLength(1));
         expect(highCrossing.single.severity, ForecastAlertSeverity.high);
         expect(highCrossing.single.message, contains('$highRainChancePercent'));
+      });
+
+      test('given rain chance reaching exactly the moderate or high '
+          'threshold, buildForecastAlerts -> a rain alert fires at the '
+          'threshold value itself', () {
+        final atModerateBoundary = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(
+              time: h(9),
+              rainChancePercent: moderateRainChancePercent - 5,
+            ),
+            aWeatherHourly(
+              time: h(10),
+              rainChancePercent: moderateRainChancePercent.toDouble(),
+            ),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atModerateBoundary, hasLength(1));
+        expect(
+          atModerateBoundary.single.severity,
+          ForecastAlertSeverity.moderate,
+        );
+
+        final atHighBoundary = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(
+              time: h(9),
+              rainChancePercent: highRainChancePercent - 5,
+            ),
+            aWeatherHourly(
+              time: h(10),
+              rainChancePercent: highRainChancePercent.toDouble(),
+            ),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atHighBoundary, hasLength(1));
+        expect(atHighBoundary.single.severity, ForecastAlertSeverity.high);
+      });
+
+      test('given rain chance already at or above the moderate or high '
+          'threshold the previous hour, buildForecastAlerts -> no rain '
+          'alert for staying there', () {
+        final alreadyAtModerate = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(
+              time: h(9),
+              rainChancePercent: moderateRainChancePercent.toDouble(),
+            ),
+            aWeatherHourly(
+              time: h(10),
+              rainChancePercent: moderateRainChancePercent + 5,
+            ),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(alreadyAtModerate, isEmpty);
+
+        final alreadyAtHigh = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(
+              time: h(9),
+              rainChancePercent: highRainChancePercent.toDouble(),
+            ),
+            aWeatherHourly(
+              time: h(10),
+              rainChancePercent: highRainChancePercent + 5,
+            ),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(alreadyAtHigh, isEmpty);
       });
     });
 
