@@ -1886,6 +1886,36 @@ void main() {
     });
 
     testWidgets(
+      'given wave/current direction bearings outside 0-360 (negative and '
+      '>360), the cardinal labels still wrap around to the correct point',
+      (tester) async {
+        final sheetController = DraggableScrollableController();
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(),
+        );
+        final marineProvider = await aLoadedMarineProvider(
+          // -9 normalizes to 351, inside the N sector (337.5-22.5).
+          // 751 normalizes to 751 - 720 = 31, inside the NE sector.
+          aSeaCondition(waveDirection: -9, currentDirection: 751),
+        );
+        final depthProvider = await aLoadedDepthProvider(gentleProfile);
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            marineProvider: marineProvider,
+            depthProvider: depthProvider,
+            sheetController: sheetController,
+          ),
+        );
+        await expandSheet(tester, sheetController);
+
+        expect(find.text('from N'), findsOneWidget);
+        expect(find.text('toward NE'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
       'tapping the wave height tile opens WaveHeightDetailScreen with the '
       'real marine data, and back returns to Home',
       (tester) async {
