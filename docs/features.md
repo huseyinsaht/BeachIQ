@@ -156,6 +156,10 @@ for now (no entitlement system exists yet).
 **Cross-cutting**
 
 - OpenStreetMap attribution is shown on the map, as required by OSM's license.
+- Screen-reader semantics (labels and, where tappable, a tap action) are present on
+  several key widgets — the OSM attribution credit, `BeachResultCard`'s info lines,
+  the swim suggestion pill, and amenity markers — so VoiceOver/TalkBack users get a
+  meaningful announcement instead of silence or raw layout.
 
 ## Built, but not yet user-facing
 
