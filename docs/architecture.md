@@ -514,6 +514,8 @@ Reusable widgets built against `docs/design.md`:
   that kind's markers.
 - `OsmAttribution` (`osm_attribution.dart`) — a small "© OpenStreetMap contributors"
   credit required by OSM's ODbL license, tapping it opens the OSM copyright page.
+  Exposes a `Semantics` node (button, label, tap action) so screen readers can
+  announce and activate it (#420, #421).
 - `SwimSuggestionPill` (`swim_suggestion_pill.dart`) — renders a `SwimVerdict` (from
   `scoreSwimSuitability`) as the Home screen's "smart suggestion pill", colored per
   `verdict_palette.dart`'s `paletteForVerdict` (green/orange/red-orange/neutral grey,
