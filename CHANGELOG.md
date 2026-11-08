@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-08
+
 ### Added
 
 - Screen-reader semantics for `BeachResultCard`'s info lines and the swim suggestion
