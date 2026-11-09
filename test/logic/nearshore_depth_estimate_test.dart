@@ -171,6 +171,22 @@ void main() {
       expect(text(0.5), 'up to 0.2 m');
     });
 
+    test('given the rounded-down lower end just below the 0.1 m threshold, '
+        'rangeText -> still says "up to" (0.099 rounds down to 0.0)', () {
+      // 0.99 m -> low 0.099, rounds down to 0.0 (strictly below 0.1).
+      expect(text(0.99), 'up to 0.4 m');
+    });
+
+    test(
+      'given the rounded-down lower end at exactly the 0.1 m threshold, '
+      'rangeText -> switches to "about X to Y" (the threshold is exclusive)',
+      () {
+        // 1.0 m -> low 0.10, rounds down to exactly 0.1, so `low < 0.1` is
+        // false and the "about" branch is used instead of "up to".
+        expect(text(1.0), 'about 0.1 m to 0.4 m');
+      },
+    );
+
     test('given a deeper range, shows both ends rounded outward', () {
       // 3 m -> 0.30 to 0.96 m -> 0.3 to 1.0.
       expect(text(3), 'about 0.3 m to 1.0 m');
