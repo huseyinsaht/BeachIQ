@@ -257,6 +257,7 @@ class DepthDetailScreen extends StatelessWidget {
           DepthProfileChart(
             samples: effectiveProfile.samples,
             unitSystem: unitSystem,
+            semanticLabel: 'Seabed depth profile from shore',
           ),
         ],
       ),

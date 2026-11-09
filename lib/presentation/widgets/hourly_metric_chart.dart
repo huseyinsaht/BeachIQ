@@ -88,6 +88,7 @@ class HourlyMetricChart extends StatelessWidget {
     this.height = 160,
     this.valueFormatter,
     this.unitLabel,
+    this.semanticLabel,
   });
 
   /// The hourly series to plot, left to right in order (oldest first).
@@ -124,6 +125,12 @@ class HourlyMetricChart extends StatelessWidget {
   /// `"m"`, `"°C"`, `"%"`). Null omits the unit (e.g. UV index, which has
   /// none). See this class's doc comment for the exact spacing rule.
   final String? unitLabel;
+
+  /// A short text description of what the chart shows (e.g. "Hourly wind
+  /// speed chart"), exposed to screen readers via [Semantics] -- mirroring
+  /// `DepthCrossSection`'s own `semanticLabel`. `null` omits the semantics
+  /// wrapper (today's behavior: no dedicated semantics node).
+  final String? semanticLabel;
 
   static const _textSecondary = Color(0xFF8B93A6);
   static const _axisLabelStyle = TextStyle(color: _textSecondary, fontSize: 10);
@@ -189,7 +196,7 @@ class HourlyMetricChart extends StatelessWidget {
     final bottomAxisHeight =
         _textHeight('Now', _axisLabelStyle, textScaler) + 6;
 
-    return SizedBox(
+    final content = SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -236,6 +243,10 @@ class HourlyMetricChart extends StatelessWidget {
         },
       ),
     );
+
+    final label = semanticLabel;
+    if (label == null) return content;
+    return Semantics(label: label, image: true, child: content);
   }
 
   /// The pixel position of the "Now" marker, or null when it shouldn't be

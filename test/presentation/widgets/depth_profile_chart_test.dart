@@ -225,6 +225,45 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets(
+      'given a semanticLabel, exposes it to assistive technology (as an '
+      'image semantics node) so the chart\'s content is not picture-only',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            const DepthProfileChart(
+              samples: [
+                DepthSample(distanceMeters: 0, depthMeters: 0.3),
+                DepthSample(distanceMeters: 100, depthMeters: 1.0),
+              ],
+              semanticLabel: 'Seabed depth profile from shore',
+            ),
+          ),
+        );
+
+        final semantics = tester.widget<Semantics>(
+          find.descendant(
+            of: find.byType(DepthProfileChart),
+            matching: find.byType(Semantics),
+          ),
+        );
+        expect(semantics.properties.label, 'Seabed depth profile from shore');
+        expect(semantics.properties.image, isTrue);
+      },
+    );
+
+    testWidgets('given no semanticLabel, renders without a dedicated '
+        'semantics node and without crashing', (tester) async {
+      const samples = [
+        DepthSample(distanceMeters: 0, depthMeters: 0.3),
+        DepthSample(distanceMeters: 100, depthMeters: 1.0),
+      ];
+
+      await tester.pumpWidget(wrap(const DepthProfileChart(samples: samples)));
+
+      expect(tester.takeException(), isNull);
+    });
+
     group('DepthProfileChartPainter.shouldRepaint', () {
       // A single shared samples list: shouldRepaint OR-combines several
       // field comparisons, so two painters built from *different* samples
