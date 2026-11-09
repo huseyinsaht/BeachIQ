@@ -222,6 +222,7 @@ class WaveHeightDetailScreen extends StatelessWidget {
                   ],
                   valueFormatter: (value) => value.toStringAsFixed(1),
                   unitLabel: _unitLabel(unitSystem),
+                  semanticLabel: 'Hourly wave height chart',
                 ),
                 const SizedBox(height: 20),
                 const Text(

@@ -224,6 +224,7 @@ class WaterTemperatureDetailScreen extends StatelessWidget {
               valueBands: _waterTempChartBands(unitSystem),
               valueFormatter: (value) => value.round().toString(),
               unitLabel: unitSystem == UnitSystem.imperial ? '°F' : '°C',
+              semanticLabel: 'Hourly water temperature chart',
             )
           : const SizedBox(
               key: Key('water-temperature-no-data'),

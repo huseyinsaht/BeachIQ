@@ -186,6 +186,37 @@ void main() {
       },
     );
 
+    testWidgets(
+      'given a semanticLabel, exposes it to assistive technology (as an '
+      'image semantics node) so the chart\'s content is not picture-only',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: somePoints(),
+              semanticLabel: 'Hourly pressure chart',
+            ),
+          ),
+        );
+
+        final semantics = tester.widget<Semantics>(
+          find.descendant(
+            of: find.byType(HourlyMetricChart),
+            matching: find.byType(Semantics),
+          ),
+        );
+        expect(semantics.properties.label, 'Hourly pressure chart');
+        expect(semantics.properties.image, isTrue);
+      },
+    );
+
+    testWidgets('given no semanticLabel, renders without a dedicated '
+        'semantics node and without crashing', (tester) async {
+      await tester.pumpWidget(wrap(HourlyMetricChart(points: somePoints())));
+
+      expect(tester.takeException(), isNull);
+    });
+
     group('axes (issue #212)', () {
       testWidgets('given a valueFormatter and unitLabel, HourlyMetricChart -> '
           'forwards at least 3 nice tick values, each formatted with the '

@@ -176,6 +176,7 @@ class WindDetailScreen extends StatelessWidget {
             ],
             valueFormatter: (value) => value.round().toString(),
             unitLabel: _unitLabel(unitSystem),
+            semanticLabel: 'Hourly wind speed chart',
           ),
           if (hasGustSeries) ...[
             const SizedBox(height: 20),
@@ -199,6 +200,7 @@ class WindDetailScreen extends StatelessWidget {
               height: 100,
               valueFormatter: (value) => value.round().toString(),
               unitLabel: _unitLabel(unitSystem),
+              semanticLabel: 'Hourly wind gusts chart',
             ),
           ],
         ],
