@@ -3792,6 +3792,65 @@ void main() {
         ]);
       },
     );
+
+    testWidgets(
+      'given codes exactly at the drizzle/rain (51-67, 80-82) and snow '
+      '(71-86) group boundaries, each hourly row -> picks the icon of the '
+      'group that code is actually in, including where the two ranges are '
+      'adjacent (82 is rain, 83 is snow) rather than the other group or the '
+      'default',
+      (tester) async {
+        final sheetController = DraggableScrollableController();
+        final now = DateTime(2026, 7, 1, 12);
+        // 51/67: the first rain range's inclusive bounds. 68: just past it,
+        // in neither range, so it must fall through to the default icon
+        // rather than bleeding into rain or snow. 71/86: the snow range's
+        // inclusive bounds. 80/82: the second rain range's inclusive upper
+        // bound, checked *before* the snow range in the source — 82 must
+        // stay rain even though it also satisfies `71 <= 82 <= 86`. 83: the
+        // very next code, now outside the rain range, must be snow. 87:
+        // just past the snow range, must fall back to the default icon.
+        const codes = [51, 67, 68, 71, 80, 82, 83, 86, 87];
+        final weatherProvider = await aLoadedWeatherProvider(
+          aWeatherCondition(
+            hourly: [
+              for (var i = 0; i < codes.length; i++)
+                aWeatherHourly(
+                  time: now.add(Duration(hours: i)),
+                  weatherCode: codes[i],
+                ),
+            ],
+          ),
+        );
+
+        await pumpApp(
+          tester,
+          HomeScreen(
+            weatherProvider: weatherProvider,
+            now: () => now,
+            sheetController: sheetController,
+          ),
+        );
+        await expandSheet(tester, sheetController);
+
+        final icons = tester
+            .widgetList<HourlyForecastItem>(find.byType(HourlyForecastItem))
+            .map((item) => item.icon)
+            .toList();
+
+        expect(icons, [
+          Icons.grain, // 51: rain range lower bound
+          Icons.grain, // 67: rain range upper bound
+          Icons.wb_cloudy, // 68: just past it, default
+          Icons.ac_unit, // 71: snow range lower bound
+          Icons.grain, // 80: second rain range lower bound
+          Icons.grain, // 82: second rain range upper bound (not snow)
+          Icons.ac_unit, // 83: just past it, snow (not rain, not default)
+          Icons.ac_unit, // 86: snow range upper bound
+          Icons.wb_cloudy, // 87: just past it, default
+        ]);
+      },
+    );
   });
 
   group('HomeScreen didUpdateWidget provider listener resubscription', () {
