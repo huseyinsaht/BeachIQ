@@ -113,7 +113,11 @@ void main() {
             message: 'Rain chance crosses 40% between 09:00 and 10:00.',
           );
 
-          await pumpScreen(tester, alerts: [moderate, high]);
+          await pumpScreen(
+            tester,
+            alerts: [moderate, high],
+            now: () => DateTime(2026, 1, 1, 8),
+          );
 
           expect(find.text('No alerts'), findsNothing);
           expect(find.byType(ForecastAlertList), findsOneWidget);

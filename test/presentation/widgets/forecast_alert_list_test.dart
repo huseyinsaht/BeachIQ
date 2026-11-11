@@ -214,6 +214,30 @@ void main() {
       );
 
       testWidgets(
+        'given an alert two calendar days after now (past the "Tomorrow" '
+        'case), build -> prefixes the time window with the weekday '
+        'abbreviation instead',
+        (tester) async {
+          final saturday = alert(
+            start: DateTime(2026, 1, 3, 9), // 2026-01-01 is a Thursday
+            end: DateTime(2026, 1, 3, 10),
+          );
+
+          await tester.pumpWidget(
+            wrap(
+              ForecastAlertList(
+                alerts: [saturday],
+                now: DateTime(2026, 1, 1, 8),
+              ),
+            ),
+          );
+
+          expect(find.textContaining('Tomorrow'), findsNothing);
+          expect(find.text('Sat · 09:00 - 10:00'), findsOneWidget);
+        },
+      );
+
+      testWidgets(
         'given an alert on the same calendar day as now, build -> shows the '
         'bare time window with no day label',
         (tester) async {
