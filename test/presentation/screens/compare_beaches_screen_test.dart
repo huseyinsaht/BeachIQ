@@ -357,6 +357,39 @@ void main() {
       );
     });
 
+    testWidgets(
+      'when wave heights tie, the beach with the lower wind is "Best today"',
+      (tester) async {
+        await pumpCompare(
+          tester,
+          beaches: [calmBeach, choppyBeach],
+          sea: {
+            calmBeach: aSeaCondition(waveHeight: 0.3),
+            choppyBeach: aSeaCondition(waveHeight: 0.3),
+          },
+          weather: {
+            1: aWeatherCondition(windSpeed: 5, rainChancePercent: 5),
+            2: aWeatherCondition(windSpeed: 15, rainChancePercent: 5),
+          },
+        );
+
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('compare-card-Calm Beach')),
+            matching: find.byKey(const Key('compare-best-badge')),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(const Key('compare-card-Choppy Beach')),
+            matching: find.byKey(const Key('compare-best-badge')),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
     testWidgets('flags nobody when no beach has a good verdict', (
       tester,
     ) async {
