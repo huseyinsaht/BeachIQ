@@ -141,6 +141,37 @@ void main() {
         expect(alerts, isEmpty);
       });
 
+      test('given wind rising by exactly ${windRiseThresholdKmh}km/h within '
+          'an hour, buildForecastAlerts -> a wind alert fires at the rise '
+          'threshold itself', () {
+        final atBoundary = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: 5),
+            // exactly +windRiseThresholdKmh
+            aWeatherHourly(time: h(10), windSpeed: 5 + windRiseThresholdKmh),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(atBoundary, hasLength(1));
+        expect(atBoundary.single.type, ForecastAlertType.wind);
+        expect(atBoundary.single.severity, ForecastAlertSeverity.moderate);
+
+        final justUnder = buildForecastAlerts(
+          weather: [
+            aWeatherHourly(time: h(9), windSpeed: 5),
+            // just under windRiseThresholdKmh
+            aWeatherHourly(
+              time: h(10),
+              windSpeed: 5 + windRiseThresholdKmh - 0.1,
+            ),
+          ],
+          sea: const [],
+          now: now,
+        );
+        expect(justUnder, isEmpty);
+      });
+
       test('given wind rising >= ${windRiseThresholdKmh}km/h gradually over 2 '
           'hours with no single hour-to-hour step reaching the threshold, '
           'buildForecastAlerts -> one wind alert', () {
@@ -319,6 +350,40 @@ void main() {
         );
 
         expect(alerts, isEmpty);
+      });
+
+      test('given current speed rising by exactly '
+          '${currentRiseThresholdKmh}km/h within an hour, '
+          'buildForecastAlerts -> a current alert fires at the rise '
+          'threshold itself', () {
+        final atBoundary = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), currentVelocity: 1.0),
+            // exactly +currentRiseThresholdKmh
+            aSeaHourly(
+              time: h(10),
+              currentVelocity: 1.0 + currentRiseThresholdKmh,
+            ),
+          ],
+          now: now,
+        );
+        expect(atBoundary, hasLength(1));
+        expect(atBoundary.single.type, ForecastAlertType.current);
+
+        final justUnder = buildForecastAlerts(
+          weather: const [],
+          sea: [
+            aSeaHourly(time: h(9), currentVelocity: 1.0),
+            // just under currentRiseThresholdKmh
+            aSeaHourly(
+              time: h(10),
+              currentVelocity: 1.0 + currentRiseThresholdKmh - 0.1,
+            ),
+          ],
+          now: now,
+        );
+        expect(justUnder, isEmpty);
       });
 
       test('given a null current reading, buildForecastAlerts -> that hour '
