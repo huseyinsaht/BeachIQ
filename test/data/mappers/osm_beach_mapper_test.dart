@@ -304,6 +304,31 @@ void main() {
       expect(beach.amenities.single.kind, AmenityKind.changingRoom);
     });
 
+    test('given a beach element with no lat/lon, center or geometry, '
+        'mapOverpassToBeaches -> skips it without affecting other beaches', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'relation',
+            'id': 1,
+            'tags': {'natural': 'beach', 'name': 'Coordinateless Beach'},
+          },
+          {
+            'type': 'way',
+            'id': 2,
+            'tags': {'natural': 'beach', 'name': 'Valid Beach'},
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+        ],
+      });
+
+      expect(beaches, hasLength(1));
+      expect(beaches.single.name, 'Valid Beach');
+    });
+
     test(
       'ignores elements without natural=beach or a recognized amenity tag',
       () {
