@@ -4,6 +4,9 @@ Taken from `develop` at the end of each day. Latest:
 
 ![latest](latest.png)
 
+## 2026-11-13
+<img src="screenshots/2026-11-13.png" width="300">
+
 ## 2026-11-12
 <img src="screenshots/2026-11-12.png" width="300">
 
