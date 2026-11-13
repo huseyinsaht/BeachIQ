@@ -79,5 +79,26 @@ void main() {
 
       expect(entries.single.verdict.level, SwimSuitabilityLevel.unknown);
     });
+
+    test('given a sea entry whose date carries a time-of-day component, '
+        'buildDailyOutlook -> still matches it to the weather day by '
+        'calendar date alone', () {
+      final entries = buildDailyOutlook(
+        weatherDaily: [
+          aDailyWeatherForecast(
+            date: DateTime(2026, 7, 1),
+            windSpeedMaxKmh: 10.0,
+          ),
+        ],
+        seaDaily: [
+          aSeaDailyForecast(
+            date: DateTime(2026, 7, 1, 14, 30),
+            waveHeightMax: 0.3,
+          ),
+        ],
+      );
+
+      expect(entries.single.waveHeightMax, 0.3);
+    });
   });
 }
