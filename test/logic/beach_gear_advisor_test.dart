@@ -39,5 +39,18 @@ void main() {
       expect(adviseOnShoes('Sand'), ShoeAdvice.notNeeded);
       expect(adviseOnShoes('ROCK'), ShoeAdvice.advised);
     });
+
+    test('advises shoes for "shingle", the OSM alias of pebbles (matches '
+        "parseBeachSurface's own alias handling in beach_surface.dart)", () {
+      expect(adviseOnShoes('shingle'), ShoeAdvice.advised);
+    });
+
+    test('advises shoes for "fine_gravel", the OSM alias of gravel', () {
+      expect(adviseOnShoes('fine_gravel'), ShoeAdvice.advised);
+    });
+
+    test('advises shoes for "rocks", the OSM alias of rock', () {
+      expect(adviseOnShoes('rocks'), ShoeAdvice.advised);
+    });
   });
 }
