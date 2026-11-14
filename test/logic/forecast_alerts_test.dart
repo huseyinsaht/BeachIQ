@@ -544,6 +544,51 @@ void main() {
           expect(justAbove, isEmpty);
         },
       );
+
+      test(
+        'given the weather code moving from clear into snow (71, 73, 75, '
+        '77, 85 or 86), buildForecastAlerts -> one clouds alert each time',
+        () {
+          for (final snowCode in [71, 73, 75, 77, 85, 86]) {
+            final alerts = buildForecastAlerts(
+              weather: [
+                aWeatherHourly(time: h(13), weatherCode: 1), // mainly clear
+                aWeatherHourly(time: h(14), weatherCode: snowCode),
+              ],
+              sea: const [],
+              now: now,
+            );
+
+            expect(
+              alerts,
+              hasLength(1),
+              reason: 'weather code $snowCode should trigger a clouds alert',
+            );
+            expect(alerts.single.type, ForecastAlertType.clouds);
+          }
+        },
+      );
+
+      test('given the weather code moving from clear to the WMO-undefined '
+          'gap codes inside the snow range (74, 76, 83 or 84), '
+          'buildForecastAlerts -> no clouds alert', () {
+        for (final gapCode in [74, 76, 83, 84]) {
+          final alerts = buildForecastAlerts(
+            weather: [
+              aWeatherHourly(time: h(13), weatherCode: 1),
+              aWeatherHourly(time: h(14), weatherCode: gapCode),
+            ],
+            sea: const [],
+            now: now,
+          );
+
+          expect(
+            alerts,
+            isEmpty,
+            reason: 'weather code $gapCode is not a real WMO code',
+          );
+        }
+      });
     });
 
     group('rain rule', () {
