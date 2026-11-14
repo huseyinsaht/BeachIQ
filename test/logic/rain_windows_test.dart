@@ -142,5 +142,28 @@ void main() {
         '17:00.',
       );
     });
+
+    test('given three windows, rainChanceSummary -> lists all three', () {
+      final windows = [
+        RainWindow(
+          start: DateTime(2026, 1, 1, 9),
+          end: DateTime(2026, 1, 1, 10),
+        ),
+        RainWindow(
+          start: DateTime(2026, 1, 1, 12),
+          end: DateTime(2026, 1, 1, 13),
+        ),
+        RainWindow(
+          start: DateTime(2026, 1, 1, 15),
+          end: DateTime(2026, 1, 1, 17),
+        ),
+      ];
+
+      expect(
+        rainChanceSummary(windows),
+        'Rain likely between 09:00 and 10:00, and between 12:00 and '
+        '13:00, and between 15:00 and 17:00.',
+      );
+    });
   });
 }

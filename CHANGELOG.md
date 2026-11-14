@@ -5,6 +5,43 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.11.2] - 2026-11-08
+
+### Added
+
+- Screen-reader semantics for `BeachResultCard`'s info lines and the swim suggestion
+  pill (#419)
+- Screen-reader semantics for the OSM attribution credit shown on the map (#420)
+- Additional test coverage for the exact radius boundary in
+  `MeasuredDepthRepository.findFor` (#424)
+- Additional test coverage for the exact `deepLimitMeters` boundary in
+  `classifyShallowEntry` (#425)
+- Additional test coverage for the exact cache-TTL boundary in
+  `ReverseGeocodeCache.get` (#426)
+- Additional test coverage for the exact cache-TTL boundary in `BeachCache.get` (#427)
+- Additional test coverage for the exact NoData-sentinel and sea-level boundaries in
+  `BathymetryService` (#428)
+- Additional test coverage for the cloud-bucket weather-code range boundaries used by
+  forecast alerts (#429)
+- Additional test coverage for the inclusive range boundaries in
+  `MeasuredNearshoreDepth.tryParse` (#430)
+- Additional test coverage for the inclusive threshold-crossing boundaries in
+  forecast alerts (#431)
+- Additional test coverage for out-of-range compass bearings in `HomeScreen`'s
+  cardinal labels (#432)
+- Additional test coverage for the empty-samples/available cache round trip in
+  `DepthCache` (#433)
+
+### Changed
+
+- Refreshed `pubspec.lock` to pick up newer resolvable transitive dependency
+  versions; no application code changed (#422, #423)
+
+### Fixed
+
+- `OsmAttribution`'s semantics node now exposes a tap action, so screen readers can
+  actually activate the control it announces as opening the copyright page (#421)
+
 ## [2026.11.1] - 2026-11-01
 
 ### Added

@@ -128,6 +128,21 @@ void main() {
       expect(chart.samples, _gentleProfile.samples);
     });
 
+    testWidgets(
+      'passes a semantic label to the DepthProfileChart for screen readers',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(const DepthDetailScreen(profile: _gentleProfile)),
+        );
+
+        final chart = tester.widget<DepthProfileChart>(
+          find.byType(DepthProfileChart),
+        );
+        expect(chart.semanticLabel, isNotNull);
+        expect(chart.semanticLabel, isNotEmpty);
+      },
+    );
+
     testWidgets('renders a DepthCrossSection with the profile\'s samples '
         'above the numeric chart (issue #256)', (tester) async {
       await tester.pumpWidget(
