@@ -482,17 +482,27 @@ _Trigger? _evaluateRain(double? prev, double? curr) {
 /// the only transition this rule reports on.
 enum _CloudBucket { clearOrPartlyCloudy, overcastOrWorse, other }
 
+/// The exact WMO "snow" codes (`weatherCodeDescription`'s Snow/Snow
+/// Grains/Snow Showers cases; also `swim_suitability.dart`'s
+/// `_snowOrFreezingCodes` minus the freezing-drizzle/rain codes already
+/// covered by [_cloudBucket]'s rain range). Deliberately narrower than
+/// `home_screen.dart`'s icon grouping (`71..86`), which also sweeps in the
+/// two WMO-undefined codes 83/84 as a decorative fallback -- this alert
+/// should not fire for a code that isn't a real weather condition.
+const _snowCodes = {71, 73, 75, 77, 85, 86};
+
 _CloudBucket _cloudBucket(int weatherCode) {
   if (weatherCode == 0 || weatherCode == 1 || weatherCode == 2) {
     return _CloudBucket.clearOrPartlyCloudy;
   }
   final isOvercast = weatherCode == 3;
-  final isRain =
+  final isRainOrSnow =
       (weatherCode >= 51 && weatherCode <= 67) ||
-      (weatherCode >= 80 && weatherCode <= 82);
+      (weatherCode >= 80 && weatherCode <= 82) ||
+      _snowCodes.contains(weatherCode);
   final isThunderstorm =
       weatherCode == 95 || weatherCode == 96 || weatherCode == 99;
-  if (isOvercast || isRain || isThunderstorm) {
+  if (isOvercast || isRainOrSnow || isThunderstorm) {
     return _CloudBucket.overcastOrWorse;
   }
   return _CloudBucket.other;
