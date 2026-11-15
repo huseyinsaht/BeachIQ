@@ -160,6 +160,10 @@ for now (no entitlement system exists yet).
   several key widgets — the OSM attribution credit, `BeachResultCard`'s info lines,
   the swim suggestion pill, and amenity markers — so VoiceOver/TalkBack users get a
   meaningful announcement instead of silence or raw layout.
+- Every metric detail screen's hourly chart (wind speed, wind gusts, pressure, rain
+  chance, UV index, water temperature, wave height, current speed) and the
+  water-depth detail screen's seabed depth profile chart also announce a short
+  description to screen readers, instead of being picture-only.
 
 ## Built, but not yet user-facing
 
