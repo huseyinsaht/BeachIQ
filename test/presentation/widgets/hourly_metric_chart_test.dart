@@ -108,6 +108,33 @@ void main() {
       expect(find.byKey(const Key('hourly-chart-now-marker')), findsNothing);
     });
 
+    testWidgets('shows the "Now" marker when nowIndex is the last valid index '
+        '(points.length - 1)', (tester) async {
+      final points = somePoints();
+
+      await tester.pumpWidget(
+        wrap(HourlyMetricChart(points: points, nowIndex: points.length - 1)),
+      );
+
+      expect(find.byKey(const Key('hourly-chart-now-marker')), findsOneWidget);
+      expect(find.text('Now'), findsOneWidget);
+    });
+
+    testWidgets(
+      'hides the "Now" marker when nowIndex equals points.length (one past '
+      'the last valid index)',
+      (tester) async {
+        final points = somePoints();
+
+        await tester.pumpWidget(
+          wrap(HourlyMetricChart(points: points, nowIndex: points.length)),
+        );
+
+        expect(find.byKey(const Key('hourly-chart-now-marker')), findsNothing);
+        expect(find.text('Now'), findsNothing);
+      },
+    );
+
     testWidgets('shows a "No data" message instead of an empty chart', (
       tester,
     ) async {
