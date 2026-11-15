@@ -1,3 +1,4 @@
+import 'package:beachiq/data/models/depth_profile.dart';
 import 'package:beachiq/data/services/bathymetry_service.dart';
 import 'package:beachiq/data/services/depth_cache.dart';
 import 'package:beachiq/logic/providers/depth_provider.dart';
@@ -36,6 +37,24 @@ final _otherTransectableBeach = aBeach(
 
 DepthProvider _buildProvider(FakeHttpClient client, SharedPreferences prefs) {
   return DepthProvider(BathymetryService(client), DepthCache(prefs));
+}
+
+/// A [DepthCache] whose [get] always throws, to exercise
+/// [DepthProvider.fetchForBeach]'s belt-and-braces catch block (it must
+/// never propagate, even though [DepthCache]/[BathymetryService] are
+/// themselves built to resolve every failure to
+/// [DepthProfile.unavailable] rather than throw).
+class _ThrowingDepthCache extends DepthCache {
+  _ThrowingDepthCache(super.prefs);
+
+  @override
+  Future<DepthProfile> get({
+    required double latitude,
+    required double longitude,
+    required Future<DepthProfile> Function() fetch,
+  }) {
+    throw Exception('cache boom');
+  }
 }
 
 void main() {
@@ -153,6 +172,21 @@ void main() {
       await Future.wait([slow, fast]);
 
       expect(provider.profile?.samples.first.depthMeters, 2.0);
+    });
+
+    test('given a cache that throws, fetchForBeach -> resolves unavailable '
+        'and stops loading instead of propagating (belt-and-braces catch, '
+        'like MarineProvider/WeatherProvider)', () async {
+      final client = FakeHttpClient();
+      final provider = DepthProvider(
+        BathymetryService(client),
+        _ThrowingDepthCache(await SharedPreferences.getInstance()),
+      );
+
+      await provider.fetchForBeach(_transectableBeach);
+
+      expect(provider.profile?.available, isFalse);
+      expect(provider.isLoading, isFalse);
     });
 
     test('disposing while a fetch is in flight does not throw once that '
