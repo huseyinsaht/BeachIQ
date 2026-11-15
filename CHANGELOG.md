@@ -5,6 +5,52 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Screen-reader semantics for the hourly charts on every metric detail screen
+  (wind speed, wind gusts, pressure, rain chance, UV index, water temperature,
+  wave height, current speed) and for the seabed depth profile chart (#439)
+- Additional test coverage for `rainChanceSummary` with three or more rain
+  windows (#440)
+- Additional test coverage for the exact 0.1 m `rangeText` boundary in
+  `NearshoreDepthEstimate` (#441)
+- Additional test coverage for the exact 1 m anchor-separation boundary in
+  `seawardBearingFromGeometry` (#442)
+- Additional test coverage for the adjacent rain/snow weather-code icon group
+  boundaries (#443)
+- Additional test coverage for the exact 6-20 day/night boundary in
+  `HourlyForecastItem` (#444)
+- Additional test coverage for the wind-speed tiebreaker in
+  `CompareBeachesScreen`'s "Best today" pick (#445)
+- Additional test coverage for `ForecastAlertList`'s weekday day-label
+  fallback for alerts more than a day away (#446)
+- Additional test coverage for the exact e2/e5/e10 step-selection boundaries
+  in `niceTicks` (#447)
+- Additional test coverage for the exact rise-threshold boundary in the wind
+  and current alert rules (#448)
+- Additional test coverage for `osm_beach_mapper` skipping OSM elements with
+  no resolvable point (#449)
+- Additional test coverage for `buildDailyOutlook` matching a sea entry by
+  calendar date regardless of time-of-day (#450)
+- Additional test coverage for `DepthProvider`'s catch block when the cache
+  throws (#454)
+- Additional test coverage for `HourlyMetricChart`'s "Now" marker index
+  boundary (#455)
+
+### Changed
+
+- Refreshed `pubspec.lock` twice to pick up newer resolvable transitive
+  dependency versions; no application code changed (#437, #453)
+
+### Fixed
+
+- `adviseOnShoes` now goes through the shared `parseBeachSurface` parser, so
+  beaches tagged with an OSM surface alias ("shingle", "fine_gravel", "rocks")
+  get the same shoe advice as beaches tagged with the canonical surface value
+  (#451)
+- The cloud/overcast forecast alert rule now also fires on a transition into
+  snow (WMO codes 71, 73, 75, 77, 85, 86), not just rain (#452)
+
 ## [2026.11.2] - 2026-11-08
 
 ### Added
