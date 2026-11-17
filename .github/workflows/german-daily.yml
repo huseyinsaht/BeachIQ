@@ -1,0 +1,63 @@
+name: German daily reading
+
+# Sends one B1/B2 German reading text (with vocab + questions) to Telegram every morning.
+# Uses the existing TELEGRAM_TOKEN and CLAUDE_CODE_OAUTH_TOKEN secrets.
+on:
+  schedule:
+    - cron: '0 6 * * *'   # 06:00 UTC = 07:00 Berlin (winter), 08:00 (summer)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install Claude Code CLI
+        run: npm i -g @anthropic-ai/claude-code >/dev/null
+
+      - name: Generate today's text
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: |
+          DATE=$(date -u +%F)
+          DOW=$(date -u +%u)
+          case $DOW in
+            1) TOPIC="Arbeit und Karriere in Deutschland (Bewerbung, Arbeitsmarkt, Weiterbildung)";;
+            2) TOPIC="Energie und Technik (Photovoltaik, Batteriespeicher, Energiewende)";;
+            3) TOPIC="Alltag und Gesellschaft in Deutschland (Wohnen, Behörden, Verkehr)";;
+            4) TOPIC="Künstliche Intelligenz und Zukunft der Arbeit";;
+            5) TOPIC="Natur, Seen und Meer (Wassersport, Umwelt, Reisen)";;
+            6) TOPIC="Kultur, Essen und Traditionen im deutschsprachigen Raum";;
+            7) TOPIC="Eine kurze Geschichte oder ein Dialog aus dem Alltag";;
+          esac
+          cat > prompt.txt <<PROMPT
+          Du bist Deutschlehrer. Schreibe fuer einen tuerkischen Muttersprachler (Niveau B1/B2, Ziel B2/C1) den Lesetext fuer den $DATE.
+          Thema: $TOPIC. Waehle einen konkreten, frischen Aspekt (nicht das Allgemeinste).
+
+          Format (reiner Text, KEIN Markdown, keine Sternchen, keine Rauten):
+          TITEL
+          (leere Zeile)
+          Text: 200 bis 250 Woerter, B1/B2, natuerlich und abwechslungsreich (auch Nebensaetze, Passiv, Konjunktiv II wo es passt).
+          (leere Zeile)
+          WORTSCHATZ (8 Eintraege): Wort (mit Artikel/Plural bei Nomen) = tuerkische Uebersetzung
+          (leere Zeile)
+          FRAGEN (3 Verstaendnisfragen auf Deutsch)
+          (leere Zeile)
+          TIPP (1 Satz zu einer Grammatik- oder Ausdrucksstruktur aus dem Text, auf Tuerkisch)
+
+          Gib NUR diesen Text aus, ohne Einleitung. Insgesamt unter 3500 Zeichen.
+          PROMPT
+          sed -i 's/^          //' prompt.txt
+          claude -p "$(cat prompt.txt)" > msg.txt
+          test "$(wc -c < msg.txt)" -gt 400 || { echo "generation too short"; cat msg.txt; exit 1; }
+
+      - name: Send to Telegram
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        run: |
+          RESP=$(curl -s --data-urlencode chat_id=8009720456 --data-urlencode "text@msg.txt" \
+            "https://api.telegram.org/bot$TELEGRAM_TOKEN/sendMessage")
+          if echo "$RESP" | grep -q '"ok":true'; then echo "Telegram: sent"; else echo "Telegram: FAILED"; echo "$RESP"; exit 1; fi
