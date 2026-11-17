@@ -121,6 +121,7 @@ class PressureDetailScreen extends StatelessWidget {
         ],
         valueFormatter: (value) => value.round().toString(),
         unitLabel: 'hPa',
+        semanticLabel: 'Hourly pressure chart',
       ),
       minValueLabel: _formatHpa(minValue),
       nowValueLabel: _formatHpa(heroValue),

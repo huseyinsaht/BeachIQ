@@ -256,5 +256,60 @@ void main() {
         expect(seawardBearingFromGeometry(beach), isNull);
       },
     );
+
+    // The next two tests pin the exact boundary of
+    // `_minAnchorSeparationMeters` (1m), per docs/testing.md's "values at a
+    // threshold boundary" mandatory edge case. Only the fully-coincident
+    // (0m) case above was covered; nothing exercised a separation that is
+    // close but still below the threshold, or exactly at it. The amenity
+    // coordinates are `latlong2`'s own `Distance().offset(origin, metres,
+    // 90)` due east of (36.0, 28.005), so the measured separation is exactly
+    // 0 or 1 meter (after `Distance`'s internal rounding to the nearest
+    // meter), not an approximation.
+    test('given a geometry centroid and amenity average under a meter apart '
+        'but not coincident, seawardBearingFromGeometry -> still null (too '
+        'close for a stable direction)', () {
+      final beach = Beach(
+        name: 'Nearly Degenerate Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        geometry: const [LatLng(36.000, 28.005)],
+        amenities: const [
+          BeachAmenity(
+            kind: AmenityKind.parking,
+            position: LatLng(35.999999999999915, 28.005004436374282),
+          ),
+        ],
+      );
+
+      expect(seawardBearingFromGeometry(beach), isNull);
+    });
+
+    test('given a geometry centroid and amenity average exactly a meter apart, '
+        'seawardBearingFromGeometry -> a real bearing, not null (the '
+        'threshold is inclusive since the check is strictly less-than)', () {
+      final beach = Beach(
+        name: 'Exactly At Threshold Beach',
+        city: 'Testville',
+        latitude: 36.000,
+        longitude: 28.005,
+        geometry: const [LatLng(36.000, 28.005)],
+        amenities: const [
+          BeachAmenity(
+            kind: AmenityKind.parking,
+            position: LatLng(35.99999999999949, 28.005011090935703),
+          ),
+        ],
+      );
+
+      final bearing = seawardBearingFromGeometry(beach);
+
+      expect(bearing, isNotNull);
+      // The amenity sits due east of the geometry centroid, so the
+      // derived seaward bearing (pointing back toward the geometry, away
+      // from the amenity) is roughly due west.
+      expect(bearing, closeTo(-90, 1));
+    });
   });
 }

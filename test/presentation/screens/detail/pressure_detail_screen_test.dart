@@ -304,6 +304,27 @@ void main() {
       expect(chart.valueFormatter!(1013), '1013');
     });
 
+    testWidgets('passes a semantic label to the chart for screen readers', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          PressureDetailScreen(
+            hourly: [
+              aWeatherHourly(time: DateTime(2026, 1, 1, 12), pressureHpa: 1013),
+            ],
+            now: () => DateTime(2026, 1, 1, 12),
+          ),
+        ),
+      );
+
+      final chart = tester.widget<HourlyMetricChart>(
+        find.byType(HourlyMetricChart),
+      );
+      expect(chart.semanticLabel, isNotNull);
+      expect(chart.semanticLabel, isNotEmpty);
+    });
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

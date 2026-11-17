@@ -108,6 +108,33 @@ void main() {
       expect(find.byKey(const Key('hourly-chart-now-marker')), findsNothing);
     });
 
+    testWidgets('shows the "Now" marker when nowIndex is the last valid index '
+        '(points.length - 1)', (tester) async {
+      final points = somePoints();
+
+      await tester.pumpWidget(
+        wrap(HourlyMetricChart(points: points, nowIndex: points.length - 1)),
+      );
+
+      expect(find.byKey(const Key('hourly-chart-now-marker')), findsOneWidget);
+      expect(find.text('Now'), findsOneWidget);
+    });
+
+    testWidgets(
+      'hides the "Now" marker when nowIndex equals points.length (one past '
+      'the last valid index)',
+      (tester) async {
+        final points = somePoints();
+
+        await tester.pumpWidget(
+          wrap(HourlyMetricChart(points: points, nowIndex: points.length)),
+        );
+
+        expect(find.byKey(const Key('hourly-chart-now-marker')), findsNothing);
+        expect(find.text('Now'), findsNothing);
+      },
+    );
+
     testWidgets('shows a "No data" message instead of an empty chart', (
       tester,
     ) async {
@@ -185,6 +212,37 @@ void main() {
         expect(painter.bandColor, Colors.blue);
       },
     );
+
+    testWidgets(
+      'given a semanticLabel, exposes it to assistive technology (as an '
+      'image semantics node) so the chart\'s content is not picture-only',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            HourlyMetricChart(
+              points: somePoints(),
+              semanticLabel: 'Hourly pressure chart',
+            ),
+          ),
+        );
+
+        final semantics = tester.widget<Semantics>(
+          find.descendant(
+            of: find.byType(HourlyMetricChart),
+            matching: find.byType(Semantics),
+          ),
+        );
+        expect(semantics.properties.label, 'Hourly pressure chart');
+        expect(semantics.properties.image, isTrue);
+      },
+    );
+
+    testWidgets('given no semanticLabel, renders without a dedicated '
+        'semantics node and without crashing', (tester) async {
+      await tester.pumpWidget(wrap(HourlyMetricChart(points: somePoints())));
+
+      expect(tester.takeException(), isNull);
+    });
 
     group('axes (issue #212)', () {
       testWidgets('given a valueFormatter and unitLabel, HourlyMetricChart -> '

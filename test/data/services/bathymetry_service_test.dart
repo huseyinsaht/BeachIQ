@@ -201,6 +201,49 @@ void main() {
     });
 
     test(
+      'given a GRAY_INDEX exactly at the NoData sentinel threshold '
+      '(-9000), fetchProfile -> that sample is null (inclusive boundary)',
+      () async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: _host,
+            json: _validDepthFixture(-9000),
+            consumeOnce: true,
+          )
+          ..queueJson(host: _host, json: _validDepthFixture(-1.0));
+        final service = BathymetryService(client);
+
+        final result = await service.fetchProfile(_transectableBeach);
+
+        expect(result.samples.first.depthMeters, isNull);
+      },
+    );
+
+    test('given a GRAY_INDEX just inside the NoData sentinel threshold '
+        '(-8999.9), fetchProfile -> that sample is a real depth, not '
+        'treated as NoData', () async {
+      final client = FakeHttpClient()
+        ..queueJson(host: _host, json: _validDepthFixture(-8999.9));
+      final service = BathymetryService(client);
+
+      final result = await service.fetchProfile(_transectableBeach);
+
+      expect(result.samples.first.depthMeters, closeTo(8999.9, 1e-9));
+    });
+
+    test('given a GRAY_INDEX of exactly 0 (sea level), fetchProfile -> that '
+        'sample is null, never a 0 depth', () async {
+      final client = FakeHttpClient()
+        ..queueJson(host: _host, json: _validDepthFixture(0), consumeOnce: true)
+        ..queueJson(host: _host, json: _validDepthFixture(-1.0));
+      final service = BathymetryService(client);
+
+      final result = await service.fetchProfile(_transectableBeach);
+
+      expect(result.samples.first.depthMeters, isNull);
+    });
+
+    test(
       'given a malformed JSON response for one point mixed with valid '
       'responses, fetchProfile -> that sample is null, the rest unaffected',
       () async {

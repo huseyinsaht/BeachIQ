@@ -289,6 +289,22 @@ void main() {
       expect(result.available, isTrue);
     });
 
+    test('given an available profile with an empty samples list, the cache '
+        'round-trip -> preserves availability and the empty list', () async {
+      final cache = DepthCache(await prefs());
+      const emptyButAvailable = DepthProfile(available: true, samples: []);
+      await cache.put(36.90, 30.65, emptyButAvailable);
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called'),
+      );
+
+      expect(result.available, isTrue);
+      expect(result.samples, isEmpty);
+    });
+
     test('given a profile with a null depth sample, the cache round-trip -> '
         'preserves the null rather than turning it into 0', () async {
       final cache = DepthCache(await prefs());

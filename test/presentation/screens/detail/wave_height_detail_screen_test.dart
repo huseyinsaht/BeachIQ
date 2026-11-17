@@ -281,6 +281,26 @@ void main() {
       },
     );
 
+    testWidgets('passes a semantic label to the chart for screen readers', (
+      tester,
+    ) async {
+      final now = DateTime(2026, 1, 1, 12);
+      await tester.pumpWidget(
+        wrap(
+          WaveHeightDetailScreen(
+            hourly: [aSeaHourly(time: now, waveHeight: 1.0)],
+            now: () => now,
+          ),
+        ),
+      );
+
+      final chart = tester.widget<HourlyMetricChart>(
+        find.byType(HourlyMetricChart),
+      );
+      expect(chart.semanticLabel, isNotNull);
+      expect(chart.semanticLabel, isNotEmpty);
+    });
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(

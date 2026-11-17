@@ -247,7 +247,10 @@ Pure, platform-agnostic logic with no I/O:
   a rule fires on a fast rise (wind, waves, current) within a 2-hour window or on
   crossing a moderate/high threshold (wind, waves, rain — reusing
   `swim_suitability.dart`'s thresholds), or on the weather code moving from
-  clear/partly-cloudy into overcast/rain/thunderstorm (clouds). Adjacent triggered
+  clear/partly-cloudy into overcast/rain/snow/thunderstorm (clouds) — snow is the
+  exact WMO snow codes (71/73/75/77/85/86), deliberately narrower than
+  `home_screen.dart`'s icon grouping, which also sweeps in two WMO-undefined codes
+  as a decorative fallback. Adjacent triggered
   hours are merged into one alert window. The current rule only covers "speed rises"
   — the owner's "current turns away from shore" half needs
   `wave_shore_relation.dart`'s classifier plus a beach's shore bearing, not wired up
@@ -334,7 +337,10 @@ Pure, platform-agnostic logic with no I/O:
   when one exists for the beach (#390).
 - `adviseOnShoes` (`lib/logic/beach_gear_advisor.dart`) — advises `advised`/
   `notNeeded`/`unknown` on bringing shoes/slippers, from a beach's OSM `surface` tag.
-  Framed as advice, never as a fact.
+  Framed as advice, never as a fact. Goes through `parseBeachSurface`
+  (`beach_surface.dart`) rather than keeping its own surface-string list, so an OSM
+  alias ("shingle", "fine_gravel", "rocks") gets the same advice as its canonical
+  value.
 - `uvBandFor`/`uvBandLabel`/`uvProtectionHint`/`uvBandColor` (`lib/logic/uv_band.dart`)
   — classifies a UV index reading into the five WHO/EPA bands (low 0-2, moderate 3-5,
   high 6-7, very high 8-10, extreme 11+), with a label, a one-line sun-protection hint,
@@ -514,6 +520,8 @@ Reusable widgets built against `docs/design.md`:
   that kind's markers.
 - `OsmAttribution` (`osm_attribution.dart`) — a small "© OpenStreetMap contributors"
   credit required by OSM's ODbL license, tapping it opens the OSM copyright page.
+  Exposes a `Semantics` node (button, label, tap action) so screen readers can
+  announce and activate it (#420, #421).
 - `SwimSuggestionPill` (`swim_suggestion_pill.dart`) — renders a `SwimVerdict` (from
   `scoreSwimSuitability`) as the Home screen's "smart suggestion pill", colored per
   `verdict_palette.dart`'s `paletteForVerdict` (green/orange/red-orange/neutral grey,
@@ -554,14 +562,18 @@ Reusable widgets built against `docs/design.md`:
   horizontal threshold lines, an optional filled area band, optional fixed colored
   value-range bands (`HourlyChartValueBand`, painted as full-width background strips
   behind everything else — e.g. the UV index screen's risk bands), and gaps (never a
-  fabricated zero) wherever an hour's value is `null`.
+  fabricated zero) wherever an hour's value is `null`. An optional `semanticLabel`
+  (e.g. "Hourly wind speed chart") wraps the chart in a `Semantics(image: true)`
+  node so screen readers get a short description instead of silence; every metric
+  detail screen that uses this chart now passes one. `null` omits the wrapper.
 - `DepthProfileChart`/`DepthProfileChartPainter` (`depth_profile_chart.dart`) — the
   water-depth detail screen's chart (#217): x = distance from shore, y = depth drawn
   increasing *downward* (matching a real seabed cross-section, the opposite of
   `HourlyMetricChart`'s convention), with reference lines at `shallowLimitMeters`/
   `deepLimitMeters`. A `null` `DepthSample.depthMeters` (land/NoData) is a gap in the
   line, never a fabricated `0`. `CustomPaint`-based like `HourlyMetricChart`, no
-  charting package.
+  charting package. Takes the same optional `semanticLabel` as `HourlyMetricChart`,
+  passed as "Seabed depth profile from shore" by the water-depth detail screen.
 - `DepthCrossSection`/`DepthCrossSectionPainter` (`depth_cross_section.dart`) — issue
   #256's human-scale side-view graphic on the water-depth detail screen, sitting
   above `DepthProfileChart`: water surface on top, three tinted bands matching

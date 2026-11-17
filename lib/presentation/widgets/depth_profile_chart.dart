@@ -34,6 +34,7 @@ class DepthProfileChart extends StatelessWidget {
     this.unitSystem = UnitSystem.metric,
     this.lineColor = Colors.white,
     this.height = 200,
+    this.semanticLabel,
   });
 
   /// The transect's samples, ordered by [DepthSample.distanceMeters]
@@ -48,6 +49,12 @@ class DepthProfileChart extends StatelessWidget {
 
   final Color lineColor;
   final double height;
+
+  /// A short text description of what the chart shows (e.g. "Seabed depth
+  /// profile from shore"), exposed to screen readers via [Semantics] --
+  /// mirroring `DepthCrossSection`'s own `semanticLabel`. `null` omits the
+  /// semantics wrapper (today's behavior: no dedicated semantics node).
+  final String? semanticLabel;
 
   static const _textSecondary = Color(0xFF8B93A6);
   static const _axisLabelStyle = TextStyle(color: _textSecondary, fontSize: 10);
@@ -104,7 +111,7 @@ class DepthProfileChart extends StatelessWidget {
     final bottomAxisHeight =
         _maxTextHeight(xTickLabels, _axisLabelStyle, textScaler) + 6;
 
-    return SizedBox(
+    final content = SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -147,6 +154,10 @@ class DepthProfileChart extends StatelessWidget {
         },
       ),
     );
+
+    final label = semanticLabel;
+    if (label == null) return content;
+    return Semantics(label: label, image: true, child: content);
   }
 
   static double _maxTextWidth(

@@ -218,6 +218,7 @@ class CurrentDetailScreen extends StatelessWidget {
                   nowIndex: nowIndex,
                   valueFormatter: (value) => value.round().toString(),
                   unitLabel: _unitLabel(unitSystem),
+                  semanticLabel: 'Hourly current speed chart',
                 )
               : const SizedBox(
                   key: Key('current-no-data'),

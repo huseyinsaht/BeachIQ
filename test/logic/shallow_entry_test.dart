@@ -188,6 +188,21 @@ void main() {
           expect(result.firstDeepDistanceMeters, isNull);
         },
       );
+
+      test('given depth exactly at deepLimitMeters (2.5m) does not count as '
+          'exceeding it, classifyShallowEntry -> skips that sample', () {
+        final profile = _profileAt100m(
+          1.0,
+          extra: const [
+            DepthSample(distanceMeters: 200, depthMeters: 2.5),
+            DepthSample(distanceMeters: 300, depthMeters: 2.6),
+          ],
+        );
+
+        final result = classifyShallowEntry(profile);
+
+        expect(result.firstDeepDistanceMeters, 300);
+      });
     });
 
     test(

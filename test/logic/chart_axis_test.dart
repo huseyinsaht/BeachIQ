@@ -98,5 +98,62 @@ void main() {
       expect(() => niceTicks(0, 10, -3), returnsNormally);
       expect(niceTicks(0, 10, 0), isNotEmpty);
     });
+
+    // The step-selection thresholds between 1/2/5/10 are the geometric means
+    // sqrt(1*2), sqrt(2*5) and sqrt(5*10) — the exact values the `_e2`,
+    // `_e5` and `_e10` constants hold. Each is only ever exercised
+    // incidentally elsewhere in this file (e.g. the huge-range case lands
+    // on an error of 2.5, well inside the e2 bucket), so the inclusive
+    // `>=` comparison right at each threshold was never pinned.
+    group('step-selection threshold boundaries', () {
+      const e2 = 1.4142135623730951; // sqrt(2)
+      const e5 = 3.1622776601683795; // sqrt(10)
+      const e10 = 7.0710678118654755; // sqrt(50)
+
+      test('given a raw step exactly at the e2 threshold, niceTicks -> '
+          'promotes the step to 2, not 1', () {
+        // step stays 1 at count=0: firstTick=0, next multiple (1) is
+        // within [0, e2], so it would show up if the step had not been
+        // promoted to 2.
+        final ticks = niceTicks(0, e2, 1);
+
+        expect(ticks, [0]);
+      });
+
+      test('given a raw step just under the e2 threshold, niceTicks -> '
+          'keeps the step at 1', () {
+        final ticks = niceTicks(0, e2 - 1e-9, 1);
+
+        expect(ticks, [0, 1]);
+      });
+
+      test('given a raw step exactly at the e5 threshold, niceTicks -> '
+          'promotes the step to 5, not 2', () {
+        final ticks = niceTicks(0, e5, 1);
+
+        expect(ticks, [0]);
+      });
+
+      test('given a raw step just under the e5 threshold, niceTicks -> '
+          'keeps the step at 2', () {
+        final ticks = niceTicks(0, e5 - 1e-9, 1);
+
+        expect(ticks, [0, 2]);
+      });
+
+      test('given a raw step exactly at the e10 threshold, niceTicks -> '
+          'promotes the step to 10, not 5', () {
+        final ticks = niceTicks(0, e10, 1);
+
+        expect(ticks, [0]);
+      });
+
+      test('given a raw step just under the e10 threshold, niceTicks -> '
+          'keeps the step at 5', () {
+        final ticks = niceTicks(0, e10 - 1e-9, 1);
+
+        expect(ticks, [0, 5]);
+      });
+    });
   });
 }

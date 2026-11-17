@@ -139,6 +139,7 @@ class RainChanceDetailScreen extends StatelessWidget {
         ],
         valueFormatter: (value) => value.round().toString(),
         unitLabel: '%',
+        semanticLabel: 'Hourly rain chance chart',
       ),
       minValueLabel: _formatPercent(minPercent),
       nowValueLabel: _formatPercent(heroPercent),

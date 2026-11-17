@@ -84,6 +84,28 @@ void main() {
       expect(result, 'Fresh Name');
     });
 
+    test('given a cache entry exactly at the TTL boundary, get -> is still '
+        'considered fresh', () async {
+      var now = DateTime(2026, 1, 1);
+      final cache = ReverseGeocodeCache(
+        await prefs(),
+        now: () => now,
+        ttl: const Duration(days: 30),
+      );
+      await cache.put(38.3220, 26.3260, 'Çeşme, İzmir');
+
+      now = now.add(const Duration(days: 30));
+
+      final result = await cache.get(
+        latitude: 38.3220,
+        longitude: 26.3260,
+        fetch: () async =>
+            fail('fetch should not be called exactly at the TTL boundary'),
+      );
+
+      expect(result, 'Çeşme, İzmir');
+    });
+
     test('given two coordinates rounding to the same grid cell, get -> shares '
         'one cache entry (no repeated fetch)', () async {
       final cache = ReverseGeocodeCache(await prefs());

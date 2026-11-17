@@ -133,6 +133,29 @@ void main() {
       },
     );
 
+    test('given a cache entry exactly at the 7-day TTL boundary, get -> is '
+        'still considered fresh', () async {
+      var now = DateTime(2026, 1, 1);
+      final cache = BeachCache(await prefs(), now: () => now);
+
+      await cache.put(36.90, 30.65, [_testBeach]);
+
+      // Exactly at the TTL: isStale checks `difference > ttl`, so this
+      // must stay fresh, not stale.
+      now = now.add(const Duration(days: 7));
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async {
+          fail('fetch should not be called exactly at the TTL boundary');
+        },
+      );
+
+      _expectSameBeaches(result.beaches, [_testBeach]);
+      expect(result.isStale, isFalse);
+    });
+
     test(
       'nothing cached and fetch failing falls back to staticBeaches within a reasonable radius',
       () async {

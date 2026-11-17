@@ -172,6 +172,79 @@ void main() {
     expect(find.byIcon(Icons.bolt), findsOneWidget);
   });
 
+  testWidgets('hour 5 (just before the 6-20 day bucket) shows the moon icon', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        HourlyForecastItem(
+          timeLabel: '5AM',
+          icon: Icons.wb_sunny,
+          temperature: '16°',
+          time: DateTime(2024, 6, 15, 5),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
+    expect(find.byIcon(Icons.wb_sunny), findsNothing);
+  });
+
+  testWidgets('hour 6 (the exact start of the day bucket) shows the sun icon', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        HourlyForecastItem(
+          timeLabel: '6AM',
+          icon: Icons.wb_sunny,
+          temperature: '17°',
+          time: DateTime(2024, 6, 15, 6),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
+    expect(find.byIcon(Icons.nightlight_round), findsNothing);
+  });
+
+  testWidgets(
+    'hour 19 (the last hour still inside the day bucket) shows the sun icon',
+    (tester) async {
+      await tester.pumpWidget(
+        wrap(
+          HourlyForecastItem(
+            timeLabel: '7PM',
+            icon: Icons.wb_sunny,
+            temperature: '23°',
+            time: DateTime(2024, 6, 15, 19),
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.wb_sunny), findsOneWidget);
+      expect(find.byIcon(Icons.nightlight_round), findsNothing);
+    },
+  );
+
+  testWidgets('hour 20 (just after the 6-20 day bucket) shows the moon icon', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      wrap(
+        HourlyForecastItem(
+          timeLabel: '8PM',
+          icon: Icons.wb_sunny,
+          temperature: '20°',
+          time: DateTime(2024, 6, 15, 20),
+        ),
+      ),
+    );
+
+    expect(find.byIcon(Icons.nightlight_round), findsOneWidget);
+    expect(find.byIcon(Icons.wb_sunny), findsNothing);
+  });
+
   testWidgets(
     'a row mixing a daytime and a nighttime clear hour shows one sun and '
     'one moon, each per its own entry time (not the real clock)',

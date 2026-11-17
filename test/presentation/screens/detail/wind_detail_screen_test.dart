@@ -267,6 +267,35 @@ void main() {
       },
     );
 
+    testWidgets(
+      'passes a semantic label to both the speed and gusts charts for '
+      'screen readers',
+      (tester) async {
+        final now = DateTime(2026, 1, 1, 12);
+        await tester.pumpWidget(
+          wrap(
+            WindDetailScreen(
+              hourly: [aWeatherHourly(time: now, windSpeed: 10, windGusts: 20)],
+              now: () => now,
+            ),
+          ),
+        );
+
+        final speedChart = tester.widget<HourlyMetricChart>(
+          find.byType(HourlyMetricChart).first,
+        );
+        expect(speedChart.semanticLabel, isNotNull);
+        expect(speedChart.semanticLabel, isNotEmpty);
+
+        final gustChart = tester.widget<HourlyMetricChart>(
+          find.byKey(const Key('wind-gusts-chart')),
+        );
+        expect(gustChart.semanticLabel, isNotNull);
+        expect(gustChart.semanticLabel, isNotEmpty);
+        expect(gustChart.semanticLabel, isNot(speedChart.semanticLabel));
+      },
+    );
+
     testWidgets('back button returns to the previous screen', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
