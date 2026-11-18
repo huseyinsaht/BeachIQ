@@ -253,6 +253,61 @@ void main() {
         _expectSameBeaches(result.beaches, [_testBeach]);
       },
     );
+
+    test('given a corrupt cache entry, get -> treats it as a miss instead of '
+        'throwing', () async {
+      final sharedPrefs = await prefs();
+      final cache = BeachCache(sharedPrefs);
+      final key = cache.gridKeyFor(36.90, 30.65);
+      await sharedPrefs.setString(key, 'not valid json {');
+
+      var fetchCalled = false;
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async {
+          fetchCalled = true;
+          return [_testBeach];
+        },
+      );
+
+      expect(fetchCalled, isTrue);
+      _expectSameBeaches(result.beaches, [_testBeach]);
+    });
+
+    test('given a cache entry with an unparseable fetchedAt, get -> treats it '
+        'as a miss instead of throwing', () async {
+      final sharedPrefs = await prefs();
+      final cache = BeachCache(sharedPrefs);
+      final key = cache.gridKeyFor(36.90, 30.65);
+      await sharedPrefs.setString(
+        key,
+        json.encode({
+          'fetchedAt': 'not-a-date',
+          'beaches': [
+            {
+              'name': _testBeach.name,
+              'city': _testBeach.city,
+              'latitude': _testBeach.latitude,
+              'longitude': _testBeach.longitude,
+            },
+          ],
+        }),
+      );
+
+      var fetchCalled = false;
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async {
+          fetchCalled = true;
+          return [_testBeach];
+        },
+      );
+
+      expect(fetchCalled, isTrue);
+      _expectSameBeaches(result.beaches, [_testBeach]);
+    });
   });
 
   group('BeachCache.refresh', () {
