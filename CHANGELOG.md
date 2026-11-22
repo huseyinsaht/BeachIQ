@@ -36,11 +36,21 @@ All notable changes to this project are documented here. Format loosely follows
   throws (#454)
 - Additional test coverage for `HourlyMetricChart`'s "Now" marker index
   boundary (#455)
+- Additional test coverage for `BeachCache.get` treating a corrupt cache
+  entry (invalid JSON, or an unparseable `fetchedAt`) as a miss instead of
+  throwing (#460)
+- Additional test coverage confirming `OverpassService` issues a fresh
+  request for a repeated identical query once the earlier call has settled
+  (succeeded or failed), instead of replaying its cached result (#462)
 
 ### Changed
 
 - Refreshed `pubspec.lock` twice to pick up newer resolvable transitive
   dependency versions; no application code changed (#437, #453)
+- Refreshed `pubspec.lock` again to pick up newer resolvable transitive
+  dependency versions; no application code changed (#461)
+- The weekly automated screenshot CI job now runs once a week (Sunday
+  evenings) instead of every day, to reduce token usage (#458)
 
 ### Fixed
 
