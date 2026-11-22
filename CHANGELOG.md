@@ -5,6 +5,8 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [2026.11.3] - 2026-11-22
+
 ### Added
 
 - Screen-reader semantics for the hourly charts on every metric detail screen
