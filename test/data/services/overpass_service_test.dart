@@ -115,6 +115,49 @@ void main() {
       );
 
       test(
+        'given a call succeeds, a later separate call for the same query -> '
+        'issues a fresh request instead of reusing the settled result',
+        () async {
+          final client = FakeHttpClient()
+            ..queueResponse(matcher: (r) => true, body: fixtureBody);
+          final service = OverpassService(client);
+
+          final first = await service.query('[out:json];node(1);out;');
+          expect(client.requests, hasLength(1));
+
+          final second = await service.query('[out:json];node(1);out;');
+
+          expect(first, fixtureJson);
+          expect(second, fixtureJson);
+          expect(client.requests, hasLength(2));
+        },
+      );
+
+      test('given a call fails, a later separate call for the same query -> '
+          'retries fresh instead of replaying the cached failure', () async {
+        final client = FakeHttpClient()
+          ..queueResponse(matcher: (r) => true, body: 'down', statusCode: 503);
+        final service = OverpassService(
+          client,
+          initialBackoff: const Duration(milliseconds: 1),
+        );
+
+        await expectLater(
+          () => service.query('[out:json];node(1);out;'),
+          throwsA(isA<Exception>()),
+        );
+        final firstAttemptCount = client.requests.length;
+        expect(firstAttemptCount, greaterThan(0));
+
+        await expectLater(
+          () => service.query('[out:json];node(1);out;'),
+          throwsA(isA<Exception>()),
+        );
+
+        expect(client.requests.length, greaterThan(firstAttemptCount));
+      });
+
+      test(
         'given a timeout then a success, query -> retries and succeeds on the second attempt',
         () async {
           final client = FakeHttpClient()
