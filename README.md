@@ -1,8 +1,11 @@
 # BeachIQ daily screenshots
 
-Taken from `develop` at the end of each day. Latest:
+Taken from `develop` once a week (Sunday evening). Latest:
 
 ![latest](latest.png)
+
+## 2026-11-22
+<img src="screenshots/2026-11-22.png" width="300">
 
 ## 2026-11-17
 <img src="screenshots/2026-11-17.png" width="300">
