@@ -375,6 +375,60 @@ void main() {
       expect(result.samples.every((s) => s.depthMeters == 3.4), isTrue);
     });
 
+    test(
+      'given the depth value is encoded as the string "NaN", '
+      'fetchProfile -> that sample is null, never a fabricated depth',
+      () async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: _host,
+            json: {
+              'type': 'FeatureCollection',
+              'features': [
+                {
+                  'type': 'Feature',
+                  'id': '',
+                  'geometry': null,
+                  'properties': {'Depth': 'NaN'},
+                },
+              ],
+            },
+          );
+        final service = BathymetryService(client);
+
+        final result = await service.fetchProfile(_transectableBeach);
+
+        expect(result.available, isFalse);
+      },
+    );
+
+    test(
+      'given the depth value is encoded as the string "Infinity", '
+      'fetchProfile -> that sample is null, never a fabricated depth',
+      () async {
+        final client = FakeHttpClient()
+          ..queueJson(
+            host: _host,
+            json: {
+              'type': 'FeatureCollection',
+              'features': [
+                {
+                  'type': 'Feature',
+                  'id': '',
+                  'geometry': null,
+                  'properties': {'Depth': 'Infinity'},
+                },
+              ],
+            },
+          );
+        final service = BathymetryService(client);
+
+        final result = await service.fetchProfile(_transectableBeach);
+
+        expect(result.available, isFalse);
+      },
+    );
+
     test('given every request returns a non-200 status, fetchProfile -> '
         'returns unavailable, never throws', () async {
       final client = FakeHttpClient()
