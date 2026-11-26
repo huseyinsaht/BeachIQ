@@ -573,10 +573,7 @@ void main() {
               'id': 1,
               'tags': {'natural': 'beach', 'name': 'Boundary Fixture Beach'},
               'geometry': [
-                {
-                  'lat': geometryNear.latitude,
-                  'lon': geometryNear.longitude,
-                },
+                {'lat': geometryNear.latitude, 'lon': geometryNear.longitude},
                 {'lat': geometryFar.latitude, 'lon': geometryFar.longitude},
                 {
                   'lat': geometryFar.latitude,
