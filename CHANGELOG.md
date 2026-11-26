@@ -5,6 +5,12 @@ All notable changes to this project are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Added
+
+- Additional test coverage for `GeocodingService.search`'s exact
+  minimum-query-length boundary and its handling of a non-list `results`
+  value (#470)
+
 ## [2026.11.3] - 2026-11-22
 
 ### Added
