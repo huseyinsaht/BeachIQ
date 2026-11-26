@@ -12,6 +12,8 @@ All notable changes to this project are documented here. Format loosely follows
   value (#470)
 - Additional test coverage for `buildNearbyBeachesQuery` formatting a
   southern/western-hemisphere point's negative latitude/longitude correctly
+- Additional test coverage for the OSM mapper's `leisure=beach_resort`
+  amenity handling, which sets `Beach.hasBeachResort` (#472)
 
 ## [2026.11.3] - 2026-11-22
 
