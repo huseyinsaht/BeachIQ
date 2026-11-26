@@ -534,6 +534,131 @@ void main() {
         expect(find.textContaining('km'), findsOneWidget);
       },
     );
+
+    // The next two tests pin the exact boundary of the tapped-marker card's
+    // `distanceMeters >= 1000` km/m formatting switch, per docs/testing.md's
+    // "values at a threshold boundary" mandatory edge case. The amenity
+    // position is `latlong2`'s own `Distance().offset(center, metres, 0)`
+    // due north of [center], so the distance the card actually measures
+    // (via the same `Distance` type, after its internal rounding to the
+    // nearest meter) is exactly 999 or 1000 meters, not an approximation.
+    NearbyBeachesProvider buildAmenityAtDistanceFixtureProvider(
+      double distanceMeters,
+    ) {
+      const distance = Distance();
+      final amenityPoint = distance.offset(center, distanceMeters, 0);
+      final geometryNear = distance.offset(amenityPoint, 50, 0);
+      final geometryFar = distance.offset(amenityPoint, 100, 0);
+
+      final client = FakeHttpClient();
+      client.queueResponse(
+        host: 'marine-api.open-meteo.com',
+        body: json.encode([
+          {
+            'current': {
+              'wave_height': 0.5,
+              'wave_direction': 90,
+              'wave_period': 4,
+              'sea_surface_temperature': 23.0,
+            },
+          },
+        ]),
+      );
+      client.queueResponse(
+        host: 'overpass-api.de',
+        body: json.encode({
+          'elements': [
+            {
+              'type': 'way',
+              'id': 1,
+              'tags': {'natural': 'beach', 'name': 'Boundary Fixture Beach'},
+              'geometry': [
+                {'lat': geometryNear.latitude, 'lon': geometryNear.longitude},
+                {'lat': geometryFar.latitude, 'lon': geometryFar.longitude},
+                {
+                  'lat': geometryFar.latitude,
+                  'lon': geometryFar.longitude + 0.001,
+                },
+              ],
+            },
+            {
+              'type': 'node',
+              'id': 2,
+              'lat': amenityPoint.latitude,
+              'lon': amenityPoint.longitude,
+              'tags': {'amenity': 'cafe', 'name': 'Boundary Fixture Cafe'},
+            },
+          ],
+        }),
+      );
+
+      return NearbyBeachesProvider(
+        OverpassService(client),
+        BeachCache(_mockPrefs!),
+        MarineBatchService(client),
+        debounceDuration: const Duration(milliseconds: 1),
+      );
+    }
+
+    testWidgets(
+      'tapping a marker exactly 999 m away shows the distance in meters, '
+      'just under the 1000 m threshold',
+      (tester) async {
+        final provider = buildAmenityAtDistanceFixtureProvider(999);
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+              ),
+            ),
+          ),
+        );
+        provider.pickLocation(center);
+        await tester.pumpAndSettle();
+
+        final marker = tester.widget<AmenityMarker>(find.byType(AmenityMarker));
+        marker.onTap!();
+        await tester.pump();
+
+        expect(find.text('999 m'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'tapping a marker exactly 1000 m away shows the distance in km -- the '
+      '>= 1000 m threshold is inclusive',
+      (tester) async {
+        final provider = buildAmenityAtDistanceFixtureProvider(1000);
+        addTearDown(provider.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LocationMapCard(
+                center: center,
+                placeName: 'Cesme, Izmir',
+                tileProvider: _FakeTileProvider(),
+                nearbyBeachesProvider: provider,
+              ),
+            ),
+          ),
+        );
+        provider.pickLocation(center);
+        await tester.pumpAndSettle();
+
+        final marker = tester.widget<AmenityMarker>(find.byType(AmenityMarker));
+        marker.onTap!();
+        await tester.pump();
+
+        expect(find.text('1.0 km'), findsOneWidget);
+      },
+    );
   });
 
   group('beachBoundsToFit (#214)', () {
