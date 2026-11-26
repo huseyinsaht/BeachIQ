@@ -10,6 +10,8 @@ All notable changes to this project are documented here. Format loosely follows
 - Additional test coverage for `GeocodingService.search`'s exact
   minimum-query-length boundary and its handling of a non-list `results`
   value (#470)
+- Additional test coverage for `buildNearbyBeachesQuery` formatting a
+  southern/western-hemisphere point's negative latitude/longitude correctly
 
 ## [2026.11.3] - 2026-11-22
 
