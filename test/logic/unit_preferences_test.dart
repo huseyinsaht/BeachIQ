@@ -71,6 +71,11 @@ void main() {
     test('a negative temperature converts correctly', () {
       expect(formatTemperature(-10, UnitSystem.imperial), '14°F');
     });
+
+    test('rounds the exact .5 boundary away from zero', () {
+      expect(formatTemperature(23.5, UnitSystem.metric), '24°C');
+      expect(formatTemperature(-10.5, UnitSystem.metric), '-11°C');
+    });
   });
 
   group('formatWindSpeed', () {
@@ -85,6 +90,10 @@ void main() {
     test('is zero at zero in both systems', () {
       expect(formatWindSpeed(0, UnitSystem.metric), '0 km/h');
       expect(formatWindSpeed(0, UnitSystem.imperial), '0 mph');
+    });
+
+    test('rounds the exact .5 boundary away from zero', () {
+      expect(formatWindSpeed(12.5, UnitSystem.metric), '13 km/h');
     });
   });
 
@@ -115,6 +124,10 @@ void main() {
     test('zero renders cleanly in both systems', () {
       expect(formatDistanceMeters(0, UnitSystem.metric), '0 m');
       expect(formatDistanceMeters(0, UnitSystem.imperial), '0 ft');
+    });
+
+    test('rounds the exact .5 boundary away from zero', () {
+      expect(formatDistanceMeters(180.5, UnitSystem.metric), '181 m');
     });
   });
 }

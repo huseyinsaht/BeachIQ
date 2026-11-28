@@ -304,6 +304,33 @@ void main() {
       expect(beach.amenities.single.kind, AmenityKind.changingRoom);
     });
 
+    test('attaches a leisure=beach_resort amenity and sets hasBeachResort', () {
+      final beaches = mapOverpassToBeaches({
+        'elements': [
+          {
+            'type': 'way',
+            'id': 1,
+            'tags': {'natural': 'beach', 'name': 'Beach Resort Beach'},
+            'geometry': [
+              {'lat': 10.0, 'lon': 20.0},
+              {'lat': 10.001, 'lon': 20.0},
+            ],
+          },
+          {
+            'type': 'node',
+            'id': 301,
+            'lat': 10.0001,
+            'lon': 20.0,
+            'tags': {'leisure': 'beach_resort'},
+          },
+        ],
+      });
+
+      final beach = beaches.single;
+      expect(beach.hasBeachResort, isTrue);
+      expect(beach.amenities.single.kind, AmenityKind.beachResort);
+    });
+
     test('given a beach element with no lat/lon, center or geometry, '
         'mapOverpassToBeaches -> skips it without affecting other beaches', () {
       final beaches = mapOverpassToBeaches({

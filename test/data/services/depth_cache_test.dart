@@ -326,5 +326,62 @@ void main() {
       expect(result.samples.first.depthMeters, isNull);
       expect(result.samples.last.depthMeters, 1.2);
     });
+
+    test('given a profile with approximate: false, the cache round-trip -> '
+        'preserves false rather than always coming back true', () async {
+      final cache = DepthCache(await prefs());
+      const nonApproximate = DepthProfile(
+        available: true,
+        approximate: false,
+        samples: [DepthSample(distanceMeters: 0, depthMeters: 0.3)],
+      );
+      await cache.put(36.90, 30.65, nonApproximate);
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called'),
+      );
+
+      expect(result.approximate, isFalse);
+    });
+
+    test('given a profile with approximate: true, the cache round-trip -> '
+        'preserves true', () async {
+      final cache = DepthCache(await prefs());
+      await cache.put(36.90, 30.65, _profile);
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called'),
+      );
+
+      expect(result.approximate, isTrue);
+    });
+
+    test('given a cache entry written by an older cache version with no '
+        '"approximate" key, get -> falls back to approximate: true instead '
+        'of throwing', () async {
+      final sharedPrefs = await prefs();
+      final now = DateTime.utc(2026, 1, 1);
+      final cache = DepthCache(sharedPrefs, now: () => now);
+      final key = cache.gridKeyFor(36.90, 30.65);
+      await sharedPrefs.setString(
+        key,
+        '{"fetchedAt": "2026-01-01T00:00:00.000Z", "profile": '
+        '{"available": true, "samples": [{"distanceMeters": 0, '
+        '"depthMeters": 0.3}]}}',
+      );
+
+      final result = await cache.get(
+        latitude: 36.90,
+        longitude: 30.65,
+        fetch: () async => fail('fetch should not be called; entry is fresh'),
+      );
+
+      expect(result.available, isTrue);
+      expect(result.approximate, isTrue);
+    });
   });
 }

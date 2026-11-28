@@ -149,6 +149,34 @@ void main() {
       expect(fetchCount, 2);
     });
 
+    test('given fetch resolves to an empty or whitespace-only string, get -> '
+        'returns it but never caches it, so the next call re-fetches instead '
+        'of replaying the empty name', () async {
+      final cache = ReverseGeocodeCache(await prefs());
+      var fetchCount = 0;
+
+      final first = await cache.get(
+        latitude: 38.3220,
+        longitude: 26.3260,
+        fetch: () async {
+          fetchCount++;
+          return '   ';
+        },
+      );
+      final second = await cache.get(
+        latitude: 38.3220,
+        longitude: 26.3260,
+        fetch: () async {
+          fetchCount++;
+          return 'Çeşme, İzmir';
+        },
+      );
+
+      expect(first, '   ');
+      expect(second, 'Çeşme, İzmir');
+      expect(fetchCount, 2);
+    });
+
     test('given a corrupt stored entry, get -> treats it as a miss and '
         're-fetches instead of throwing', () async {
       final prefsInstance = await prefs();

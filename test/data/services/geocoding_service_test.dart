@@ -59,6 +59,31 @@ void main() {
       expect(callCount, 0);
     });
 
+    test('given a query that trims down to exactly 2 characters, '
+        'sends a request using the trimmed value', () async {
+      http.Request? capturedRequest;
+      final client = MockClient((request) async {
+        capturedRequest = request;
+        return http.Response(json.encode({'results': []}), 200);
+      });
+
+      await GeocodingService(client).search('  ab  ');
+
+      expect(capturedRequest, isNotNull);
+      expect(capturedRequest!.url.queryParameters['name'], 'ab');
+    });
+
+    test('returns an empty list instead of throwing when the results key '
+        'is not a list', () async {
+      final client = MockClient((request) async {
+        return http.Response(json.encode({'results': 'not a list'}), 200);
+      });
+
+      final results = await GeocodingService(client).search('Cesme');
+
+      expect(results, isEmpty);
+    });
+
     test('skips malformed entries instead of throwing', () async {
       final client = MockClient((request) async {
         return http.Response(

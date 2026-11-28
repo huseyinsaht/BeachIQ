@@ -7,6 +7,20 @@ All notable changes to this project are documented here. Format loosely follows
 
 ### Added
 
+- Additional test coverage for `GeocodingService.search`'s exact
+  minimum-query-length boundary and its handling of a non-list `results`
+  value (#470)
+- Additional test coverage for `buildNearbyBeachesQuery` formatting a
+  southern/western-hemisphere point's negative latitude/longitude correctly
+- Additional test coverage for the OSM mapper's `leisure=beach_resort`
+  amenity handling, which sets `Beach.hasBeachResort` (#472)
+- Additional test coverage for the exact `.5` rounding boundary in
+  `formatTemperature`, `formatWindSpeed` and `formatDistanceMeters`
+
+## [2026.11.3] - 2026-11-22
+
+### Added
+
 - Screen-reader semantics for the hourly charts on every metric detail screen
   (wind speed, wind gusts, pressure, rain chance, UV index, water temperature,
   wave height, current speed) and for the seabed depth profile chart (#439)
@@ -36,11 +50,21 @@ All notable changes to this project are documented here. Format loosely follows
   throws (#454)
 - Additional test coverage for `HourlyMetricChart`'s "Now" marker index
   boundary (#455)
+- Additional test coverage for `BeachCache.get` treating a corrupt cache
+  entry (invalid JSON, or an unparseable `fetchedAt`) as a miss instead of
+  throwing (#460)
+- Additional test coverage confirming `OverpassService` issues a fresh
+  request for a repeated identical query once the earlier call has settled
+  (succeeded or failed), instead of replaying its cached result (#462)
 
 ### Changed
 
 - Refreshed `pubspec.lock` twice to pick up newer resolvable transitive
   dependency versions; no application code changed (#437, #453)
+- Refreshed `pubspec.lock` again to pick up newer resolvable transitive
+  dependency versions; no application code changed (#461)
+- The weekly automated screenshot CI job now runs once a week (Sunday
+  evenings) instead of every day, to reduce token usage (#458)
 
 ### Fixed
 

@@ -35,5 +35,18 @@ void main() {
       expect(query, isNot(contains('[amenity];')));
       expect(query, isNot(matches(RegExp(r'\[amenity\]\s*;'))));
     });
+
+    test('given a southern/western-hemisphere point, buildNearbyBeachesQuery '
+        '-> formats the negative latitude/longitude with their minus signs '
+        'intact, not dropped or misplaced', () {
+      final query = buildNearbyBeachesQuery(-33.890542, -151.274856);
+
+      expect(
+        query,
+        contains(
+          'nwr[natural=beach](around:20000,-33.890542,-151.274856)->.b;',
+        ),
+      );
+    });
   });
 }
