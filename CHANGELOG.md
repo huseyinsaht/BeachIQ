@@ -14,6 +14,8 @@ All notable changes to this project are documented here. Format loosely follows
   southern/western-hemisphere point's negative latitude/longitude correctly
 - Additional test coverage for the OSM mapper's `leisure=beach_resort`
   amenity handling, which sets `Beach.hasBeachResort` (#472)
+- Additional test coverage for the exact `.5` rounding boundary in
+  `formatTemperature`, `formatWindSpeed` and `formatDistanceMeters`
 
 ## [2026.11.3] - 2026-11-22
 
